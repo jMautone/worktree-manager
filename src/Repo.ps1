@@ -96,6 +96,8 @@ function Test-WtLocalBranch {
 }
 
 function New-WtWorktreeInfo {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Constructor puro (pscustomobject); el verbo New no implica efectos.')]
     param(
         [Parameter(Mandatory)][string]$Path,
         [string]$Head = '',

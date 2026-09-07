@@ -21,6 +21,7 @@ Export-ModuleMember -Function @(
     # Comandos
     'New-WtWorktree', 'Get-WtWorktreeList', 'Open-WtWorktree', 'Remove-WtWorktree',
     'Invoke-WtPrune', 'Invoke-WtPathCommand', 'Invoke-WtDoctor', 'Start-WtConsole',
+    'Invoke-WtVersion',
     # Workspace
     'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',
     'Resolve-WtRepoContext', 'Open-WtFolder',

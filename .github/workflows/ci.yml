@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shell: [powershell, pwsh]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar git para las pruebas E2E
+        shell: bash
+        run: |
+          git config --global user.email 'ci@worktree-manager.local'
+          git config --global user.name 'worktree-manager-ci'
+          git config --global commit.gpgsign false
+          git config --global init.defaultBranch main
+
+      - name: Suite unitaria
+        shell: ${{ matrix.shell }}
+        run: |
+          ${{ matrix.shell }} -NoProfile -File tests/Invoke-WtUnitTests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Suite E2E
+        shell: ${{ matrix.shell }}
+        run: |
+          ${{ matrix.shell }} -NoProfile -File tests/Invoke-WtTests.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Instalar PSScriptAnalyzer
+        shell: ${{ matrix.shell }}
+        run: |
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber -Confirm:$false
+
+      - name: PSScriptAnalyzer
+        shell: ${{ matrix.shell }}
+        run: |
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1
+          if ($results) {
+            $results | Format-Table -AutoSize | Out-String | Write-Host
+            exit 1
+          }

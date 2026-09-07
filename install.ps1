@@ -45,8 +45,10 @@ if ($null -eq $current) { $current = '' }
 $pattern = '(?s)' + [regex]::Escape($markerStart) + '.*?' + [regex]::Escape($markerEnd)
 
 if ($current -match $pattern) {
-    # MatchEvaluator: evita que -replace interprete '$' dentro del bloque de reemplazo
-    $updated = [regex]::Replace($current, $pattern, { param($m) $block })
+    # MatchEvaluator: evita que -replace interprete '$' dentro del bloque de reemplazo.
+    # Sin 'param' explicito: el Match que pasa el delegado no se usa (el reemplazo sale
+    # del closure $block), asi que no hay parametro declarado que quede sin uso.
+    $updated = [regex]::Replace($current, $pattern, { $block })
     Set-Content -LiteralPath $profilePath -Value $updated -NoNewline
     Write-Host "Bloque 'wt' actualizado en $profilePath" -ForegroundColor Green
 } else {

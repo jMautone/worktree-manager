@@ -1,0 +1,7 @@
+# Artefactos temporales de PowerShell / pruebas
+TestResults/
+*.user
+*.log
+
+# Config local que no deberia commitearse
+.wt.local.json

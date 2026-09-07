@@ -6,6 +6,8 @@
     powershell -File tests\Invoke-WtTests.ps1
 #>
 [CmdletBinding()]
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '',
+    Justification = 'Parseos best-effort: si fallan, la asercion siguiente ya lo detecta como "no parseable".')]
 param()
 
 $ErrorActionPreference = 'Stop'
@@ -366,6 +368,11 @@ try {
     Assert-True 'config set clave invalida falla' ($r.ExitCode -ne 0)
     Assert-True 'config set lista claves validas' ($r.Output -match 'Clave desconocida' -and $r.Output -match 'reposRoot') $r.Output
 
+    Write-Host '== wt version ==' -ForegroundColor Cyan
+    $r = Invoke-Wt -CmdArgs @('version') -Cwd $env:TEMP
+    Assert-True 'version exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'version imprime la version del manifiesto' ($r.Output -match 'wt 0\.1\.0') $r.Output
+
     Write-Host '== wt doctor ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('doctor') -Cwd $env:TEMP
     Assert-True 'doctor exit 0 (informativo)' ($r.ExitCode -eq 0) $r.Output
@@ -392,7 +399,7 @@ try {
     Invoke-Wt -CmdArgs @('create', 'buscable', '--no-open') -Cwd $repoDir | Out-Null
     $r = Invoke-Wt -CmdArgs @('open', 'buscable') -Cwd $env:TEMP
     Assert-True 'open worktree fuera de repo exit 0' ($r.ExitCode -eq 0) $r.Output
-    Assert-True 'open worktree identifica el repo dueño' ($r.Output -match "del repo 'MiRepo'") $r.Output
+    Assert-True 'open worktree identifica el repo dueno' ($r.Output -match "del repo 'MiRepo'") $r.Output
     Assert-True 'open worktree imprime la ruta del worktree' ($r.Output -match [regex]::Escape('MiRepo.worktrees\buscable')) $r.Output
     Invoke-Wt -CmdArgs @('remove', 'buscable', '--delete-branch') -Cwd $repoDir | Out-Null
 

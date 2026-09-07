@@ -52,6 +52,8 @@ $p = ConvertFrom-WtArgs -Arguments @('go')
 Assert-True 'alias go -> cd' ($p.Command -eq 'cd')
 $p = ConvertFrom-WtArgs -Arguments @('--help')
 Assert-True 'alias --help -> help' ($p.Command -eq 'help')
+$p = ConvertFrom-WtArgs -Arguments @('--version')
+Assert-True 'alias --version -> version' ($p.Command -eq 'version')
 $p = ConvertFrom-WtArgs -Arguments @()
 Assert-True 'sin argumentos no hay comando' ($p.Command -eq '')
 Assert-Throws 'comando desconocido falla' { ConvertFrom-WtArgs -Arguments @('inventado') } 'Comando desconocido'

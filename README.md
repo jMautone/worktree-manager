@@ -38,6 +38,7 @@ wt remove logging --delete-branch            # elimina worktree y rama
 wt remove logging --force                    # fuerza aunque haya cambios sin commit
 wt prune                                     # depura metadatos de worktrees huérfanos
 wt console                                   # menú interactivo que arma los comandos sin escribirlos
+wt version                                   # versión del módulo (wt.psd1) y de PowerShell
 wt help
 ```
 
@@ -249,9 +250,14 @@ correr `wt` con una config completamente aislada de la máquina.
 ```
 worktree-manager/
 ├── wt.psm1                      # Carga de src/ y superficie pública del módulo
+├── wt.psd1                      # Manifiesto del módulo (versión, PowerShellVersion, contrato de export)
 ├── wt.ps1                       # Entrypoint para invocación por -File
 ├── install.ps1                  # Instalador idempotente (perfil + config global)
 ├── config.example.json          # Config de referencia
+├── PSScriptAnalyzerSettings.psd1 # Reglas de lint (CI)
+├── CHANGELOG.md                 # Historial por fase (Keep a Changelog)
+├── LICENSE
+├── .github/workflows/ci.yml     # CI: suites + PSScriptAnalyzer en PS 5.1 y 7
 ├── src/
 │   ├── Common.ps1               # Procesos externos, rutas, validación, presentación
 │   ├── Config.ps1               # Defaults, precedencia, get/set y comando 'config'
@@ -285,6 +291,16 @@ principal, cambios sin commit, uso desde dentro de un worktree, ejecución fuera
 repo, worktree obsoleto por directorio borrado a mano y worktree huérfano por repo
 principal movido), la validación de flags del CLI, la generación del tab config de Warp
 para el agente, los comandos de workspace (`repos`, `cd` con match por prefijo y
-ambigüedad, `config get/set` incluidos valores con espacios, `doctor`) y la consola
-interactiva vía stdin pipeado (menú, create, list, open, remove con confirmación, ir a un
-repo, EOF). Se limpia al terminar. Exit code `0` = todo OK, `1` = hubo fallas.
+ambigüedad, `config get/set` incluidos valores con espacios, `doctor`, `version`) y la
+consola interactiva vía stdin pipeado (menú, create, list, open, remove con
+confirmación, ir a un repo, EOF). Se limpia al terminar. Exit code `0` = todo OK,
+`1` = hubo fallas.
+
+`.github/workflows/ci.yml` corre ambas suites y `Invoke-ScriptAnalyzer` (con
+`PSScriptAnalyzerSettings.psd1`) en `windows-latest`, bajo `powershell` (5.1) y `pwsh`
+(7). Localmente:
+
+```powershell
+Install-Module PSScriptAnalyzer -Scope CurrentUser
+Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1
+```

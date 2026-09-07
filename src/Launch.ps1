@@ -111,6 +111,8 @@ function New-WtWarpTabConfigContent {
     .SYNOPSIS
         Genera el contenido TOML de un tab config de Warp. Funcion pura (testeable).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Funcion pura que arma un string; el verbo New no implica efectos.')]
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Path,

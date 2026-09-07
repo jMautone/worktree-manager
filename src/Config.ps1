@@ -134,6 +134,8 @@ function Set-WtConfigValue {
     .OUTPUTS
         @{ Path; Value } con la ruta escrita y el valor efectivo (ya convertido).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Comando directo de wt config set; pedir confirmacion en cada valor rompe el flujo de uso.')]
     param(
         [Parameter(Mandatory)][string]$Key,
         [Parameter(Mandatory)][AllowEmptyString()][string]$Value

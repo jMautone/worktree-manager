@@ -7,6 +7,8 @@
 # --- create -----------------------------------------------------------------
 
 function New-WtWorktree {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Comando principal del CLI: pedir confirmacion en cada create rompe el flujo. No es un cmdlet generico.')]
     param(
         [Parameter(Mandatory)][string]$Name,
         [AllowEmptyString()][string]$Base,
@@ -170,7 +172,10 @@ function Open-WtWorktree {
     .NOTES
         -NoCode y -NoTerminal se aceptan por compatibilidad con invocaciones antiguas;
         -NoTerminal es un no-op porque la terminal ya no se abre por defecto.
+        Pendiente: B1 elimina -NoTerminal (y -NoCode si A3 lo deja sin llamadores).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'NoTerminal',
+        Justification = 'Compatibilidad hacia atras; B1 la elimina junto con sus llamadores.')]
     param(
         [AllowEmptyString()][string]$Name,
         [switch]$Code,
@@ -261,6 +266,8 @@ function Open-WtAgent {
 # --- remove / prune ---------------------------------------------------------
 
 function Remove-WtWorktree {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Pendiente: A2 agrega SupportsShouldProcess real (worktree y rama por separado).')]
     param(
         [Parameter(Mandatory)][string]$Name,
         [switch]$DeleteBranch,
@@ -296,9 +303,23 @@ function Invoke-WtPrune {
     Write-WtSuccess 'OK - metadatos de worktrees obsoletos depurados.'
 }
 
+# --- version ------------------------------------------------------------
+
+function Invoke-WtVersion {
+    <#
+    .SYNOPSIS
+        Imprime la version del manifiesto y la version de PowerShell activa.
+    #>
+    $manifestPath = Join-Path $PSScriptRoot '..\wt.psd1'
+    $manifest = Import-PowerShellDataFile -Path $manifestPath
+    Write-WtLine ("wt {0} {1} PowerShell {2}" -f $manifest.ModuleVersion, [char]0x00B7, $PSVersionTable.PSVersion)
+}
+
 # --- doctor -----------------------------------------------------------------
 
 function New-WtDoctorRow {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Constructor puro (pscustomobject); el verbo New no implica efectos.')]
     param(
         [Parameter(Mandatory)][string]$Check,
         [Parameter(Mandatory)][bool]$Ok,
@@ -312,10 +333,9 @@ function New-WtDoctorRow {
 }
 
 function Get-WtDoctorRows {
-    <#
-    .SYNOPSIS
-        Chequeos del setup como datos (sin imprimir), para poder testearlos y reusarlos.
-    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '',
+        Justification = 'Chequeo informativo best-effort: si git falla al listar, se reporta "0 obsoletos" en vez de romper doctor.')]
+    param()
     $config = Get-WtConfig
     $rows = @()
 

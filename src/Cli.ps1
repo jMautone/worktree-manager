@@ -18,6 +18,7 @@ function Get-WtCommandSpecs {
         'config'  = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'doctor'  = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'console' = @{ Aliases = @('ui', 'menu');        Flags = @();                                                         Values = @() }
+        'version' = @{ Aliases = @('--version', '-v');   Flags = @();                                                         Values = @() }
         'help'    = @{ Aliases = @('--help', '-h', '/?'); Flags = @();                                                        Values = @() }
     }
 }
@@ -132,6 +133,7 @@ WORKSPACE (funcionan desde cualquier directorio):
   wt config path | edit                      # ruta del archivo / abrirlo en el editor
   wt doctor                                  # chequea el setup (git, node, copilot, warp, ...)
   wt console                                 # menu interactivo que arma los comandos (alias: ui, menu)
+  wt version                                 # version del modulo y de PowerShell
   wt help
 
 EJEMPLOS:
@@ -227,6 +229,7 @@ function Invoke-Wt {
         }
         'doctor' { Invoke-WtDoctor }
         'console' { Start-WtConsole }
+        'version' { Invoke-WtVersion }
         'help' { Show-WtHelp }
         default { throw "Comando desconocido: '$($parsed.Command)'. Usa 'wt help'." }
     }

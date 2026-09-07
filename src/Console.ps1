@@ -94,6 +94,9 @@ function Write-WtConsoleCommand {
 # --- Acciones ---------------------------------------------------------------
 
 function Invoke-WtConsoleCreate {
+    # Pendiente: B1 elimina -RepoRoot (sin uso; New-WtWorktree resuelve el repo solo).
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'RepoRoot',
+        Justification = 'B1 la elimina junto con su unico llamador.')]
     param([Parameter(Mandatory)][string]$RepoRoot)
     $name = Read-WtConsoleLine -Prompt 'Nombre del worktree: '
     if ($null -eq $name -or -not $name.Trim()) { Write-WtDetail 'Cancelado.'; return }
@@ -220,18 +223,18 @@ function Get-WtConsoleMenu {
         RequiresRepo marca las que solo tienen sentido dentro de un repositorio.
     #>
     return @(
-        [pscustomobject]@{ Key = '1'; Label = 'Listar worktrees';                       RequiresRepo = $true;  Action = { param($repoRoot) Get-WtWorktreeList } }
+        [pscustomobject]@{ Key = '1'; Label = 'Listar worktrees';                       RequiresRepo = $true;  Action = { Get-WtWorktreeList } }
         [pscustomobject]@{ Key = '2'; Label = 'Crear worktree';                         RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleCreate -RepoRoot $repoRoot } }
         [pscustomobject]@{ Key = '3'; Label = 'Abrir worktree (editor)';                RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot } }
         [pscustomobject]@{ Key = '4'; Label = 'Abrir worktree completo (editor + agente)'; RequiresRepo = $true; Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -All } }
         [pscustomobject]@{ Key = '5'; Label = 'Ver la ruta de un worktree';             RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsolePath -RepoRoot $repoRoot } }
         [pscustomobject]@{ Key = '6'; Label = 'Eliminar un worktree';                   RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleRemove -RepoRoot $repoRoot } }
-        [pscustomobject]@{ Key = '7'; Label = 'Prune (depurar metadatos huerfanos)';    RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtPrune } }
-        [pscustomobject]@{ Key = 'r'; Label = 'Listar repos del root';                  RequiresRepo = $false; Action = { param($repoRoot) Get-WtRepoList } }
-        [pscustomobject]@{ Key = 'g'; Label = 'Ir a un repo (cd)';                      RequiresRepo = $false; Action = { param($repoRoot) Invoke-WtConsoleGoToRepo } }
-        [pscustomobject]@{ Key = 'c'; Label = 'Configuracion';                          RequiresRepo = $false; Action = { param($repoRoot) Invoke-WtConsoleConfig } }
-        [pscustomobject]@{ Key = 'd'; Label = 'Doctor (chequeo del setup)';             RequiresRepo = $false; Action = { param($repoRoot) Invoke-WtDoctor } }
-        [pscustomobject]@{ Key = 'h'; Label = 'Ayuda del CLI';                          RequiresRepo = $false; Action = { param($repoRoot) Show-WtHelp } }
+        [pscustomobject]@{ Key = '7'; Label = 'Prune (depurar metadatos huerfanos)';    RequiresRepo = $true;  Action = { Invoke-WtPrune } }
+        [pscustomobject]@{ Key = 'r'; Label = 'Listar repos del root';                  RequiresRepo = $false; Action = { Get-WtRepoList } }
+        [pscustomobject]@{ Key = 'g'; Label = 'Ir a un repo (cd)';                      RequiresRepo = $false; Action = { Invoke-WtConsoleGoToRepo } }
+        [pscustomobject]@{ Key = 'c'; Label = 'Configuracion';                          RequiresRepo = $false; Action = { Invoke-WtConsoleConfig } }
+        [pscustomobject]@{ Key = 'd'; Label = 'Doctor (chequeo del setup)';             RequiresRepo = $false; Action = { Invoke-WtDoctor } }
+        [pscustomobject]@{ Key = 'h'; Label = 'Ayuda del CLI';                          RequiresRepo = $false; Action = { Show-WtHelp } }
     )
 }
 
@@ -255,6 +258,9 @@ function Show-WtConsoleMenu {
 }
 
 function Start-WtConsole {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Entrypoint del menu interactivo; pedir confirmacion para iniciarlo no tiene sentido.')]
+    param()
     Write-WtInfo 'Worktree Manager - consola interactiva'
     Write-WtDetail 'Antes de ejecutar se muestra el comando CLI equivalente, para aprenderlo.'
     $menu = @(Get-WtConsoleMenu)

@@ -163,6 +163,8 @@ function ConvertTo-WtFullPath {
         Windows. Las relativas se resuelven contra la ubicacion actual de PowerShell
         (no contra el cwd del proceso, que puede diferir).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '',
+        Justification = 'Ruta sintetica o invalida: se devuelve la forma normalizada disponible en vez de fallar.')]
     param([AllowEmptyString()][string]$Path)
     if (-not $Path) { return '' }
     $p = $Path.Trim() -replace '/', '\'
@@ -212,6 +214,8 @@ function Set-WtLocation {
     .SYNOPSIS
         Cambia la ubicacion actual (y con eso la config efectiva, que depende del repo).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Wrapper directo de Set-Location, invocado por comandos que ya decidieron moverse.')]
     param([Parameter(Mandatory)][string]$Path)
     Set-Location -LiteralPath $Path
 }
