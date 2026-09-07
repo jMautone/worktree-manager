@@ -18,6 +18,7 @@
         # Config
         'Get-WtConfig', 'Get-WtConfigFilePath', 'Set-WtConfigValue', 'Invoke-WtConfigCommand',
         'Get-WtDefaultConfig', 'Merge-WtConfig', 'Clear-WtConfigCache',
+        'Get-WtRepoConfigAllowedKeys', 'Select-WtRepoConfigKeys',
         # Repo / worktrees
         'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Resolve-WtWorktree',
         'ConvertFrom-WtWorktreePorcelain', 'Get-WtWorktreePath',

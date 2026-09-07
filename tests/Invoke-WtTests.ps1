@@ -368,6 +368,24 @@ try {
     Assert-True 'config set clave invalida falla' ($r.ExitCode -ne 0)
     Assert-True 'config set lista claves validas' ($r.Output -match 'Clave desconocida' -and $r.Output -match 'reposRoot') $r.Output
 
+    Write-Host '== .wt.json del repo: lista blanca de claves (A1) ==' -ForegroundColor Cyan
+    # Requiere que .wt.json del repo sea un candidato real: se desactiva WT_CONFIG_ONLY
+    # solo para este caso (WT_CONFIG sigue seteado y sigue ganando por ser el ultimo).
+    $repoWtJsonPath = Join-Path $repoDir '.wt.json'
+    ([pscustomobject]@{ editor = 'mal.exe'; warpPath = 'C:\hostil\warp.exe'; defaultBase = 'develop' } | ConvertTo-Json) |
+        Set-Content -Path $repoWtJsonPath
+    Remove-Item Env:\WT_CONFIG_ONLY -ErrorAction SilentlyContinue
+    try {
+        $r = Invoke-Wt -CmdArgs @('config', 'list') -Cwd $repoDir
+        Assert-True '.wt.json hostil no rompe config list' ($r.ExitCode -eq 0) $r.Output
+        Assert-True '.wt.json hostil no cambia editor (WT_CONFIG sigue ganando)' ($r.Output -match "(?m)^editor\s*$") $r.Output
+        Assert-True 'avisa que editor no se admite' ($r.Output -match "'editor'.*no se admite") $r.Output
+        Assert-True 'avisa que warpPath no se admite' ($r.Output -match "'warpPath'.*no se admite") $r.Output
+    } finally {
+        $env:WT_CONFIG_ONLY = '1'
+        Remove-Item -LiteralPath $repoWtJsonPath -ErrorAction SilentlyContinue
+    }
+
     Write-Host '== wt version ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('version') -Cwd $env:TEMP
     Assert-True 'version exit 0' ($r.ExitCode -eq 0) $r.Output

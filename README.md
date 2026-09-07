@@ -146,6 +146,22 @@ Orden de precedencia (el primero que existe gana por clave):
 `.wt.json` del repo y la config global del usuario. Pensada para pruebas y para
 correr `wt` con una config completamente aislada de la máquina.
 
+### `.wt.json` del repo: lista blanca de claves
+
+A diferencia de la config global y de `WT_CONFIG` (que el usuario controla), el
+`.wt.json` del repo puede venir de **un repositorio ajeno recién clonado**. Por eso
+solo admite las claves que no pueden convertirse en un ejecutable, un shell o una
+ruta arbitraria:
+
+- `worktreeRootTemplate`
+- `defaultBase`
+- `branchPrefix`
+- `fetchBeforeCreate`
+
+Cualquier otra clave (`editor`, `warpPath`, `agentCommand`, ...) se **ignora** con un
+warning que nombra el archivo y la clave. Sin esta lista, un `.wt.json` hostil podría
+hacer que `wt open` lance el binario que ese archivo elija.
+
 | Clave | Default | Descripción |
 |---|---|---|
 | `worktreeRootTemplate` | `{repoParent}\{repo}.worktrees\{name}` | Ubicación de los worktrees |

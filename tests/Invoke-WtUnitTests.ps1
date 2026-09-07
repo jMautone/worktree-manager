@@ -133,6 +133,17 @@ Assert-True 'no muta la base' ($base.editor -eq 'code')
 $defaults = Get-WtDefaultConfig
 Assert-True 'los defaults traen las 11 claves documentadas' (@($defaults.Keys).Count -eq 11) (@($defaults.Keys) -join ',')
 
+Write-Host '== Select-WtRepoConfigKeys: lista blanca del .wt.json del repo ==' -ForegroundColor Cyan
+$selected = Select-WtRepoConfigKeys -Data ([ordered]@{ editor = 'mal.exe'; defaultBase = 'develop' })
+Assert-True 'conserva defaultBase' ($selected.Config.Contains('defaultBase') -and $selected.Config['defaultBase'] -eq 'develop')
+Assert-True 'rechaza editor' (-not $selected.Config.Contains('editor'))
+Assert-True 'reporta editor como rechazada' (@($selected.Rejected) -contains 'editor')
+$selected = Select-WtRepoConfigKeys -Data ([ordered]@{ worktreeRootTemplate = 't'; branchPrefix = 'p/'; fetchBeforeCreate = $true })
+Assert-True 'las 4 claves admitidas pasan' (@($selected.Rejected).Count -eq 0 -and $selected.Config.Count -eq 3)
+$selected = Select-WtRepoConfigKeys -Data $null
+Assert-True 'datos nulos no rompen' ($selected.Config.Count -eq 0 -and @($selected.Rejected).Count -eq 0)
+Assert-True 'las 4 claves admitidas son las documentadas' ((Get-WtRepoConfigAllowedKeys) -join ',' -eq 'worktreeRootTemplate,defaultBase,branchPrefix,fetchBeforeCreate')
+
 Write-Host '== WT_CONFIG_ONLY aisla la config global del usuario ==' -ForegroundColor Cyan
 $onlyConfigPath = Join-Path $env:TEMP ("wt-only-config-" + [guid]::NewGuid().ToString('N') + '.json')
 try {

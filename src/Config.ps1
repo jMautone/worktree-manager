@@ -89,11 +89,51 @@ function Clear-WtConfigCache {
     $script:ConfigCache = $null
 }
 
+function Get-WtRepoConfigAllowedKeys {
+    <#
+    .SYNOPSIS
+        Claves permitidas en el .wt.json DEL REPO (no en el global del usuario ni en
+        WT_CONFIG). Unica fuente de verdad: cualquier clave nueva que resuelva a un
+        ejecutable, a un shell o a una ruta fuera del repo queda prohibida por defecto
+        a menos que se agregue aca explicitamente.
+    #>
+    return @('worktreeRootTemplate', 'defaultBase', 'branchPrefix', 'fetchBeforeCreate')
+}
+
+function Select-WtRepoConfigKeys {
+    <#
+    .SYNOPSIS
+        Filtra un hashtable de config contra la lista blanca del repo.
+    .DESCRIPTION
+        Funcion pura: separa las claves admitidas de las rechazadas para que el
+        llamador decida como avisar del rechazo (Get-WtConfig usa Write-WtWarn).
+    .OUTPUTS
+        @{ Config; Rejected } - Config solo con las claves admitidas, Rejected como
+        array de nombres de clave descartados.
+    #>
+    param([AllowEmptyCollection()]$Data)
+    $allowed = Get-WtRepoConfigAllowedKeys
+    $result = [ordered]@{}
+    $rejected = @()
+    if ($Data) {
+        foreach ($key in $Data.Keys) {
+            if ($allowed -contains $key) { $result[$key] = $Data[$key] }
+            else { $rejected += $key }
+        }
+    }
+    return @{ Config = $result; Rejected = $rejected }
+}
+
 function Get-WtConfig {
     <#
     .SYNOPSIS
         Config efectiva. Precedencia creciente (el ultimo gana por clave):
         defaults < global del usuario < .wt.json del repo < WT_CONFIG.
+    .DESCRIPTION
+        El .wt.json del repo es el unico candidato filtrado por lista blanca
+        (Select-WtRepoConfigKeys): es el unico archivo de config que puede llegar de
+        un repo ajeno (clonado), asi que una clave como 'editor' o 'warpPath' ahi no
+        puede terminar siendo el ejecutable que 'wt open' lanza.
     #>
     param([switch]$Refresh)
     $cwd = (Get-Location).Path
@@ -102,18 +142,32 @@ function Get-WtConfig {
     }
 
     $config = Get-WtDefaultConfig
+    $repoConfigPath = ''
     if ($env:WT_CONFIG_ONLY -eq '1') {
         $candidates = @()
         if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
     } else {
         $candidates = @(Get-WtGlobalConfigPath)
         $repoRoot = Find-WtMainRoot -Silent
-        if ($repoRoot) { $candidates += (Join-Path $repoRoot '.wt.json') }
+        if ($repoRoot) {
+            $repoConfigPath = Join-Path $repoRoot '.wt.json'
+            $candidates += $repoConfigPath
+        }
         if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
     }
 
     foreach ($path in $candidates) {
-        $config = Merge-WtConfig -Base $config -Override (Read-WtConfigFile -Path $path)
+        $data = Read-WtConfigFile -Path $path
+        if ($path -eq $repoConfigPath -and $data) {
+            $selected = Select-WtRepoConfigKeys -Data $data
+            foreach ($key in $selected.Rejected) {
+                $template = "'.wt.json' del repo define '{0}', que no se admite por seguridad (se ignora). " +
+                    "Claves admitidas: {1}"
+                Write-WtWarn ($template -f $key, ((Get-WtRepoConfigAllowedKeys) -join ', '))
+            }
+            $data = $selected.Config
+        }
+        $config = Merge-WtConfig -Base $config -Override $data
     }
 
     $script:ConfigCache = @{ Cwd = $cwd; Config = $config }
