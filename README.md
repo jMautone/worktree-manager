@@ -34,7 +34,8 @@ wt open MiRepo --agent                       # funciona fuera del repo: wt entra
 wt path logging                              # imprime la ruta (útil para cd (wt path logging))
 wt path                                      # sin nombre: ruta del checkout actual
 wt remove logging                            # elimina el worktree (conserva la rama)
-wt remove logging --delete-branch            # elimina worktree y rama
+wt remove logging --delete-branch            # elimina worktree y rama (borrado seguro: git branch -d)
+wt remove logging --delete-branch --force-branch  # fuerza el borrado de rama aunque tenga commits sin mergear
 wt remove logging --force                    # fuerza aunque haya cambios sin commit
 wt prune                                     # depura metadatos de worktrees huérfanos
 wt console                                   # menú interactivo que arma los comandos sin escribirlos
@@ -224,6 +225,13 @@ hacer que `wt open` lance el binario que ese archivo elija.
   los nombres se validan **antes** de tocar git (caracteres inválidos para rutas de
   Windows, `.`/`..`, nombres reservados como `CON`/`NUL`, final en punto o espacio) y el
   nombre de rama resultante se valida con `git check-ref-format`.
+- **`remove --delete-branch` nunca descarta commits en silencio**: borra la rama con
+  `git branch -d` (falla si tiene commits que no están mergeados en ninguna otra rama).
+  Si falla, el worktree ya se eliminó y el mensaje explica cómo forzarlo con
+  `--force-branch` (`git branch -D`). `--force` es una decisión independiente: solo
+  fuerza `git worktree remove --force` (árbol de trabajo sucio) y nunca implica
+  `--force-branch`. `Remove-WtWorktree` declara `SupportsShouldProcess` y confirma el
+  worktree y la rama por separado.
 - **`open` desacoplado**: editor y terminal son comandos configurables. Con
   `terminal = 'warp'`, tanto la terminal común como `--agent` generan un **Tab Config
   de Warp** (`%APPDATA%\warp\Warp\data\tab_configs\wt-term-<nombre>.toml` y

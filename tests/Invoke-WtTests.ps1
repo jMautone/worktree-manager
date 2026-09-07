@@ -176,6 +176,32 @@ try {
     git -C $repoDir show-ref --verify --quiet refs/heads/feature-a
     Assert-True 'rama feature-a eliminada' ($LASTEXITCODE -ne 0)
 
+    Write-Host '== wt remove --delete-branch con commits sin mergear (no debe descartarlos) (A2) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'sin-mergear', '--no-open') -Cwd $repoDir | Out-Null
+    $sinMergearDir = Join-Path $wtRoot 'sin-mergear'
+    Set-Content -Path (Join-Path $sinMergearDir 'nuevo.txt') -Value 'contenido'
+    git -C $sinMergearDir add nuevo.txt
+    git -C $sinMergearDir commit -m 'commit sin mergear' --quiet
+    $r = Invoke-Wt -CmdArgs @('remove', 'sin-mergear', '--delete-branch') -Cwd $repoDir
+    Assert-True 'remove --delete-branch con commits sin mergear falla' ($r.ExitCode -ne 0)
+    Assert-True 'el worktree se elimino de todos modos' (-not (Test-Path $sinMergearDir)) $r.Output
+    git -C $repoDir show-ref --verify --quiet refs/heads/sin-mergear
+    Assert-True 'la rama sigue existiendo (no se descartaron los commits)' ($LASTEXITCODE -eq 0)
+    Assert-True 'el mensaje sugiere --force-branch' ($r.Output -match '--force-branch') $r.Output
+    git -C $repoDir branch -D sin-mergear 2>&1 | Out-Null
+
+    Write-Host '== wt remove --delete-branch --force-branch si descarta commits sin mergear (A2) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'sin-mergear-2', '--no-open') -Cwd $repoDir | Out-Null
+    $sinMergear2Dir = Join-Path $wtRoot 'sin-mergear-2'
+    Set-Content -Path (Join-Path $sinMergear2Dir 'nuevo.txt') -Value 'contenido'
+    git -C $sinMergear2Dir add nuevo.txt
+    git -C $sinMergear2Dir commit -m 'commit sin mergear' --quiet
+    $r = Invoke-Wt -CmdArgs @('remove', 'sin-mergear-2', '--delete-branch', '--force-branch') -Cwd $repoDir
+    Assert-True 'remove --delete-branch --force-branch exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'el worktree se elimino' (-not (Test-Path $sinMergear2Dir)) $r.Output
+    git -C $repoDir show-ref --verify --quiet refs/heads/sin-mergear-2
+    Assert-True '--force-branch si descarta los commits' ($LASTEXITCODE -ne 0)
+
     Write-Host '== wt remove del principal (debe fallar) ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('remove', 'MiRepo') -Cwd $repoDir
     Assert-True 'remove principal falla' ($r.ExitCode -ne 0)

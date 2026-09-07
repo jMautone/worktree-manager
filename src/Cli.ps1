@@ -11,7 +11,7 @@ function Get-WtCommandSpecs {
         'list'    = @{ Aliases = @('ls');                Flags = @('json');                                                   Values = @() }
         'open'    = @{ Aliases = @();                    Flags = @('code', 'terminal', 'agent', 'all', 'no-code', 'no-terminal'); Values = @() }
         'path'    = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
-        'remove'  = @{ Aliases = @('rm');                Flags = @('delete-branch', 'force');                                 Values = @() }
+        'remove'  = @{ Aliases = @('rm');                Flags = @('delete-branch', 'force', 'force-branch');                 Values = @() }
         'prune'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'repos'   = @{ Aliases = @('repos-list');        Flags = @('json');                                                   Values = @() }
         'cd'      = @{ Aliases = @('go');                Flags = @('open');                                                   Values = @() }
@@ -115,7 +115,7 @@ WORKTREES:
   wt list [--json]                           (alias: ls)
   wt open [<nombre>] [--code] [--terminal] [--agent] [--all]
   wt path [<nombre>]
-  wt remove <nombre> [--delete-branch] [--force]   (alias: rm)
+  wt remove <nombre> [--delete-branch] [--force] [--force-branch]   (alias: rm)
   wt prune
 
   'create' usa el nombre tambien como rama (mas branchPrefix); --branch la cambia y
@@ -123,6 +123,12 @@ WORKTREES:
   si estas dentro de uno). Sin flags abre solo el editor; --all = editor + agente. La
   terminal solo se abre con --terminal. Fuera de un repo, el nombre puede ser un repo de
   reposRoot o un worktree de alguno de ellos: wt entra al repo y abre ahi.
+
+  'remove --delete-branch' borra la rama con 'git branch -d' (seguro): si tiene commits
+  sin mergear, aborta sin borrarla (el worktree si se elimina) y sugiere --force-branch
+  para forzarlo con 'git branch -D'. --force es independiente: solo fuerza el borrado
+  del worktree ('git worktree remove --force', arbol de trabajo sucio) y nunca implica
+  --force-branch.
 
 WORKSPACE (funcionan desde cualquier directorio):
   wt repos [--json]                          # lista los repos git de reposRoot
@@ -205,10 +211,11 @@ function Invoke-Wt {
         }
         'remove' {
             $name = Get-WtPositional -Parsed $parsed -Index 0
-            if (-not $name) { throw 'Uso: wt remove <nombre> [--delete-branch] [--force]' }
+            if (-not $name) { throw 'Uso: wt remove <nombre> [--delete-branch] [--force] [--force-branch]' }
             Remove-WtWorktree -Name $name `
                 -DeleteBranch:(Test-WtFlag -Parsed $parsed -Key 'delete-branch') `
-                -Force:(Test-WtFlag -Parsed $parsed -Key 'force')
+                -Force:(Test-WtFlag -Parsed $parsed -Key 'force') `
+                -ForceBranch:(Test-WtFlag -Parsed $parsed -Key 'force-branch')
         }
         'prune' { Invoke-WtPrune }
         'repos' { Get-WtRepoList -Json:(Test-WtFlag -Parsed $parsed -Key 'json') }

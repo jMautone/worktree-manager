@@ -266,16 +266,28 @@ function Open-WtAgent {
 # --- remove / prune ---------------------------------------------------------
 
 function Remove-WtWorktree {
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
-        Justification = 'Pendiente: A2 agrega SupportsShouldProcess real (worktree y rama por separado).')]
+    <#
+    .SYNOPSIS
+        Elimina un worktree y, opcionalmente, su rama.
+    .DESCRIPTION
+        --delete-branch intenta un borrado seguro ('git branch -d'); si la rama tiene
+        commits no mergeados en ninguna otra, aborta sin borrarla (el worktree ya se
+        elimino) y explica como forzarlo con --force-branch. --force es exclusivamente
+        para 'git worktree remove --force' (arbol de trabajo sucio) y nunca implica
+        --force-branch: son dos decisiones independientes.
+    #>
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)][string]$Name,
         [switch]$DeleteBranch,
-        [switch]$Force
+        [switch]$Force,
+        [switch]$ForceBranch
     )
     $repoRoot = Find-WtMainRoot
     $wt = Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name
     if ($wt.IsMain) { throw 'No se puede eliminar el worktree principal del repositorio.' }
+
+    if (-not $PSCmdlet.ShouldProcess($wt.Path, 'git worktree remove')) { return }
 
     # Si estamos parados dentro del worktree a eliminar, git no puede borrarlo.
     if (Test-WtPathIsUnder -Path (Get-Location).Path -Root $wt.Path) {
@@ -292,8 +304,20 @@ function Remove-WtWorktree {
     Write-WtSuccess 'OK - worktree eliminado.'
 
     if ($DeleteBranch -and $wt.Branch) {
-        Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('branch', '-D', $wt.Branch) | Out-Null
-        Write-WtSuccess "OK - rama '$($wt.Branch)' eliminada."
+        if (-not $PSCmdlet.ShouldProcess($wt.Branch, 'git branch delete')) { return }
+        $deleteFlag = '-d'
+        if ($ForceBranch) { $deleteFlag = '-D' }
+        $branchResult = Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('branch', $deleteFlag, $wt.Branch) -AllowFailure
+        if ($branchResult.Success) {
+            Write-WtSuccess "OK - rama '$($wt.Branch)' eliminada."
+        } elseif ($ForceBranch) {
+            throw "No se pudo eliminar la rama '$($wt.Branch)': $($branchResult.Text)"
+        } else {
+            $template = "La rama '{0}' tiene commits que no estan mergeados en ninguna otra rama; no se borro. " +
+                "El worktree si se elimino. Para borrarla igual: wt remove {0} --delete-branch --force-branch, " +
+                "o git branch -D {0}."
+            throw ($template -f $wt.Branch)
+        }
     }
 }
 

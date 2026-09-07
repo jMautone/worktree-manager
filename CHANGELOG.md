@@ -25,3 +25,10 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   descarta con un warning que nombra el archivo y la clave, para que un
   `.wt.json` de un repo clonado no pueda decidir que ejecutable lanza
   `wt open`.
+- **A2**: `wt remove --delete-branch` ya no corre `git branch -D` a ciegas.
+  Ahora intenta `git branch -d` (seguro); si la rama tiene commits sin
+  mergear, aborta sin borrarla (el worktree si se elimina) y explica como
+  forzarlo con el nuevo flag `--force-branch`. `--force` queda exclusivamente
+  para `git worktree remove --force` (arbol de trabajo sucio) y nunca implica
+  `--force-branch`. `Remove-WtWorktree` declara `SupportsShouldProcess` y
+  confirma worktree y rama por separado.
