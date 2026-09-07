@@ -1,0 +1,210 @@
+# ---------------------------------------------------------------------------
+# Config: defaults, merge por precedencia, lectura/escritura y comando 'config'.
+# Depende de: Common, Repo (solo para ubicar el .wt.json del repo actual).
+# ---------------------------------------------------------------------------
+
+function Get-WtDefaultConfig {
+    <#
+    .SYNOPSIS
+        Valores por defecto. Se resuelven al invocarse (no al importar el modulo)
+        para que warpPath refleje el entorno real del proceso.
+    #>
+    $localAppData = $env:LOCALAPPDATA
+    if (-not $localAppData) { $localAppData = Join-Path $HOME 'AppData\Local' }
+    return [ordered]@{
+        # Plantilla de ubicacion de worktrees. Tokens: {repoParent} {repo} {name}
+        worktreeRootTemplate = '{repoParent}\{repo}.worktrees\{name}'
+        reposRoot            = ''          # raiz de los repos git (ej. 'C:\Repos')
+        defaultBase          = ''          # ej. 'develop' o 'origin/develop'
+        branchPrefix         = ''          # ej. 'agent/' para ramas agent/<name>
+        editor               = 'code'      # comando para abrir el editor ('' para desactivar)
+        terminal             = 'warp'      # 'warp' | 'wt' | 'none'
+        warpAgentTarget      = 'auto'      # 'auto' | 'tab' (misma ventana) | 'window' (ventana nueva)
+        warpAgentColor       = 'green'     # color del tab del agente ('' para no colorear)
+        warpTerminalColor    = 'blue'      # color del tab de terminal comun ('' para no colorear)
+        warpPath             = (Join-Path $localAppData 'Programs\Warp\warp.exe')
+        fetchBeforeCreate    = $true
+    }
+}
+
+function Get-WtConfigKeys {
+    return @((Get-WtDefaultConfig).Keys)
+}
+
+function Get-WtGlobalConfigPath {
+    return (Join-Path $HOME '.wt\config.json')
+}
+
+function Get-WtConfigFilePath {
+    # Archivo editable por comandos: WT_CONFIG (entorno/pruebas) o el global del usuario
+    if ($env:WT_CONFIG) { return $env:WT_CONFIG }
+    return (Get-WtGlobalConfigPath)
+}
+
+function Read-WtConfigFile {
+    <#
+    .SYNOPSIS
+        Lee un JSON de config como ordered hashtable. $null si no existe o es ilegible.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Path)
+    if (-not (Test-WtPathExists $Path)) { return $null }
+    try {
+        $json = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+    } catch {
+        Write-WtWarn "No se pudo leer la configuracion '$Path': $($_.Exception.Message)"
+        return $null
+    }
+    $data = [ordered]@{}
+    if ($null -ne $json) {
+        foreach ($prop in $json.PSObject.Properties) { $data[$prop.Name] = $prop.Value }
+    }
+    return $data
+}
+
+function Merge-WtConfig {
+    <#
+    .SYNOPSIS
+        Devuelve una copia de $Base con las claves de $Override aplicadas encima.
+    .DESCRIPTION
+        Funcion pura: es el corazon de la precedencia de configuracion y por eso se
+        testea sin tocar el disco.
+    #>
+    param(
+        [Parameter(Mandatory)]$Base,
+        $Override
+    )
+    $merged = [ordered]@{}
+    foreach ($k in $Base.Keys) { $merged[$k] = $Base[$k] }
+    if ($Override) {
+        foreach ($k in $Override.Keys) { $merged[$k] = $Override[$k] }
+    }
+    return $merged
+}
+
+# La config efectiva depende del directorio actual (.wt.json del repo), asi que la
+# cache se invalida sola cuando cambia la ubicacion.
+$script:ConfigCache = $null
+
+function Clear-WtConfigCache {
+    $script:ConfigCache = $null
+}
+
+function Get-WtConfig {
+    <#
+    .SYNOPSIS
+        Config efectiva. Precedencia creciente (el ultimo gana por clave):
+        defaults < global del usuario < .wt.json del repo < WT_CONFIG.
+    #>
+    param([switch]$Refresh)
+    $cwd = (Get-Location).Path
+    if (-not $Refresh -and $script:ConfigCache -and $script:ConfigCache.Cwd -eq $cwd) {
+        return $script:ConfigCache.Config
+    }
+
+    $config = Get-WtDefaultConfig
+    $candidates = @(Get-WtGlobalConfigPath)
+    $repoRoot = Find-WtMainRoot -Silent
+    if ($repoRoot) { $candidates += (Join-Path $repoRoot '.wt.json') }
+    if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
+
+    foreach ($path in $candidates) {
+        $config = Merge-WtConfig -Base $config -Override (Read-WtConfigFile -Path $path)
+    }
+
+    $script:ConfigCache = @{ Cwd = $cwd; Config = $config }
+    return $config
+}
+
+function ConvertTo-WtConfigValue {
+    param([AllowEmptyString()][string]$Value)
+    if ($Value -match '^(true|false)$') { return ($Value -eq 'true') }
+    return $Value
+}
+
+function Set-WtConfigValue {
+    <#
+    .SYNOPSIS
+        Escribe una clave en el archivo editable (WT_CONFIG o el global del usuario).
+        Nunca toca los defaults embebidos ni el .wt.json del repo.
+    .OUTPUTS
+        @{ Path; Value } con la ruta escrita y el valor efectivo (ya convertido).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Key,
+        [Parameter(Mandatory)][AllowEmptyString()][string]$Value
+    )
+    $keys = Get-WtConfigKeys
+    if ($keys -notcontains $Key) {
+        throw "Clave desconocida '$Key'. Claves validas: $($keys -join ', ')"
+    }
+    $path = Get-WtConfigFilePath
+    $data = [ordered]@{}
+    if (Test-WtPathExists $path) {
+        try {
+            $json = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+            if ($null -ne $json) {
+                foreach ($p in $json.PSObject.Properties) { $data[$p.Name] = $p.Value }
+            }
+        } catch {
+            throw "No se pudo leer '$path': $($_.Exception.Message)"
+        }
+    }
+    $effective = ConvertTo-WtConfigValue -Value $Value
+    $data[$Key] = $effective
+    Save-WtConfigFile -Path $path -Data $data
+    Clear-WtConfigCache
+    return @{ Path = $path; Value = $effective }
+}
+
+function Save-WtConfigFile {
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)]$Data)
+    $dir = Split-Path -Parent $Path
+    if ($dir -and -not (Test-WtPathExists $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    ([pscustomobject]$Data | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $Path -Encoding UTF8
+}
+
+function Invoke-WtConfigCommand {
+    param(
+        [AllowEmptyString()][string]$Action,
+        [AllowEmptyString()][string]$Key,
+        [AllowEmptyString()][string]$Value
+    )
+    $file = Get-WtConfigFilePath
+    switch ($Action) {
+        { $_ -in '', 'list', 'ls' } {
+            $config = Get-WtConfig
+            Write-WtDetail ("Archivo editable: {0}" -f $file)
+            Write-WtDetail '(valores efectivos; precedencia: WT_CONFIG > .wt.json del repo > archivo global > defaults)'
+            $rows = @(foreach ($k in $config.Keys) {
+                [pscustomobject]@{ Clave = $k; Valor = [string]$config[$k] }
+            })
+            Write-WtTable -Rows $rows
+        }
+        'path' { Write-WtLine $file }
+        'get' {
+            if (-not $Key) { throw 'Uso: wt config get <clave>' }
+            $config = Get-WtConfig
+            if (-not $config.Contains($Key)) { throw "Clave desconocida '$Key'." }
+            Write-WtLine ([string]$config[$Key])
+        }
+        'set' {
+            if (-not $Key) { throw 'Uso: wt config set <clave> <valor>' }
+            $written = Set-WtConfigValue -Key $Key -Value $Value
+            Write-WtSuccess ("OK - '{0}' = '{1}' (guardado en {2})" -f $Key, [string]$written.Value, $written.Path)
+        }
+        'edit' {
+            if (-not (Test-WtPathExists $file)) {
+                Save-WtConfigFile -Path $file -Data (Get-WtDefaultConfig)
+                Write-WtSuccess "Config creada en $file"
+                Clear-WtConfigCache
+            }
+            $editor = [string](Get-WtConfig).editor
+            if (-not (Test-WtCommand $editor)) { $editor = 'notepad.exe' }
+            Start-Process -FilePath $editor -ArgumentList (Format-WtProcessArgument $file)
+            Write-WtSuccess "Editando $file"
+        }
+        default { throw "Accion de config desconocida: '$Action'. Usa: wt config [list|get|set|path|edit]" }
+    }
+}

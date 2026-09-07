@@ -1,0 +1,12 @@
+{
+  "worktreeRootTemplate": "{repoParent}\\{repo}.worktrees\\{name}",
+  "reposRoot": "C:\\Repos",
+  "defaultBase": "origin/develop",
+  "branchPrefix": "",
+  "editor": "code",
+  "terminal": "warp",
+  "warpAgentTarget": "auto",
+  "warpAgentColor": "green",
+  "warpTerminalColor": "blue",
+  "fetchBeforeCreate": true
+}
