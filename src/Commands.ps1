@@ -18,6 +18,7 @@ function New-WtWorktree {
 
     $repoRoot = Find-WtMainRoot
     $config = Get-WtConfig
+    $baseExplicit = [bool]$Base
     if (-not $Base) { $Base = [string]$config.defaultBase }
     if (-not $Branch) { $Branch = ([string]$config.branchPrefix) + $Name }
     Assert-WtBranchName -Branch $Branch
@@ -35,6 +36,9 @@ function New-WtWorktree {
 
     $gitArgs = @('worktree', 'add')
     if (Test-WtLocalBranch -RepoRoot $repoRoot -Branch $Branch) {
+        if ($baseExplicit) {
+            throw "La rama '$Branch' ya existe localmente, pero pediste --base '$Base'. Para no descartar en silencio el historial local de '$Branch', wt no la reutiliza automaticamente. Elegi otro --branch, o borra la rama local primero (git branch -D $Branch) y volve a correr 'wt create'."
+        }
         Write-WtDetail "La rama '$Branch' ya existe; se reutiliza."
         $gitArgs += @($path, $Branch)
     } else {

@@ -110,6 +110,13 @@ try {
     $dev  = (git -C $repoDir rev-parse develop).Trim()
     Assert-True 'feature-b apunta a develop' ($base -eq $dev)
 
+    Write-Host '== wt create --base explicito con rama local existente (debe fallar, no reusar en silencio) ==' -ForegroundColor Cyan
+    git -C $repoDir branch existente-local
+    $r = Invoke-Wt -CmdArgs @('create', 'existente-local', '--base', 'develop', '--no-open') -Cwd $repoDir
+    Assert-True 'create con --base y rama local existente falla' ($r.ExitCode -ne 0)
+    Assert-True 'mensaje explica el conflicto' ($r.Output -match 'ya existe localmente') $r.Output
+    Assert-True 'no crea el directorio del worktree' (-not (Test-Path (Join-Path $wtRoot 'existente-local')))
+
     Write-Host '== wt create duplicado (debe fallar) ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('create', 'feature-a', '--no-open') -Cwd $repoDir
     Assert-True 'create duplicado falla' ($r.ExitCode -ne 0)
