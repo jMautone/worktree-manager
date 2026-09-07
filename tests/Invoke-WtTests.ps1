@@ -78,17 +78,26 @@ try {
     git commit -m 'init' --quiet
     git branch develop
 
-    # Config aislada: sin editor/terminal para no abrir apps durante las pruebas
+    # Config aislada: sin editor/terminal para no abrir apps durante las pruebas.
+    # Las 11 claves con valores explicitos y neutros: WT_CONFIG_ONLY hace que esta
+    # sea la unica fuente (ademas de los defaults), sin importar la config real de
+    # la maquina que corre las pruebas.
     $testConfig = [ordered]@{
         worktreeRootTemplate = '{repoParent}\{repo}.worktrees\{name}'
         reposRoot            = $tempRoot
         defaultBase          = ''
+        branchPrefix         = ''
         editor               = ''
         terminal             = 'none'
+        warpAgentTarget      = 'auto'
+        warpAgentColor       = ''
+        warpTerminalColor    = ''
+        warpPath             = 'C:\no-existe\warp.exe'
         fetchBeforeCreate    = $false
     }
     ([pscustomobject]$testConfig | ConvertTo-Json) | Set-Content -Path $configPath
     $env:WT_CONFIG = $configPath
+    $env:WT_CONFIG_ONLY = '1'
 
     # Repos extra en la raiz para probar 'wt repos' y 'wt cd' (.git basta para detectarlos)
     New-Item -ItemType Directory -Path (Join-Path $tempRoot 'OtroRepo\.git') -Force | Out-Null
@@ -481,6 +490,7 @@ try {
 finally {
     Pop-Location
     Remove-Item Env:\WT_CONFIG -ErrorAction SilentlyContinue
+    Remove-Item Env:\WT_CONFIG_ONLY -ErrorAction SilentlyContinue
     if (Test-Path $tempRoot) {
         & git -C $repoDir worktree prune 2>$null
         Remove-Item -Recurse -Force $tempRoot -ErrorAction SilentlyContinue

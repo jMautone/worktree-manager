@@ -141,6 +141,10 @@ Orden de precedencia (el primero que existe gana por clave):
 3. `%USERPROFILE%\.wt\config.json` (config global del usuario).
 4. Valores por defecto embebidos en `src/Config.ps1`.
 
+`WT_CONFIG_ONLY=1` cambia la cadena a **defaults < `WT_CONFIG`**: se ignoran el
+`.wt.json` del repo y la config global del usuario. Pensada para pruebas y para
+correr `wt` con una config completamente aislada de la máquina.
+
 | Clave | Default | Descripción |
 |---|---|---|
 | `worktreeRootTemplate` | `{repoParent}\{repo}.worktrees\{name}` | Ubicación de los worktrees |

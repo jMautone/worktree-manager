@@ -131,6 +131,31 @@ Assert-True 'no muta la base' ($base.editor -eq 'code')
 $defaults = Get-WtDefaultConfig
 Assert-True 'los defaults traen las 11 claves documentadas' (@($defaults.Keys).Count -eq 11) (@($defaults.Keys) -join ',')
 
+Write-Host '== WT_CONFIG_ONLY aisla la config global del usuario ==' -ForegroundColor Cyan
+$onlyConfigPath = Join-Path $env:TEMP ("wt-only-config-" + [guid]::NewGuid().ToString('N') + '.json')
+try {
+    ([pscustomobject]@{ branchPrefix = 'agent/' } | ConvertTo-Json) | Set-Content -Path $onlyConfigPath
+    $prevConfig = $env:WT_CONFIG
+    $prevConfigOnly = $env:WT_CONFIG_ONLY
+    $env:WT_CONFIG = $onlyConfigPath
+    $env:WT_CONFIG_ONLY = '1'
+    Clear-WtConfigCache
+    $isolated = Get-WtConfig -Refresh
+    $defaultsForCompare = Get-WtDefaultConfig
+    Assert-True 'WT_CONFIG_ONLY aplica el override' ($isolated.branchPrefix -eq 'agent/')
+    $restoUnchanged = $true
+    foreach ($k in $defaultsForCompare.Keys) {
+        if ($k -eq 'branchPrefix') { continue }
+        if ($isolated[$k] -ne $defaultsForCompare[$k]) { $restoUnchanged = $false }
+    }
+    Assert-True 'el resto de las claves queda igual a los defaults' $restoUnchanged
+} finally {
+    if ($null -eq $prevConfig) { Remove-Item Env:\WT_CONFIG -ErrorAction SilentlyContinue } else { $env:WT_CONFIG = $prevConfig }
+    if ($null -eq $prevConfigOnly) { Remove-Item Env:\WT_CONFIG_ONLY -ErrorAction SilentlyContinue } else { $env:WT_CONFIG_ONLY = $prevConfigOnly }
+    Clear-WtConfigCache
+    Remove-Item -LiteralPath $onlyConfigPath -ErrorAction SilentlyContinue
+}
+
 Write-Host '== Plan de apertura (flags de open) ==' -ForegroundColor Cyan
 $plan = Get-WtOpenPlan
 Assert-True 'sin flags: solo editor' ($plan.Code -and -not $plan.Terminal -and -not $plan.Agent)

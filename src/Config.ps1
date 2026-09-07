@@ -102,10 +102,15 @@ function Get-WtConfig {
     }
 
     $config = Get-WtDefaultConfig
-    $candidates = @(Get-WtGlobalConfigPath)
-    $repoRoot = Find-WtMainRoot -Silent
-    if ($repoRoot) { $candidates += (Join-Path $repoRoot '.wt.json') }
-    if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
+    if ($env:WT_CONFIG_ONLY -eq '1') {
+        $candidates = @()
+        if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
+    } else {
+        $candidates = @(Get-WtGlobalConfigPath)
+        $repoRoot = Find-WtMainRoot -Silent
+        if ($repoRoot) { $candidates += (Join-Path $repoRoot '.wt.json') }
+        if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
+    }
 
     foreach ($path in $candidates) {
         $config = Merge-WtConfig -Base $config -Override (Read-WtConfigFile -Path $path)
