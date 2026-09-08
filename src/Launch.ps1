@@ -32,7 +32,7 @@ function Get-WtNodeVersion {
     if (-not (Test-WtCommand 'node')) { return '' }
     $r = Invoke-WtProcess -FilePath 'node' -Arguments @('--version') -AllowFailure
     if (-not $r.Success) { return '' }
-    return ($r.Output | Select-Object -First 1 | Out-String).Trim()
+    return [string]($r.StdOut | Select-Object -First 1)
 }
 
 function Get-WtNodeMajor {
@@ -44,7 +44,7 @@ function Get-WtNodeMajor {
     $version = Get-WtNodeVersion
     if ($version -match '^v?(\d+)' -and [int]$Matches[1] -ge 18) { return $Matches[1] }
     if (-not (Test-WtCommand 'fnm')) { return $null }
-    $listed = (Invoke-WtProcess -FilePath 'fnm' -Arguments @('list') -AllowFailure).Text
+    $listed = (Invoke-WtProcess -FilePath 'fnm' -Arguments @('list') -AllowFailure).StdOut -join "`n"
     $candidates = @([regex]::Matches($listed, 'v?(\d+)\.\d+\.\d+') |
         ForEach-Object { [int]$_.Groups[1].Value } |
         Where-Object { $_ -ge 18 } |

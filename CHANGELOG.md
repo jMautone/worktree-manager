@@ -37,3 +37,15 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   agente; tambien `editor` y `none`) y flags `--all`/`--code`/`--agent`/
   `--terminal` en `create` (ganan a la config); `--no-open` sigue ganando a
   todo. `Get-WtCreateOpenPlan` (funcion pura) resuelve la combinacion.
+
+### Fase 2 — Robustez
+
+- **M1**: `Invoke-WtProcess` capturaba stdout y stderr mezclados (`2>&1`) y
+  `Text`/`Output` incluian ambos; un warning de git en una operacion exitosa
+  podia colarse como "la ruta" o "la rama". Ahora separa por tipo de registro
+  (PowerShell envuelve stderr de un proceso externo en `ErrorRecord`) y expone
+  `StdOut`/`StdErr`/`ErrorText` ademas de `Text` (solo stdout) y `Output`
+  (la mezcla cruda, por compatibilidad). `Find-WtMainRoot`, `Get-WtCurrentRoot`,
+  `Get-WtBranchAt`, `Get-WtWorktrees`, `Get-WtNodeVersion`, `Get-WtNodeMajor` y
+  `Test-WtRemote` pasan a leer `StdOut`; los mensajes de error de
+  `Invoke-WtGit` y de `remove --force-branch` prefieren `ErrorText`.

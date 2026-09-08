@@ -100,6 +100,29 @@ Assert-True 'detecta prunable' ($wts[2].IsPrunable)
 Assert-True 'guarda el motivo del prunable' ($wts[2].PruneReason -match 'non-existent') $wts[2].PruneReason
 Assert-True 'texto vacio no rompe' ((@(ConvertFrom-WtWorktreePorcelain -Text '')).Count -eq 0)
 
+Write-Host '== ConvertFrom-WtWorktreePorcelain con un warning intercalado (M1) ==' -ForegroundColor Cyan
+$porcelainConWarning = @'
+warning: unable to access '/etc/gitconfig': Permission denied
+worktree C:/repos/MiRepo
+HEAD abc1234567890
+branch refs/heads/main
+
+worktree C:/repos/MiRepo.worktrees/feature-a
+HEAD def1234567890
+branch refs/heads/feature-a
+'@
+$wtsConWarning = @(ConvertFrom-WtWorktreePorcelain -Text $porcelainConWarning)
+Assert-True 'un warning intercalado no rompe el parseo' ($wtsConWarning.Count -eq 2) ("count={0}" -f $wtsConWarning.Count)
+Assert-True 'el primer worktree valido sigue siendo el principal' ($wtsConWarning[0].Path -eq 'C:\repos\MiRepo' -and $wtsConWarning[0].IsMain) $wtsConWarning[0].Path
+
+Write-Host '== Invoke-WtProcess separa stdout de stderr (M1) ==' -ForegroundColor Cyan
+$mixed = Invoke-WtProcess -FilePath 'cmd.exe' -Arguments @('/c', 'echo ok & echo warn 1>&2')
+Assert-True 'exit 0 pese al stderr' ($mixed.Success -and $mixed.ExitCode -eq 0) $mixed.ExitCode
+Assert-True 'Text (stdout) no contiene warn' ($mixed.Text -notmatch 'warn') $mixed.Text
+Assert-True 'Text (stdout) contiene ok' ($mixed.Text -match 'ok') $mixed.Text
+Assert-True 'ErrorText (stderr) contiene warn' ($mixed.ErrorText -match 'warn') $mixed.ErrorText
+Assert-True 'StdOut y StdErr son arrays separados' (@($mixed.StdOut) -notcontains 'warn' -and (@($mixed.StdErr) -join ' ') -match 'warn')
+
 Write-Host '== Rutas: normalizacion y comparacion ==' -ForegroundColor Cyan
 Assert-True 'convierte / en \' ((ConvertTo-WtFullPath 'C:/a/b') -eq 'C:\a\b')
 Assert-True 'quita la barra final' ((ConvertTo-WtFullPath 'C:\a\b\') -eq 'C:\a\b')

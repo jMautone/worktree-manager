@@ -58,7 +58,7 @@ function Find-WtMainRoot {
         }
         throw 'No estas dentro de un repositorio git (ni de uno de sus worktrees).'
     }
-    $commonDir = ConvertTo-WtFullPath (($result.Output | Select-Object -First 1))
+    $commonDir = ConvertTo-WtFullPath ([string]($result.StdOut | Select-Object -First 1))
     return (Split-Path -Parent $commonDir)
 }
 
@@ -72,7 +72,7 @@ function Get-WtCurrentRoot {
     $result = Invoke-WtGit -WorkingDirectory $WorkingDirectory `
         -Arguments @('rev-parse', '--path-format=absolute', '--show-toplevel') -AllowFailure
     if (-not $result.Success -or -not $result.Text) { return $null }
-    return (ConvertTo-WtFullPath ($result.Output | Select-Object -First 1))
+    return (ConvertTo-WtFullPath ([string]($result.StdOut | Select-Object -First 1)))
 }
 
 function Get-WtBranchAt {
@@ -83,7 +83,8 @@ function Get-WtBranchAt {
     param([Parameter(Mandatory)][string]$Path)
     $r = Invoke-WtGit -WorkingDirectory $Path -Arguments @('rev-parse', '--abbrev-ref', 'HEAD') -AllowFailure
     if (-not $r.Success) { return '' }
-    $branch = $r.Text
+    $branch = [string]($r.StdOut | Select-Object -First 1)
+    $branch = $branch.Trim()
     if ($branch -eq 'HEAD') { return '' }
     return $branch
 }
@@ -163,7 +164,7 @@ function Get-WtWorktrees {
     #>
     param([Parameter(Mandatory)][string]$RepoRoot)
     $r = Invoke-WtGit -WorkingDirectory $RepoRoot -Arguments @('worktree', 'list', '--porcelain')
-    return @(ConvertFrom-WtWorktreePorcelain -Text ($r.Output | Out-String))
+    return @(ConvertFrom-WtWorktreePorcelain -Text ($r.StdOut | Out-String))
 }
 
 function Test-WtWorktreeMatchesName {

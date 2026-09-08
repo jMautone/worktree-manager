@@ -53,6 +53,18 @@ function Invoke-WtProcess {
         pasa los argumentos como array -nunca concatenados en un string- y devuelve
         salida, texto y codigo de salida. Con -AllowFailure tambien absorbe el caso
         "el ejecutable no existe" en vez de propagarlo.
+
+        stdout y stderr se capturan juntos (2>&1, unico modo soportado por
+        PowerShell 5.1 para procesos externos) pero se separan despues por tipo de
+        registro: PowerShell envuelve cada linea de stderr de un proceso externo en
+        un ErrorRecord, asi que StdOut/StdErr se reconstruyen filtrando por tipo, sin
+        perder el orden relativo dentro de cada stream. Antes de esto, un warning de
+        git en una operacion exitosa (stderr) se colaba en 'Text' y terminaba
+        tomandose por la ruta de un repo o el nombre de una rama.
+    .OUTPUTS
+        StdOut/StdErr (arrays de string), Text (stdout unido y recortado), ErrorText
+        (stderr unido y recortado), Output (la mezcla cruda, solo por compatibilidad
+        y para armar el mensaje de error), ExitCode, Success.
     #>
     [CmdletBinding()]
     param(
@@ -62,35 +74,40 @@ function Invoke-WtProcess {
     )
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
-    $output = @()
+    $raw = @()
     $exit = -1
-    $failure = $null
     try {
         if ($Arguments -and $Arguments.Count -gt 0) {
-            $output = & $FilePath @Arguments 2>&1
+            $raw = & $FilePath @Arguments 2>&1
         } else {
-            $output = & $FilePath 2>&1
+            $raw = & $FilePath 2>&1
         }
         $exit = $LASTEXITCODE
         if ($null -eq $exit) { $exit = 0 }
     } catch {
-        $failure = $_.Exception.Message
-        $output = @($failure)
+        $raw = @($_.Exception.Message)
         $exit = -1
     } finally {
         $ErrorActionPreference = $prevEAP
     }
-    $text = ($output | Out-String).Trim()
+    $raw = @($raw)
+    $stdOut = @($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { [string]$_ })
+    $stdErr = @($raw | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] } | ForEach-Object { [string]$_ })
+    $text = ($stdOut | Out-String).Trim()
+    $errorText = ($stdErr | Out-String).Trim()
     if ($exit -ne 0 -and -not $AllowFailure) {
-        $detail = $text
-        if (-not $detail) { $detail = $failure }
+        $detail = $errorText
+        if (-not $detail) { $detail = $text }
         throw ("{0} {1} fallo (exit {2}): {3}" -f $FilePath, ($Arguments -join ' '), $exit, $detail)
     }
     return [pscustomobject]@{
-        Output   = $output
-        Text     = $text
-        ExitCode = $exit
-        Success  = ($exit -eq 0)
+        StdOut    = $stdOut
+        StdErr    = $stdErr
+        Text      = $text
+        ErrorText = $errorText
+        Output    = $raw
+        ExitCode  = $exit
+        Success   = ($exit -eq 0)
     }
 }
 
@@ -110,7 +127,9 @@ function Invoke-WtGit {
     $full += $Arguments
     $result = Invoke-WtProcess -FilePath 'git' -Arguments $full -AllowFailure
     if (-not $result.Success -and -not $AllowFailure) {
-        throw ("git {0} fallo (exit {1}): {2}" -f ($Arguments -join ' '), $result.ExitCode, $result.Text)
+        $detail = $result.ErrorText
+        if (-not $detail) { $detail = $result.Text }
+        throw ("git {0} fallo (exit {1}): {2}" -f ($Arguments -join ' '), $result.ExitCode, $detail)
     }
     return $result
 }

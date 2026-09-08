@@ -99,7 +99,7 @@ function Test-WtRemote {
     param([Parameter(Mandatory)][string]$RepoRoot, [Parameter(Mandatory)][string]$Remote)
     $r = Invoke-WtGit -WorkingDirectory $RepoRoot -Arguments @('remote') -AllowFailure
     if (-not $r.Success) { return $false }
-    return (@($r.Text -split "`r?`n" | ForEach-Object { $_.Trim() }) -contains $Remote)
+    return (@($r.StdOut | ForEach-Object { $_.Trim() }) -contains $Remote)
 }
 
 # --- list -------------------------------------------------------------------
@@ -350,7 +350,9 @@ function Remove-WtWorktree {
         if ($branchResult.Success) {
             Write-WtSuccess "OK - rama '$($wt.Branch)' eliminada."
         } elseif ($ForceBranch) {
-            throw "No se pudo eliminar la rama '$($wt.Branch)': $($branchResult.Text)"
+            $detail = $branchResult.ErrorText
+            if (-not $detail) { $detail = $branchResult.Text }
+            throw "No se pudo eliminar la rama '$($wt.Branch)': $detail"
         } else {
             $template = "La rama '{0}' tiene commits que no estan mergeados en ninguna otra rama; no se borro. " +
                 "El worktree si se elimino. Para borrarla igual: wt remove {0} --delete-branch --force-branch, " +

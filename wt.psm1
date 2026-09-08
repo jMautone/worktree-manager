@@ -37,6 +37,7 @@ Export-ModuleMember -Function @(
     'Open-WtTerminalInWarp', 'Test-WtWarpSameWindow', 'Test-WtWarpRunning', 'Open-WtEditor',
     # Utilidades reutilizables / testeables
     'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtCreateOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
+    'Invoke-WtProcess',
     'ConvertTo-WtFullPath', 'Test-WtPathEquals', 'Test-WtPathIsUnder', 'Test-WtWorktreeName',
     'ConvertTo-WtSafeFileName', 'ConvertTo-WtJson'
 )
