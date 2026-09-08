@@ -364,6 +364,21 @@ function ConvertTo-WtSafeFileName {
     return $safe
 }
 
+function ConvertTo-WtReposRootList {
+    <#
+    .SYNOPSIS
+        Normaliza 'reposRoot' (string unico o array, tal como sale de leer el JSON de
+        config) a un array de strings no vacios. Funcion pura.
+    .DESCRIPTION
+        Retrocompatible: un 'reposRoot' de toda la vida (string unico) sigue andando
+        igual, ahora como array de un elemento. Permite declarar varias raices en el
+        config a mano: "reposRoot": ["C:\\Repos", "D:\\OtrosRepos"].
+    #>
+    param($Value)
+    if ($null -eq $Value) { return @() }
+    return @($Value | ForEach-Object { [string]$_ } | Where-Object { $_ })
+}
+
 # --- Descubrimiento de repo sin git (para Config, que no depende de Repo) ---------
 
 function Read-WtGitDirPointer {

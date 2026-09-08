@@ -15,7 +15,8 @@ function Get-WtDefaultConfig {
     return [ordered]@{
         # Plantilla de ubicacion de worktrees. Tokens: {repoParent} {repo} {name}
         worktreeRootTemplate = '{repoParent}\{repo}.worktrees\{name}'
-        reposRoot            = ''          # raiz de los repos git (ej. 'C:\Repos')
+        reposRoot            = ''          # raiz de los repos git; string o array (ej. 'C:\Repos')
+        reposDepth           = 1           # niveles bajo reposRoot para buscar repos (1-3)
         defaultBase          = ''          # ej. 'develop' o 'origin/develop'
         branchPrefix         = ''          # ej. 'agent/' para ramas agent/<name>
         editor               = 'code'      # comando para abrir el editor ('' para desactivar)
@@ -91,10 +92,28 @@ function Test-WtConfigValue {
             if (@('true', 'false') -contains [string]$Value) { return '' }
             return 'debe ser true o false'
         }
-        { $_ -in 'reposRoot', 'warpPath' } {
+        'warpPath' {
             $v = [string]$Value
             if (-not $v) { return '' }
             if (-not [IO.Path]::IsPathRooted($v)) { return 'debe ser una ruta absoluta (o vacio)' }
+            return ''
+        }
+        'reposRoot' {
+            # String unico (forma de toda la vida) o array (varias raices, B11): cada
+            # elemento no vacio tiene que ser una ruta absoluta.
+            $roots = @(ConvertTo-WtReposRootList -Value $Value)
+            foreach ($root in $roots) {
+                if (-not [IO.Path]::IsPathRooted($root)) {
+                    return "cada raiz debe ser una ruta absoluta (o vacio): '$root' no lo es"
+                }
+            }
+            return ''
+        }
+        'reposDepth' {
+            $parsed = 0
+            if (-not [int]::TryParse([string]$Value, [ref]$parsed) -or $parsed -lt 1 -or $parsed -gt 3) {
+                return 'debe ser un numero entero entre 1 y 3'
+            }
             return ''
         }
         default { return '' }
@@ -285,6 +304,7 @@ function Get-WtConfig {
 function ConvertTo-WtConfigValue {
     param([AllowEmptyString()][string]$Value)
     if ($Value -match '^(true|false)$') { return ($Value -eq 'true') }
+    if ($Value -match '^\d+$') { return [int]$Value }
     return $Value
 }
 

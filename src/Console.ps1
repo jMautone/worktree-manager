@@ -149,10 +149,11 @@ function Invoke-WtConsoleRemove {
 }
 
 function Invoke-WtConsoleGoToRepo {
-    $root = Get-WtReposRoot -Config (Get-WtConfig)
-    $repos = @(Get-WtRepoDirs -Root $root)
+    $config = Get-WtConfig
+    $root = @(Get-WtReposRoot -Config $config)
+    $repos = @(Get-WtRepoDirs -Root $root -Depth (Get-WtReposDepth -Config $config))
     if ($repos.Count -eq 0) {
-        Write-WtNotice "No hay repos git en '$root'."
+        Write-WtNotice ("No hay repos git en '{0}'." -f ($root -join ', '))
         return
     }
     Write-WtInfo 'Elegi el repo:'

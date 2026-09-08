@@ -180,7 +180,8 @@ invalido, etc.).
 CONFIG (editable con 'wt config set', 'wt config edit', o a mano en
 %USERPROFILE%\.wt\config.json o .wt.json en la raiz del repo):
   worktreeRootTemplate  Plantilla de rutas: {repoParent} {repo} {name}
-  reposRoot             Raiz de los repos git (ej. C:\Repos) para 'repos' y 'cd'
+  reposRoot             Raiz de los repos git para 'repos' y 'cd'; string o array (varias raices)
+  reposDepth            Niveles bajo reposRoot para buscar repos: 1 (default) a 3
   defaultBase           Base por defecto para 'create' (ej. origin/develop)
   branchPrefix          Prefijo para ramas nuevas (ej. agent/)
   openOnCreate          Que abre 'create' sin flags: 'all' (editor + agente) | 'editor' | 'none'

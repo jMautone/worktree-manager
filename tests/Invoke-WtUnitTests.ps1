@@ -206,7 +206,7 @@ Assert-True 'las claves no pisadas se conservan' ($merged.terminal -eq 'warp')
 Assert-True 'override nulo no rompe' ((Merge-WtConfig -Base $base -Override $null).editor -eq 'code')
 Assert-True 'no muta la base' ($base.editor -eq 'code')
 $defaults = Get-WtDefaultConfig
-Assert-True 'los defaults traen las 14 claves documentadas' (@($defaults.Keys).Count -eq 14) (@($defaults.Keys) -join ',')
+Assert-True 'los defaults traen las 15 claves documentadas' (@($defaults.Keys).Count -eq 15) (@($defaults.Keys) -join ',')
 
 Write-Host '== Select-WtRepoConfigKeys: lista blanca del .wt.json del repo ==' -ForegroundColor Cyan
 $selected = Select-WtRepoConfigKeys -Data ([ordered]@{ editor = 'mal.exe'; defaultBase = 'develop' })
@@ -304,6 +304,49 @@ try {
 } finally {
     Remove-Item -Recurse -Force $b8Root -ErrorAction SilentlyContinue
 }
+
+Write-Host '== ConvertTo-WtReposRootList: string o array, retrocompatible (B11) ==' -ForegroundColor Cyan
+$reposRootSingle = @(ConvertTo-WtReposRootList -Value 'C:\Repos')
+Assert-True 'string unico se envuelve en un array de 1' ($reposRootSingle.Count -eq 1 -and $reposRootSingle[0] -eq 'C:\Repos')
+Assert-True 'array se conserva tal cual' (@(ConvertTo-WtReposRootList -Value @('C:\A', 'C:\B')).Count -eq 2)
+Assert-True 'vacio devuelve array vacio' (@(ConvertTo-WtReposRootList -Value '').Count -eq 0)
+Assert-True 'null devuelve array vacio' (@(ConvertTo-WtReposRootList -Value $null).Count -eq 0)
+Assert-True 'elementos vacios en el array se descartan' (@(ConvertTo-WtReposRootList -Value @('C:\A', '', 'C:\B')).Count -eq 2)
+
+Write-Host '== Get-WtRepoDirs: profundidad configurable, corta al encontrar .git (B11) ==' -ForegroundColor Cyan
+$b11Root = Join-Path $env:TEMP ("wt-b11-test-" + [guid]::NewGuid().ToString('N'))
+try {
+    # C:\Repos\repoDirecto (.git a 1 nivel) y C:\Repos\org\repoAnidado (.git a 2 niveles).
+    New-Item -ItemType Directory -Path (Join-Path $b11Root 'repoDirecto\.git') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $b11Root 'org\repoAnidado\.git') -Force | Out-Null
+    # Un repo no contiene repos: esto NO deberia encontrarse ni con reposDepth alto.
+    New-Item -ItemType Directory -Path (Join-Path $b11Root 'repoDirecto\subrepo-fantasma\.git') -Force | Out-Null
+
+    $depth1 = @(Get-WtRepoDirs -Root @($b11Root) -Depth 1)
+    Assert-True 'depth 1: encuentra el repo directo' (@($depth1 | Where-Object { $_.Name -eq 'repoDirecto' }).Count -eq 1)
+    Assert-True 'depth 1: NO encuentra el anidado bajo org' (@($depth1 | Where-Object { $_.Name -eq 'repoAnidado' }).Count -eq 0)
+
+    $depth2 = @(Get-WtRepoDirs -Root @($b11Root) -Depth 2)
+    Assert-True 'depth 2: encuentra ambos (directo y anidado)' ($depth2.Count -eq 2)
+    Assert-True 'depth 2: corta la rama en un repo (no baja a buscar dentro)' (@($depth2 | Where-Object { $_.Name -eq 'subrepo-fantasma' }).Count -eq 0)
+
+    $secondRoot = Join-Path $b11Root 'segunda-raiz'
+    New-Item -ItemType Directory -Path (Join-Path $secondRoot 'otroRepo\.git') -Force | Out-Null
+    $multiRoot = @(Get-WtRepoDirs -Root @($b11Root, $secondRoot) -Depth 1)
+    Assert-True 'varias raices: agrega resultados de todas' (@($multiRoot | Where-Object { $_.Name -eq 'repoDirecto' }).Count -eq 1 -and @($multiRoot | Where-Object { $_.Name -eq 'otroRepo' }).Count -eq 1)
+} finally {
+    Remove-Item -Recurse -Force $b11Root -ErrorAction SilentlyContinue
+}
+
+Write-Host '== Test-WtConfigValue: reposRoot (array) y reposDepth (B11) ==' -ForegroundColor Cyan
+Assert-True 'reposRoot string absoluto es valido' ((Test-WtConfigValue -Key 'reposRoot' -Value 'C:\Repos') -eq '')
+Assert-True 'reposRoot array de absolutos es valido' ((Test-WtConfigValue -Key 'reposRoot' -Value @('C:\A', 'D:\B')) -eq '')
+Assert-True 'reposRoot con un elemento relativo es invalido' ((Test-WtConfigValue -Key 'reposRoot' -Value @('C:\A', 'relativo')) -ne '')
+Assert-True 'reposDepth 1 es valido' ((Test-WtConfigValue -Key 'reposDepth' -Value 1) -eq '')
+Assert-True 'reposDepth 3 es valido' ((Test-WtConfigValue -Key 'reposDepth' -Value '3') -eq '')
+Assert-True 'reposDepth 0 es invalido' ((Test-WtConfigValue -Key 'reposDepth' -Value 0) -ne '')
+Assert-True 'reposDepth 4 es invalido' ((Test-WtConfigValue -Key 'reposDepth' -Value 4) -ne '')
+Assert-True 'reposDepth no numerico es invalido' ((Test-WtConfigValue -Key 'reposDepth' -Value 'dos') -ne '')
 
 Write-Host '== Get-WtAgentCommands: agentShell y agentCommand (M8) ==' -ForegroundColor Cyan
 $cfgNoneAgent = [pscustomobject]@{ agentShell = 'none'; agentCommand = 'copilot' }

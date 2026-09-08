@@ -111,12 +111,13 @@ try {
     git branch develop
 
     # Config aislada: sin editor/terminal para no abrir apps durante las pruebas.
-    # Las 14 claves con valores explicitos y neutros: WT_CONFIG_ONLY hace que esta
+    # Las 15 claves con valores explicitos y neutros: WT_CONFIG_ONLY hace que esta
     # sea la unica fuente (ademas de los defaults), sin importar la config real de
     # la maquina que corre las pruebas.
     $testConfig = [ordered]@{
         worktreeRootTemplate = '{repoParent}\{repo}.worktrees\{name}'
         reposRoot            = $tempRoot
+        reposDepth           = 1
         defaultBase          = ''
         branchPrefix         = ''
         editor               = ''
@@ -454,6 +455,45 @@ try {
     try { $reposJson = ($r.Output | ConvertFrom-Json) } catch {}
     Assert-True 'repos json parseable' ($null -ne $reposJson) $r.Output
     Assert-True 'repos json tiene 3 repos' (@($reposJson).Count -eq 3) $r.Output
+
+    Write-Host '== reposRoot con varias raices y reposDepth (B11) ==' -ForegroundColor Cyan
+    $b11Base = Join-Path $tempRoot 'b11-multiroot'
+    $orgRoot = Join-Path $b11Base 'org-root'
+    $flatRoot = Join-Path $b11Base 'flat-root'
+    $nestedRepoDir = Join-Path $orgRoot 'myorg\nested-repo'
+    $flatRepoDir = Join-Path $flatRoot 'other-repo'
+    New-Item -ItemType Directory -Path $nestedRepoDir -Force | Out-Null
+    New-Item -ItemType Directory -Path $flatRepoDir -Force | Out-Null
+    git init -q -b main $nestedRepoDir
+    git init -q -b main $flatRepoDir
+    $b11ConfigPath = Join-Path $tempRoot 'config-b11-multiroot.json'
+    $b11Config = [ordered]@{}
+    foreach ($k in $testConfig.Keys) { $b11Config[$k] = $testConfig[$k] }
+    $b11Config['reposRoot'] = @($orgRoot, $flatRoot)
+    $b11Config['reposDepth'] = 2
+    ([pscustomobject]$b11Config | ConvertTo-Json) | Set-Content -Path $b11ConfigPath
+    $env:WT_CONFIG = $b11ConfigPath
+    try {
+        $r = Invoke-Wt -CmdArgs @('repos') -Cwd $env:TEMP
+        Assert-True 'repos con reposDepth 2 exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'repos encuentra el repo anidado (org/repo)' ($r.Output -match 'nested-repo') $r.Output
+        Assert-True 'repos encuentra el repo de la raiz plana' ($r.Output -match 'other-repo') $r.Output
+        Assert-True 'con varias raices, la tabla muestra la columna Raiz' ($r.Output -match 'Raiz') $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('repos', '--json') -Cwd $env:TEMP
+        $multiRootJson = $null
+        try { $multiRootJson = ($r.Output | ConvertFrom-Json) } catch {}
+        Assert-True 'repos --json con varias raices parseable' ($null -ne $multiRootJson) $r.Output
+        Assert-True 'repos --json tiene 2 repos' (@($multiRootJson).Count -eq 2) $r.Output
+        Assert-True 'repos --json incluye el campo Raiz' (@($multiRootJson | Where-Object { $_.Raiz }).Count -eq 2) $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('cd', 'nested-repo') -Cwd $env:TEMP
+        Assert-True 'cd al repo anidado funciona' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape($nestedRepoDir)) $r.Output
+    } finally {
+        $env:WT_CONFIG = $configPath
+        Remove-Item -Recurse -Force $b11Base -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $b11ConfigPath -ErrorAction SilentlyContinue
+    }
 
     Write-Host '== wt cd sin nombre (va a la raiz) ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('cd') -Cwd $env:TEMP

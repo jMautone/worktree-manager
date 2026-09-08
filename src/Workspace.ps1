@@ -4,22 +4,66 @@
 # ---------------------------------------------------------------------------
 
 function Get-WtReposRoot {
+    <#
+    .SYNOPSIS
+        Raices de repos configuradas, validadas.
+    .OUTPUTS
+        Array de rutas (siempre; retrocompatible con la forma anterior de 'reposRoot'
+        como string unico, que ConvertTo-WtReposRootList envuelve en un array de 1).
+    #>
     param([Parameter(Mandatory)]$Config)
-    $root = [string]$Config.reposRoot
-    if (-not $root) { throw 'reposRoot no esta configurado. Usa: wt config set reposRoot C:\Repos' }
-    if (-not (Test-WtPathExists $root)) { throw "reposRoot '$root' no existe." }
-    return $root
+    $roots = @(ConvertTo-WtReposRootList -Value $Config.reposRoot)
+    if ($roots.Count -eq 0) { throw 'reposRoot no esta configurado. Usa: wt config set reposRoot C:\Repos' }
+    foreach ($root in $roots) {
+        if (-not (Test-WtPathExists $root)) { throw "reposRoot '$root' no existe." }
+    }
+    return $roots
+}
+
+function Get-WtReposDepth {
+    <#
+    .SYNOPSIS
+        Profundidad configurada para buscar repos bajo reposRoot (1-3, default 1).
+    .DESCRIPTION
+        Defensivo: un valor invalido (que Test-WtConfigValue ya deberia haber
+        rechazado al guardarse) cae al default en vez de romper la busqueda.
+    #>
+    param([Parameter(Mandatory)]$Config)
+    $parsed = 0
+    if ([int]::TryParse([string]$Config.reposDepth, [ref]$parsed) -and $parsed -ge 1 -and $parsed -le 3) {
+        return $parsed
+    }
+    return 1
 }
 
 function Get-WtRepoDirs {
     <#
     .SYNOPSIS
-        Subdirectorios de la raiz que son repos git (tienen .git, carpeta o archivo).
+        Repos git (con .git, carpeta o archivo) bajo una o mas raices, hasta $Depth
+        niveles de profundidad.
+    .DESCRIPTION
+        Corta la rama al encontrar un .git: un repo no contiene repos, asi que no baja
+        a revisar sus propios submodulos o directorios internos en busca de mas.
     #>
-    param([Parameter(Mandatory)][string]$Root)
-    return @(Get-ChildItem -LiteralPath $Root -Directory -ErrorAction SilentlyContinue |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName '.git') } |
-        Sort-Object Name)
+    param([Parameter(Mandatory)][string[]]$Root, [int]$Depth = 1)
+    $found = @()
+    foreach ($r in $Root) {
+        $found += Get-WtRepoDirsUnder -Dir $r -RemainingDepth $Depth
+    }
+    return @($found | Sort-Object Name)
+}
+
+function Get-WtRepoDirsUnder {
+    param([Parameter(Mandatory)][string]$Dir, [Parameter(Mandatory)][int]$RemainingDepth)
+    $result = @()
+    foreach ($child in @(Get-ChildItem -LiteralPath $Dir -Directory -ErrorAction SilentlyContinue)) {
+        if (Test-Path -LiteralPath (Join-Path $child.FullName '.git')) {
+            $result += $child
+        } elseif ($RemainingDepth -gt 1) {
+            $result += Get-WtRepoDirsUnder -Dir $child.FullName -RemainingDepth ($RemainingDepth - 1)
+        }
+    }
+    return $result
 }
 
 function Select-WtRepoMatches {
@@ -39,21 +83,24 @@ function Select-WtRepoMatches {
 function Resolve-WtRepoDir {
     <#
     .SYNOPSIS
-        Resuelve un repo de la raiz por nombre. Con -AllowMissing devuelve $null en vez
-        de fallar cuando no hay coincidencias (la ambiguedad siempre falla).
+        Resuelve un repo por nombre entre una o mas raices. Con -AllowMissing devuelve
+        $null en vez de fallar cuando no hay coincidencias (la ambiguedad siempre
+        falla, sea cual sea la raiz de la que vengan las coincidencias).
     #>
     param(
-        [Parameter(Mandatory)][string]$Root,
+        [Parameter(Mandatory)][string[]]$Root,
         [Parameter(Mandatory)][string]$Name,
+        [int]$Depth = 1,
         [switch]$AllowMissing
     )
-    $match = @(Select-WtRepoMatches -Repos (Get-WtRepoDirs -Root $Root) -Name $Name)
+    $match = @(Select-WtRepoMatches -Repos (Get-WtRepoDirs -Root $Root -Depth $Depth) -Name $Name)
     if ($match.Count -gt 1) {
-        throw ("El nombre '$Name' es ambiguo; coincide con: {0}" -f (($match | ForEach-Object { $_.Name }) -join ', '))
+        $list = ($match | ForEach-Object { "$($_.Name) ($($_.FullName))" }) -join ', '
+        throw "El nombre '$Name' es ambiguo; coincide con: $list"
     }
     if ($match.Count -eq 0) {
         if ($AllowMissing) { return $null }
-        throw "No hay un repo '$Name' en '$Root'. Usa 'wt repos' para ver los disponibles."
+        throw "No hay un repo '$Name' en '$($Root -join ', ')'. Usa 'wt repos' para ver los disponibles."
     }
     return $match[0]
 }
@@ -72,9 +119,9 @@ function Find-WtReposOwningWorktree {
     .OUTPUTS
         Array de @{ Repo; Worktree }.
     #>
-    param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Name)
+    param([Parameter(Mandatory)][string[]]$Root, [Parameter(Mandatory)][string]$Name, [int]$Depth = 1)
     $found = @()
-    foreach ($dir in (Get-WtRepoDirs -Root $Root)) {
+    foreach ($dir in (Get-WtRepoDirs -Root $Root -Depth $Depth)) {
         $worktrees = @()
         try { $worktrees = @(Get-WtWorktrees -RepoRoot $dir.FullName) } catch { continue }
         foreach ($wt in $worktrees) {
@@ -108,14 +155,16 @@ function Resolve-WtRepoContext {
     # detallado (worktree huerfano o "no estas en un repo").
     if (-not $Name) { return @{ RepoRoot = (Find-WtMainRoot); Source = 'current'; ShouldRelocate = $false } }
 
-    $root = Get-WtReposRoot -Config (Get-WtConfig)
+    $config = Get-WtConfig
+    $root = @(Get-WtReposRoot -Config $config)
+    $depth = Get-WtReposDepth -Config $config
 
-    $repo = Resolve-WtRepoDir -Root $root -Name $Name -AllowMissing
+    $repo = Resolve-WtRepoDir -Root $root -Name $Name -Depth $depth -AllowMissing
     if ($repo) {
         return @{ RepoRoot = $repo.FullName; Source = 'repo'; ShouldRelocate = $true }
     }
 
-    $owners = @(Find-WtReposOwningWorktree -Root $root -Name $Name)
+    $owners = @(Find-WtReposOwningWorktree -Root $root -Name $Name -Depth $depth)
     if ($owners.Count -eq 1) {
         return @{ RepoRoot = $owners[0].Repo.FullName; Source = 'worktree'; ShouldRelocate = $true }
     }
@@ -124,29 +173,46 @@ function Resolve-WtRepoContext {
         throw "El worktree '$Name' existe en varios repos: $list. Entra al repo, o usa 'wt open <repo>' primero."
     }
 
-    throw "No hay un repo ni worktree '$Name' bajo '$root'. Usa 'wt repos' para ver los disponibles."
+    throw "No hay un repo ni worktree '$Name' bajo '$($root -join ', ')'. Usa 'wt repos' para ver los disponibles."
 }
 
 function Get-WtRepoList {
+    <#
+    .SYNOPSIS
+        Lista los repos de reposRoot (una o mas raices). Con mas de una raiz, la tabla
+        (y el --json) suman una columna 'Raiz' para decir de cual sale cada repo.
+    #>
     param([switch]$Json)
-    $root = Get-WtReposRoot -Config (Get-WtConfig)
-    $repos = @(Get-WtRepoDirs -Root $root)
+    $config = Get-WtConfig
+    $root = @(Get-WtReposRoot -Config $config)
+    $depth = Get-WtReposDepth -Config $config
+    $rows = @(foreach ($r in $root) {
+        foreach ($repo in (Get-WtRepoDirs -Root @($r) -Depth $depth)) {
+            [pscustomobject]@{ Repo = $repo.Name; Ruta = $repo.FullName; Raiz = $r }
+        }
+    })
+    $rows = @($rows | Sort-Object Repo)
     if ($Json) {
-        ConvertTo-WtJson -InputObject @($repos | Select-Object Name, FullName)
+        ConvertTo-WtJson -InputObject @($rows | Select-Object @{N = 'Name'; E = { $_.Repo } }, @{N = 'FullName'; E = { $_.Ruta } }, Raiz)
         return
     }
-    Write-WtDetail ("Raiz de repos: {0}" -f $root)
-    if ($repos.Count -eq 0) {
+    Write-WtDetail ("Raiz de repos: {0}" -f ($root -join ', '))
+    if ($rows.Count -eq 0) {
         Write-WtNotice 'No hay repos git en la raiz.'
         return
     }
-    Write-WtTable -Rows @($repos | ForEach-Object { [pscustomobject]@{ Repo = $_.Name; Ruta = $_.FullName } })
+    if ($root.Count -gt 1) {
+        Write-WtTable -Rows $rows
+    } else {
+        Write-WtTable -Rows @($rows | Select-Object Repo, Ruta)
+    }
 }
 
 function Invoke-WtCd {
     <#
     .SYNOPSIS
-        Cambia el directorio actual a la raiz de repos o a un repo.
+        Cambia el directorio actual a la raiz de repos (la primera, si hay varias) o a
+        un repo.
     .NOTES
         Funciona porque la funcion 'wt' del perfil llama a Invoke-Wt en el mismo
         proceso (el modulo se importa una vez al cargar el perfil, no en cada llamada).
@@ -154,9 +220,10 @@ function Invoke-WtCd {
     #>
     param([AllowEmptyString()][string]$Name, [switch]$Open)
     $config = Get-WtConfig
-    $root = Get-WtReposRoot -Config $config
-    $target = $root
-    if ($Name) { $target = (Resolve-WtRepoDir -Root $root -Name $Name).FullName }
+    $root = @(Get-WtReposRoot -Config $config)
+    $depth = Get-WtReposDepth -Config $config
+    $target = $root[0]
+    if ($Name) { $target = (Resolve-WtRepoDir -Root $root -Name $Name -Depth $depth).FullName }
     Set-WtLocation -Path $target
     Write-WtSuccess "Ahora en: $target"
     if ($Open) { Open-WtEditor -Path $target -Config $config | Out-Null }

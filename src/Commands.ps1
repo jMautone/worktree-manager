@@ -568,10 +568,11 @@ function Get-WtDoctorRows {
     $rows += New-WtDoctorRow -Check 'archivo de config' -Ok (Test-WtPathExists $configFile) -OkDetail $configFile `
         -FailDetail "Se crea con 'wt config edit' o al instalar: $configFile"
 
-    $reposRoot = [string]$config.reposRoot
-    if ($reposRoot) {
-        $rows += New-WtDoctorRow -Check 'reposRoot' -Ok (Test-WtPathExists $reposRoot) -OkDetail $reposRoot `
-            -FailDetail "No existe '$reposRoot'"
+    $reposRootList = @(ConvertTo-WtReposRootList -Value $config.reposRoot)
+    if ($reposRootList.Count -gt 0) {
+        $missing = @($reposRootList | Where-Object { -not (Test-WtPathExists $_) })
+        $rows += New-WtDoctorRow -Check 'reposRoot' -Ok ($missing.Count -eq 0) -OkDetail ($reposRootList -join ', ') `
+            -FailDetail ("No existe: {0}" -f ($missing -join ', '))
     } else {
         $rows += New-WtDoctorRow -Check 'reposRoot' -Ok $false `
             -FailDetail 'Sin configurar; usa: wt config set reposRoot C:\Repos' -FailState 'AVISO'

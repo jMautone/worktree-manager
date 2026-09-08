@@ -191,3 +191,19 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   entender. Se corrige a `-ceq` para que el comportamiento sea el que el
   diseno siempre quiso (y el que ahora dice el comentario), con una prueba
   unitaria que lo fija.
+- **B11**: `Get-WtRepoDirs` solo miraba subdirectorios inmediatos de
+  `reposRoot`; una organizacion habitual como `C:\Repos\<org>\<repo>` quedaba
+  invisible, y no habia forma de declarar dos raices. `reposRoot` acepta
+  ahora string unico (retrocompatible) o array (`ConvertTo-WtReposRootList`,
+  funcion pura, normaliza ambas formas); nueva clave `reposDepth` (default
+  `1`, hasta `3`, validada por M5). `Get-WtRepoDirs` recorre hasta esa
+  profundidad y corta la rama al encontrar un `.git` (un repo no contiene
+  repos). Con varias raices, `wt repos` y `--json` suman una columna/campo
+  `Raiz`; la ambiguedad entre coincidencias de cualquier raiz se resuelve
+  con el mismo criterio de M4. `wt cd` sin nombre va a la primera raiz
+  configurada. `Get-WtReposRoot`, `Invoke-WtCd`, `Resolve-WtRepoContext` y
+  `wt doctor` actualizados. Nota de implementacion: PowerShell "desenvuelve"
+  un array de 1 elemento a escalar al retornar de una funcion salvo que el
+  llamador tambien envuelva con `@()` — encontrado (y corregido en varios
+  puntos) via el mismo tipo de error de `Set-StrictMode` que ya habia
+  aparecido en B6.

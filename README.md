@@ -118,7 +118,30 @@ wt cd MiRepo --open                          # además abre el editor ahí
 
 `wt cd` cambia el directorio **de tu terminal**: funciona porque la función `wt` que
 instala `install.ps1` corre en el mismo proceso de PowerShell. Los repos se detectan
-como subdirectorios de `reposRoot` que contienen `.git`.
+como subdirectorios de `reposRoot` que contienen `.git`, hasta `reposDepth` niveles
+(default `1`, solo subdirectorios inmediatos).
+
+### Varias raíces y organizaciones anidadas
+
+Si tus repos viven como `C:\Repos\<org>\<repo>` (una carpeta intermedia por
+organización), `reposDepth = 2` los hace visibles. `reposRoot` también acepta varias
+raíces a la vez (editando el JSON a mano, `wt config set` solo administra un valor por
+vez):
+
+```json
+{ "reposRoot": ["C:\\Repos", "D:\\OtrosRepos"], "reposDepth": 2 }
+```
+
+Con más de una raíz, `wt repos` y `--json` suman una columna/campo `Raiz` para decir
+de cuál sale cada repo; un nombre que matchea en varias (misma raíz o distintas) es una
+ambigüedad real y `wt cd`/`wt open` fallan listando las coincidencias (mismo criterio
+que para worktrees homónimos entre repos). `wt cd` sin nombre va a la **primera** raíz
+configurada. La búsqueda corta la rama al encontrar un `.git` (un repo no contiene
+repos), pero con `reposDepth > 1` puede alcanzar la carpeta `<repo>.worktrees` de un
+repo vecino si vive al mismo nivel que las organizaciones — sus worktrees también
+tienen `.git` propio y aparecerían como "repos"; mantené `reposRoot` apuntando por
+encima de esa estructura, no directamente a una carpeta que ya mezcla repos y sus
+worktrees, para evitarlo.
 
 ## Configuración por comandos
 
@@ -219,7 +242,8 @@ hacer que `wt open` lance el binario que ese archivo elija.
 | Clave | Default | Descripción |
 |---|---|---|
 | `worktreeRootTemplate` | `{repoParent}\{repo}.worktrees\{name}` | Ubicación de los worktrees |
-| `reposRoot` | `''` | Raíz de los repos git (ej. `C:\Repos`) para `wt repos` y `wt cd` |
+| `reposRoot` | `''` | Raíz de los repos git para `wt repos` y `wt cd`; string único o array de varias raíces (ej. `C:\Repos` o `["C:\\Repos", "D:\\OtrosRepos"]`, a mano en el JSON) |
+| `reposDepth` | `1` | Niveles bajo cada `reposRoot` para buscar repos (1 a 3); `2` habilita `C:\Repos\<org>\<repo>` |
 | `defaultBase` | `''` | Base por defecto de `create` (ej. `origin/develop`) |
 | `branchPrefix` | `''` | Prefijo para ramas nuevas (ej. `agent/`) |
 | `openOnCreate` | `all` | Que abre `create` sin flags de apertura: `all` (editor + agente) \| `editor` \| `none` |

@@ -25,7 +25,7 @@ Export-ModuleMember -Function @(
     'Invoke-WtVersion', 'Invoke-WtClean',
     # Workspace
     'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',
-    'Resolve-WtRepoContext', 'Open-WtFolder',
+    'Resolve-WtRepoContext', 'Open-WtFolder', 'Get-WtReposRoot', 'Get-WtReposDepth',
     # Config
     'Get-WtConfig', 'Get-WtConfigFilePath', 'Set-WtConfigValue', 'Invoke-WtConfigCommand',
     'Get-WtDefaultConfig', 'Merge-WtConfig', 'Clear-WtConfigCache',
@@ -44,6 +44,6 @@ Export-ModuleMember -Function @(
     'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtCreateOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
     'Invoke-WtProcess', 'Get-WtPathHash',
     'ConvertTo-WtFullPath', 'Test-WtPathEquals', 'Test-WtPathIsUnder', 'Test-WtWorktreeName',
-    'Get-WtCommandSource', 'Find-WtRepoConfigFile', 'Read-WtGitDirPointer',
+    'Get-WtCommandSource', 'Find-WtRepoConfigFile', 'Read-WtGitDirPointer', 'ConvertTo-WtReposRootList',
     'ConvertTo-WtSafeFileName', 'ConvertTo-WtJson'
 )
