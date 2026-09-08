@@ -416,8 +416,23 @@ function Invoke-WtUnlock {
 }
 
 function Invoke-WtPrune {
+    <#
+    .SYNOPSIS
+        Depura metadatos de worktrees obsoletos ('git worktree prune -v') y muestra
+        que se depuro (o dice explicitamente que no habia nada).
+    .DESCRIPTION
+        git escribe la salida verbosa de 'worktree prune -v' (una linea 'Removing
+        worktrees/<nombre>: <motivo>' por cada entrada depurada) en stderr, no en
+        stdout; de ahi sale de StdErr, no de StdOut (ver M1).
+    #>
     $repoRoot = Find-WtMainRoot
-    Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('worktree', 'prune', '-v') | Out-Null
+    $r = Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('worktree', 'prune', '-v')
+    $lines = @($r.StdErr | Where-Object { $_ })
+    if ($lines.Count -eq 0) {
+        Write-WtDetail 'No habia metadatos de worktrees obsoletos.'
+    } else {
+        foreach ($line in $lines) { Write-WtDetail $line }
+    }
     Write-WtSuccess 'OK - metadatos de worktrees obsoletos depurados.'
 }
 

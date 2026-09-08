@@ -277,6 +277,7 @@ try {
     Write-Host '== wt prune ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('prune') -Cwd $repoDir
     Assert-True 'prune exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'prune sin nada que depurar lo dice explicitamente (B7)' ($r.Output -match 'No habia metadatos') $r.Output
 
     Write-Host '== worktree obsoleto (directorio borrado a mano) ==' -ForegroundColor Cyan
     Invoke-Wt -CmdArgs @('create', 'stale', '--no-open') -Cwd $repoDir | Out-Null
@@ -294,6 +295,7 @@ try {
     Assert-True 'doctor avisa worktrees obsoletos' ($r.Output -match 'worktrees obsoletos') $r.Output
     $r = Invoke-Wt -CmdArgs @('prune') -Cwd $repoDir
     Assert-True 'prune limpia el obsoleto' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'prune muestra lo que depuro (B7)' ($r.Output -match 'stale') $r.Output
     $r = Invoke-Wt -CmdArgs @('open', 'stale') -Cwd $repoDir
     Assert-True 'tras prune ya no existe el worktree' ($r.ExitCode -ne 0 -and $r.Output -match 'No existe un worktree') $r.Output
     git -C $repoDir branch -D stale 2>&1 | Out-Null

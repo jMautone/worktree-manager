@@ -156,3 +156,9 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   seguia de largo con el detalle vacio. Nuevo `Get-WtCommandSource` (helper
   puro y null-safe) reemplaza los cinco accesos directos a `.Source` en
   `Get-WtDoctorRows`.
+- **B7**: `wt prune` corria con `-v` pero mandaba toda la salida a
+  `Out-Null`, sin mostrar que habia depurado. Ahora emite cada linea con
+  `Write-WtDetail`, o dice explicitamente "No habia metadatos de worktrees
+  obsoletos" si no depuro nada. La salida verbosa de
+  `git worktree prune -v` va a **stderr**, no a stdout (descubierto al
+  implementar esto); sale de `StdErr`, no de `StdOut` (ver M1).
