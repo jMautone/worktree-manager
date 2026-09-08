@@ -92,18 +92,26 @@ function Invoke-WtProcess {
         StdOut/StdErr (arrays de string), Text (stdout unido y recortado), ErrorText
         (stderr unido y recortado), Output (la mezcla cruda, solo por compatibilidad
         y para armar el mensaje de error), ExitCode, Success.
+    .PARAMETER WorkingDirectory
+        Opcional. Cambia la ubicacion actual antes de invocar (y la restaura despues,
+        incluso si el proceso falla): a diferencia de git, la mayoria de los
+        ejecutables externos no aceptan un '-C <ruta>' propio.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$FilePath,
         [AllowEmptyCollection()][string[]]$Arguments = @(),
+        [string]$WorkingDirectory,
         [switch]$AllowFailure
     )
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     $raw = @()
     $exit = -1
+    $prevLocation = $null
+    if ($WorkingDirectory) { $prevLocation = (Get-Location).Path }
     try {
+        if ($WorkingDirectory) { Set-Location -LiteralPath $WorkingDirectory }
         if ($Arguments -and $Arguments.Count -gt 0) {
             $raw = & $FilePath @Arguments 2>&1
         } else {
@@ -116,6 +124,7 @@ function Invoke-WtProcess {
         $exit = -1
     } finally {
         $ErrorActionPreference = $prevEAP
+        if ($prevLocation) { Set-Location -LiteralPath $prevLocation }
     }
     $raw = @($raw)
     $stdOut = @($raw | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | ForEach-Object { [string]$_ })

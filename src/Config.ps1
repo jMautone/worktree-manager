@@ -29,6 +29,8 @@ function Get-WtDefaultConfig {
         openOnCreate         = 'all'        # 'all' (editor + agente) | 'editor' | 'none'
         agentCommand         = 'copilot'   # comando que corre el tab del agente
         agentShell           = 'powershell' # 'powershell' | 'bash' | 'none' (solo agentCommand)
+        copyOnCreate         = @()         # patrones (glob simple, relativos al repo) a copiar al worktree nuevo
+        postCreate           = @()         # comandos a correr en el worktree nuevo, en orden, tras la copia
     }
 }
 
@@ -113,6 +115,12 @@ function Test-WtConfigValue {
             $parsed = 0
             if (-not [int]::TryParse([string]$Value, [ref]$parsed) -or $parsed -lt 1 -or $parsed -gt 3) {
                 return 'debe ser un numero entero entre 1 y 3'
+            }
+            return ''
+        }
+        { $_ -in 'copyOnCreate', 'postCreate' } {
+            foreach ($item in @($Value)) {
+                if (-not [string]$item) { return 'cada elemento debe ser un string no vacio' }
             }
             return ''
         }
@@ -302,7 +310,18 @@ function Get-WtConfig {
 }
 
 function ConvertTo-WtConfigValue {
-    param([AllowEmptyString()][string]$Value)
+    <#
+    .SYNOPSIS
+        Convierte el string crudo de 'wt config set' al tipo efectivo de la clave.
+    .DESCRIPTION
+        'copyOnCreate' y 'postCreate' son arrays: se escriben separados por ';'
+        (ej. 'wt config set copyOnCreate ".env;certs/*.pfx"') y se guardan como array
+        JSON. El resto conserva la conversion de siempre (booleano/entero/string).
+    #>
+    param([AllowEmptyString()][string]$Key = '', [AllowEmptyString()][string]$Value)
+    if ($Key -in 'copyOnCreate', 'postCreate') {
+        return @($Value -split ';' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    }
     if ($Value -match '^(true|false)$') { return ($Value -eq 'true') }
     if ($Value -match '^\d+$') { return [int]$Value }
     return $Value
@@ -338,7 +357,7 @@ function Set-WtConfigValue {
             throw "No se pudo leer '$path': $($_.Exception.Message)"
         }
     }
-    $effective = ConvertTo-WtConfigValue -Value $Value
+    $effective = ConvertTo-WtConfigValue -Key $Key -Value $Value
     Assert-WtConfigValue -Key $Key -Value $effective
     if ($Key -eq 'worktreeRootTemplate' -and (Test-WtWorktreeRootTemplateNeedsRepoToken -Value ([string]$effective))) {
         Write-WtWarn "worktreeRootTemplate no contiene {repo} ni {repoParent}: worktrees homonimos de repos distintos escribirian la misma ruta."
@@ -359,6 +378,20 @@ function Save-WtConfigFile {
     Set-WtFileUtf8NoBom -Path $Path -Content $json
 }
 
+function ConvertTo-WtConfigDisplayValue {
+    <#
+    .SYNOPSIS
+        Representacion legible de un valor de config. Los arrays ('copyOnCreate',
+        'postCreate') se muestran separados por ';', igual a como se escriben con
+        'wt config set'.
+    #>
+    param($Value)
+    if ($Value -is [array] -or $Value -is [System.Collections.IEnumerable] -and $Value -isnot [string]) {
+        return (@($Value) -join ';')
+    }
+    return [string]$Value
+}
+
 function Invoke-WtConfigCommand {
     param(
         [AllowEmptyString()][string]$Action,
@@ -372,7 +405,7 @@ function Invoke-WtConfigCommand {
             Write-WtDetail ("Archivo editable: {0}" -f $file)
             Write-WtDetail '(valores efectivos; precedencia: WT_CONFIG > .wt.json del repo > archivo global > defaults)'
             $rows = @(foreach ($k in $config.Keys) {
-                [pscustomobject]@{ Clave = $k; Valor = [string]$config[$k] }
+                [pscustomobject]@{ Clave = $k; Valor = (ConvertTo-WtConfigDisplayValue $config[$k]) }
             })
             Write-WtTable -Rows $rows
         }
@@ -381,12 +414,12 @@ function Invoke-WtConfigCommand {
             if (-not $Key) { throw 'Uso: wt config get <clave>' }
             $config = Get-WtConfig
             if (-not $config.Contains($Key)) { throw "Clave desconocida '$Key'." }
-            Write-WtLine ([string]$config[$Key])
+            Write-WtLine (ConvertTo-WtConfigDisplayValue $config[$Key])
         }
         'set' {
             if (-not $Key) { throw 'Uso: wt config set <clave> <valor>' }
             $written = Set-WtConfigValue -Key $Key -Value $Value
-            Write-WtSuccess ("OK - '{0}' = '{1}' (guardado en {2})" -f $Key, [string]$written.Value, $written.Path)
+            Write-WtSuccess ("OK - '{0}' = '{1}' (guardado en {2})" -f $Key, (ConvertTo-WtConfigDisplayValue $written.Value), $written.Path)
         }
         'edit' {
             if (-not (Test-WtPathExists $file)) {

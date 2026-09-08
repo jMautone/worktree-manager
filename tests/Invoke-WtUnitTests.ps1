@@ -132,6 +132,23 @@ Assert-True 'Text (stdout) contiene ok' ($mixed.Text -match 'ok') $mixed.Text
 Assert-True 'ErrorText (stderr) contiene warn' ($mixed.ErrorText -match 'warn') $mixed.ErrorText
 Assert-True 'StdOut y StdErr son arrays separados' (@($mixed.StdOut) -notcontains 'warn' -and (@($mixed.StdErr) -join ' ') -match 'warn')
 
+Write-Host '== Invoke-WtProcess -WorkingDirectory (hooks de creacion) ==' -ForegroundColor Cyan
+$tmpDirA = Join-Path $env:TEMP ("wt-process-cwd-a-" + [guid]::NewGuid().ToString('N'))
+$tmpDirB = Join-Path $env:TEMP ("wt-process-cwd-b-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $tmpDirA -Force | Out-Null
+New-Item -ItemType Directory -Path $tmpDirB -Force | Out-Null
+try {
+    $prevLocation = (Get-Location).Path
+    $inA = Invoke-WtProcess -FilePath 'cmd.exe' -Arguments @('/c', 'cd') -WorkingDirectory $tmpDirA
+    Assert-True 'corre en el WorkingDirectory pedido' ($inA.Text.TrimEnd('\') -ieq $tmpDirA.TrimEnd('\')) $inA.Text
+    Assert-True 'restaura la ubicacion previa al terminar' ((Get-Location).Path -ieq $prevLocation)
+    $inB = Invoke-WtProcess -FilePath 'cmd.exe' -Arguments @('/c', 'cd') -WorkingDirectory $tmpDirB
+    Assert-True 'cada llamada usa su propio WorkingDirectory' ($inB.Text.TrimEnd('\') -ieq $tmpDirB.TrimEnd('\')) $inB.Text
+} finally {
+    Remove-Item -LiteralPath $tmpDirA -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $tmpDirB -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 Write-Host '== Get-WtCommandSource: no revienta con $null bajo StrictMode (B6) ==' -ForegroundColor Cyan
 Assert-True 'comando nulo devuelve vacio' ((Get-WtCommandSource -Command $null) -eq '')
 $fakeCommand = [pscustomobject]@{ Source = 'C:\algun\comando.exe' }
@@ -195,6 +212,14 @@ Assert-True 'defaultBase es libre' ((Test-WtConfigValue -Key 'defaultBase' -Valu
 Assert-True 'branchPrefix es libre' ((Test-WtConfigValue -Key 'branchPrefix' -Value 'agent/') -eq '')
 Assert-True 'clave desconocida es libre (la restriccion de claves vive en otro lado)' ((Test-WtConfigValue -Key 'noExiste' -Value 'x') -eq '')
 Assert-Throws 'Assert-WtConfigValue lanza con el motivo' { Assert-WtConfigValue -Key 'terminal' -Value 'foo' } 'terminal'
+Assert-True 'copyOnCreate array vacio es valido' ((Test-WtConfigValue -Key 'copyOnCreate' -Value @()) -eq '')
+Assert-True 'copyOnCreate array de strings es valido' ((Test-WtConfigValue -Key 'copyOnCreate' -Value @('.env', 'certs/*.pfx')) -eq '')
+Assert-True 'copyOnCreate con elemento vacio es invalido' ((Test-WtConfigValue -Key 'copyOnCreate' -Value @('.env', '')) -ne '')
+Assert-True 'postCreate con elemento vacio es invalido' ((Test-WtConfigValue -Key 'postCreate' -Value @('')) -ne '')
+Assert-True "ConvertTo-WtConfigValue separa copyOnCreate por ';'" `
+    ((@(ConvertTo-WtConfigValue -Key 'copyOnCreate' -Value '.env;certs/*.pfx') -join ',') -eq '.env,certs/*.pfx')
+Assert-True 'ConvertTo-WtConfigValue descarta vacios entre separadores' `
+    ((@(ConvertTo-WtConfigValue -Key 'postCreate' -Value 'echo a;;echo b') -join ',') -eq 'echo a,echo b')
 Assert-True "worktreeRootTemplate sin {repo}/{repoParent}: advierte, no rechaza" (Test-WtWorktreeRootTemplateNeedsRepoToken -Value 'C:\w\{name}')
 Assert-True "worktreeRootTemplate con {repo}: no advierte" (-not (Test-WtWorktreeRootTemplateNeedsRepoToken -Value '{repoParent}\{repo}.worktrees\{name}'))
 
@@ -206,7 +231,7 @@ Assert-True 'las claves no pisadas se conservan' ($merged.terminal -eq 'warp')
 Assert-True 'override nulo no rompe' ((Merge-WtConfig -Base $base -Override $null).editor -eq 'code')
 Assert-True 'no muta la base' ($base.editor -eq 'code')
 $defaults = Get-WtDefaultConfig
-Assert-True 'los defaults traen las 15 claves documentadas' (@($defaults.Keys).Count -eq 15) (@($defaults.Keys) -join ',')
+Assert-True 'los defaults traen las 17 claves documentadas' (@($defaults.Keys).Count -eq 17) (@($defaults.Keys) -join ',')
 
 Write-Host '== Select-WtRepoConfigKeys: lista blanca del .wt.json del repo ==' -ForegroundColor Cyan
 $selected = Select-WtRepoConfigKeys -Data ([ordered]@{ editor = 'mal.exe'; defaultBase = 'develop' })
@@ -421,6 +446,42 @@ Assert-True 'un solo elemento sigue siendo array' ((@($parsedJson)).Count -eq 1 
 $json = ConvertTo-WtJson -InputObject @([pscustomobject]@{ A = 1 }, [pscustomobject]@{ A = 2 })
 $parsedJson = $json | ConvertFrom-Json
 Assert-True 'varios elementos siguen siendo array' ((@($parsedJson)).Count -eq 2) $json
+
+Write-Host '== Resolve-WtCopyOnCreatePlan (hooks de creacion) ==' -ForegroundColor Cyan
+$repoFiles = @('.env', 'certs\dev.pfx', 'certs\prod.pfx', 'src\app.js', 'README.md')
+$plan = @(Resolve-WtCopyOnCreatePlan -Patterns @('.env') -RepoFiles $repoFiles)
+Assert-True 'patron exacto matchea 1 archivo' ($plan[0].Valid -and @($plan[0].Items).Count -eq 1 -and $plan[0].Items[0].From -eq '.env')
+$plan = @(Resolve-WtCopyOnCreatePlan -Patterns @('certs/*.pfx') -RepoFiles $repoFiles)
+Assert-True 'patron con subdirectorio matchea varios' ($plan[0].Valid -and @($plan[0].Items).Count -eq 2) (@($plan[0].Items) | ForEach-Object { $_.From })
+$plan = @(Resolve-WtCopyOnCreatePlan -Patterns @('no-existe.*') -RepoFiles $repoFiles)
+Assert-True 'patron sin matches queda valido con Items vacio' ($plan[0].Valid -and @($plan[0].Items).Count -eq 0)
+$plan = @(Resolve-WtCopyOnCreatePlan -Patterns @('C:\fuera\del\repo.txt') -RepoFiles $repoFiles)
+Assert-True 'patron absoluto se rechaza' (-not $plan[0].Valid) $plan[0].Reason
+$plan = @(Resolve-WtCopyOnCreatePlan -Patterns @('..\fuera.txt') -RepoFiles $repoFiles)
+Assert-True 'patron con .. se rechaza' (-not $plan[0].Valid) $plan[0].Reason
+$plan = @(Resolve-WtCopyOnCreatePlan -Patterns @('src/../secret.txt') -RepoFiles $repoFiles)
+Assert-True 'patron con .. en el medio tambien se rechaza' (-not $plan[0].Valid) $plan[0].Reason
+$plan = @(Resolve-WtCopyOnCreatePlan -Patterns @() -RepoFiles $repoFiles)
+Assert-True 'sin patrones no hay resultados' ((@($plan)).Count -eq 0)
+
+Write-Host '== Get-WtCompletion (autocompletado) ==' -ForegroundColor Cyan
+Assert-True "'wt op' -> open" ((@(Get-WtCompletion -Words @() -WordToComplete 'op')) -contains 'open')
+Assert-True "'wt op' no sugiere otros comandos" ((@(Get-WtCompletion -Words @() -WordToComplete 'op')).Count -eq 1)
+Assert-True "'wt ' sin filtro trae varios comandos" ((@(Get-WtCompletion -Words @() -WordToComplete '')).Count -gt 5)
+Assert-True "'wt open --a' -> --agent y --all" (
+    (Compare-Object (@(Get-WtCompletion -Words @('open') -WordToComplete '--a')) (@('--agent', '--all')) | Measure-Object).Count -eq 0)
+Assert-True "'wt config set ter' -> terminal" ((@(Get-WtCompletion -Words @('config', 'set') -WordToComplete 'ter')) -contains 'terminal')
+Assert-True "'wt config set terminal ' -> warp/wt/none" (
+    (Compare-Object (@(Get-WtCompletion -Words @('config', 'set', 'terminal') -WordToComplete '')) (@('none', 'warp', 'wt')) | Measure-Object).Count -eq 0)
+Assert-True "'wt config set editor ' (clave libre) no sugiere nada" ((@(Get-WtCompletion -Words @('config', 'set', 'editor') -WordToComplete '')).Count -eq 0)
+Assert-True 'comando desconocido -> lista vacia' ((@(Get-WtCompletion -Words @('inventado') -WordToComplete '')).Count -eq 0)
+Assert-True "'wt open ' con worktrees en contexto los sugiere" (
+    (@(Get-WtCompletion -Words @('open') -WordToComplete '' -Worktrees @('feature-a', 'feature-b'))) -contains 'feature-a')
+Assert-True "'wt open ' sin worktrees cae a repos" (
+    (@(Get-WtCompletion -Words @('open') -WordToComplete '' -Repos @('MiRepo'))) -contains 'MiRepo')
+Assert-True "'wt list ' no tiene 2da posicion de nombre" ((@(Get-WtCompletion -Words @('list') -WordToComplete '' -Worktrees @('feature-a'))).Count -eq 0)
+Assert-True "alias 'rm' resuelve igual que 'remove' para --flags" (
+    (@(Get-WtCompletion -Words @('rm') -WordToComplete '--del')) -contains '--delete-branch')
 
 Write-Host ''
 $color = 'Green'

@@ -6,6 +6,30 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
 
 ## [Unreleased]
 
+### Plan de mejoras — item 1: hooks de creacion
+
+- **Hooks de creacion (`copyOnCreate` / `postCreate`)**: dos claves nuevas, ambas
+  `[]` por defecto y **fuera de la lista blanca de `.wt.json`** (A1): son ejecucion
+  de codigo, solo se pueden definir en la config global del usuario o en
+  `WT_CONFIG`. `copyOnCreate` es una lista de patrones (glob simple, relativos al
+  repo principal) que se copian al worktree nuevo preservando subdirectorios; los
+  que no matchean nada se avisan (`Write-WtDetail`) sin fallar, y un patron absoluto
+  o con `..` se rechaza con un warning (no se puede copiar desde fuera del repo).
+  `postCreate` corre comandos en el worktree nuevo, en orden, despues de la copia y
+  antes de abrir el editor/agente; si uno falla, la cadena se detiene y `wt create`
+  sale con error, pero el worktree **no se destruye** (ya existe; borrarlo seria
+  peor). Nuevo flag `--no-hooks` en `create` para saltear ambos. Nueva funcion pura
+  `Resolve-WtCopyOnCreatePlan` (decide que copiar a partir de un listado de archivos
+  que le pasa el llamador, que es quien toca disco) y `Invoke-WtCreateHooks`
+  (efectos), invocada entre `git worktree add` y la apertura. `wt config set` graba
+  ambas claves como array separando el valor por `;` (`ConvertTo-WtConfigValue`
+  ahora recibe `-Key`); `wt config list/get` las muestra igual, unidas por `;`
+  (`ConvertTo-WtConfigDisplayValue`). Efecto colateral util: `Invoke-WtProcess` gano
+  un `-WorkingDirectory` opcional (lo necesitaba `postCreate` para correr en el
+  worktree, no en el cwd del proceso), reutilizable por cualquier otro llamador que
+  necesite invocar un ejecutable en una ruta especifica sin ser git (que ya tenia
+  `-C` via `Invoke-WtGit`).
+
 ### Fase 0 — Red de contencion
 
 - **M6**: `WT_CONFIG_ONLY=1` aisla la config efectiva a `defaults < WT_CONFIG`,

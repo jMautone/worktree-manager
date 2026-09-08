@@ -1,6 +1,6 @@
 @{
     RootModule        = 'wt.psm1'
-    ModuleVersion     = '0.1.0'
+    ModuleVersion     = '0.2.0'
     GUID              = 'b3e5a5b1-8a3a-4e0a-9f9b-6f6a2b0f6c11'
     Author            = 'Worktree Manager'
     Description       = 'Gestiona Git Worktrees para ejecucion paralela de agentes (Copilot CLI + VS Code + Warp).'
@@ -13,6 +13,7 @@
         'Invoke-WtPrune', 'Invoke-WtPathCommand', 'Invoke-WtDoctor', 'Start-WtConsole',
         'Invoke-WtLock', 'Invoke-WtUnlock',
         'Invoke-WtVersion', 'Invoke-WtClean',
+        'Resolve-WtCopyOnCreatePlan', 'Invoke-WtCreateHooks',
         # Workspace
         'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',
         'Resolve-WtRepoContext', 'Open-WtFolder', 'Get-WtReposRoot', 'Get-WtReposDepth',
@@ -22,8 +23,11 @@
         'Get-WtDefaultConfig', 'Merge-WtConfig', 'Clear-WtConfigCache',
         'Get-WtRepoConfigAllowedKeys', 'Select-WtRepoConfigKeys',
         'Test-WtConfigValue', 'Assert-WtConfigValue', 'Test-WtWorktreeRootTemplateNeedsRepoToken', 'Get-WtKnownWarpColors',
+        'ConvertTo-WtConfigValue', 'ConvertTo-WtConfigDisplayValue',
+        # Autocompletado
+        'Get-WtCompletion', 'Register-WtCompletion', 'Get-WtCommandCompletionNames', 'Get-WtConfigValueCandidates',
         # Repo / worktrees
-        'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Clear-WtWorktreesCache', 'Resolve-WtWorktree',
+        'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Get-WtWorktreesCached', 'Clear-WtWorktreesCache', 'Resolve-WtWorktree',
         'Test-WtWorktreeMatchesName',
         'ConvertFrom-WtWorktreePorcelain', 'Get-WtWorktreePath',
         # Warp / apertura

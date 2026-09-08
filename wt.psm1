@@ -5,13 +5,14 @@
 .DESCRIPTION
     Este archivo solo carga las capas de src/ y define la superficie publica.
     El orden de carga refleja la direccion de las dependencias:
-    Common -> Config/Repo -> Workspace/Launch -> Commands -> Console/Cli.
-    Importar el modulo no produce efectos secundarios.
+    Common -> Config/Repo -> Workspace/Launch -> Commands -> Console/Cli -> Completion.
+    Importar el modulo no produce efectos secundarios (Register-WtCompletion se llama
+    aparte, desde el bloque del perfil que instala install.ps1).
 #>
 
 Set-StrictMode -Version Latest
 
-foreach ($file in @('Common', 'Config', 'Repo', 'Workspace', 'Launch', 'Commands', 'Console', 'Cli')) {
+foreach ($file in @('Common', 'Config', 'Repo', 'Workspace', 'Launch', 'Commands', 'Console', 'Cli', 'Completion')) {
     . (Join-Path $PSScriptRoot ("src\{0}.ps1" -f $file))
 }
 
@@ -23,6 +24,7 @@ Export-ModuleMember -Function @(
     'Invoke-WtPrune', 'Invoke-WtPathCommand', 'Invoke-WtDoctor', 'Start-WtConsole',
     'Invoke-WtLock', 'Invoke-WtUnlock',
     'Invoke-WtVersion', 'Invoke-WtClean',
+    'Resolve-WtCopyOnCreatePlan', 'Invoke-WtCreateHooks',
     # Workspace
     'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',
     'Resolve-WtRepoContext', 'Open-WtFolder', 'Get-WtReposRoot', 'Get-WtReposDepth',
@@ -32,8 +34,11 @@ Export-ModuleMember -Function @(
     'Get-WtDefaultConfig', 'Merge-WtConfig', 'Clear-WtConfigCache',
     'Get-WtRepoConfigAllowedKeys', 'Select-WtRepoConfigKeys',
     'Test-WtConfigValue', 'Assert-WtConfigValue', 'Test-WtWorktreeRootTemplateNeedsRepoToken', 'Get-WtKnownWarpColors',
+    'ConvertTo-WtConfigValue', 'ConvertTo-WtConfigDisplayValue',
+    # Autocompletado
+    'Get-WtCompletion', 'Register-WtCompletion', 'Get-WtCommandCompletionNames', 'Get-WtConfigValueCandidates',
     # Repo / worktrees
-    'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Clear-WtWorktreesCache', 'Resolve-WtWorktree',
+    'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Get-WtWorktreesCached', 'Clear-WtWorktreesCache', 'Resolve-WtWorktree',
     'Test-WtWorktreeMatchesName',
     'ConvertFrom-WtWorktreePorcelain', 'Get-WtWorktreePath',
     # Warp / apertura

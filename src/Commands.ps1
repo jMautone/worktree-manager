@@ -38,6 +38,104 @@ function Get-WtCreateOpenPlan {
     }
 }
 
+function Resolve-WtCopyOnCreatePlan {
+    <#
+    .SYNOPSIS
+        Que copiar del repo principal al worktree nuevo segun 'copyOnCreate'. Funcion
+        pura: recibe el listado de archivos del repo (relativos, ya enumerados por el
+        llamador, que es quien toca disco) y devuelve, por patron, si es valido y que
+        matcheo.
+    .DESCRIPTION
+        Un patron absoluto o con '..' se rechaza (Valid = $false): no se puede copiar
+        desde fuera del repo. Los patrones validos que no matchean nada quedan con
+        Items vacio; el llamador decide como avisarlo (Write-WtDetail, no falla).
+    .OUTPUTS
+        Array de @{ Pattern; Valid; Reason; Items (array de @{ From; To }) }.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$Patterns,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$RepoFiles
+    )
+    $normalizedFiles = @($RepoFiles | ForEach-Object { $_.Replace('\', '/') })
+    $results = @()
+    foreach ($pattern in $Patterns) {
+        if (-not $pattern) { continue }
+        $normalizedPattern = $pattern.Replace('\', '/')
+        if ([IO.Path]::IsPathRooted($pattern) -or $normalizedPattern -match '(^|/)\.\.(/|$)') {
+            $results += @{
+                Pattern = $pattern; Valid = $false
+                Reason  = 'ruta absoluta o con .. (no se puede copiar desde fuera del repo)'
+                Items   = @()
+            }
+            continue
+        }
+        $wildcard = New-Object System.Management.Automation.WildcardPattern(
+            $normalizedPattern, [System.Management.Automation.WildcardOptions]::IgnoreCase)
+        $matchedFiles = @($normalizedFiles | Where-Object { $wildcard.IsMatch($_) })
+        $items = @($matchedFiles | ForEach-Object { @{ From = $_; To = $_ } })
+        $results += @{ Pattern = $pattern; Valid = $true; Reason = ''; Items = $items }
+    }
+    return $results
+}
+
+function Invoke-WtCreateHooks {
+    <#
+    .SYNOPSIS
+        Copia archivos (copyOnCreate) y corre comandos (postCreate) en el worktree
+        recien creado, antes de abrir el editor/agente.
+    .DESCRIPTION
+        Si un postCreate falla, se detiene la cadena y se relanza: el worktree ya
+        existe (git worktree add ya corrio) y New-WtWorktree no lo destruye. Ninguna
+        de las dos claves entra en la lista blanca de .wt.json (A1): son ejecucion de
+        codigo, solo se pueden definir en la config global o en WT_CONFIG.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][string]$WorktreePath,
+        [Parameter(Mandatory)]$Config
+    )
+    $patterns = @($Config.copyOnCreate)
+    if ($patterns.Count -gt 0) {
+        $repoFiles = @(Get-ChildItem -LiteralPath $RepoRoot -Recurse -File -Force -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -notmatch '(^|\\)\.git(\\|$)' } |
+            ForEach-Object { $_.FullName.Substring($RepoRoot.Length + 1) })
+        $plan = @(Resolve-WtCopyOnCreatePlan -Patterns $patterns -RepoFiles $repoFiles)
+        foreach ($entry in $plan) {
+            if (-not $entry.Valid) {
+                Write-WtWarn "copyOnCreate: patron '$($entry.Pattern)' invalido: $($entry.Reason)."
+                continue
+            }
+            if ($entry.Items.Count -eq 0) {
+                Write-WtDetail "copyOnCreate: patron '$($entry.Pattern)' no matcheo ningun archivo."
+                continue
+            }
+            foreach ($item in $entry.Items) {
+                $from = Join-Path $RepoRoot $item.From
+                $to = Join-Path $WorktreePath $item.To
+                $toDir = Split-Path -Parent $to
+                if ($toDir -and -not (Test-WtPathExists $toDir)) {
+                    New-Item -ItemType Directory -Path $toDir -Force | Out-Null
+                }
+                Copy-Item -LiteralPath $from -Destination $to -Force
+                Write-WtDetail "copyOnCreate: copiado $($item.From)"
+            }
+        }
+    }
+
+    foreach ($command in @($Config.postCreate)) {
+        if (-not $command) { continue }
+        Write-WtDetail "postCreate: $command"
+        $result = Invoke-WtProcess -FilePath 'cmd.exe' -Arguments @('/c', $command) `
+            -WorkingDirectory $WorktreePath -AllowFailure
+        if (-not $result.Success) {
+            $detail = $result.ErrorText
+            if (-not $detail) { $detail = $result.Text }
+            Write-WtError "postCreate '$command' fallo (exit $($result.ExitCode)): $detail. El worktree quedo creado en $WorktreePath."
+            throw "postCreate '$command' fallo (exit $($result.ExitCode)); la cadena de hooks se detuvo."
+        }
+    }
+}
+
 function New-WtWorktree {
     <#
     .OUTPUTS
@@ -55,7 +153,8 @@ function New-WtWorktree {
         [switch]$Terminal,
         [switch]$Agent,
         [switch]$All,
-        [switch]$NoOpen
+        [switch]$NoOpen,
+        [switch]$NoHooks
     )
     # Se valida antes de tocar git o la config: el error debe hablar del nombre.
     Assert-WtWorktreeName -Name $Name
@@ -93,6 +192,10 @@ function New-WtWorktree {
     Write-WtInfo "Creando worktree '$Name' en $path"
     Invoke-WtGit -WorkingDirectory $repoRoot -Arguments $gitArgs | Out-Null
     Write-WtSuccess "OK - worktree listo: $path (rama: $Branch)"
+
+    if (-not $NoHooks) {
+        Invoke-WtCreateHooks -RepoRoot $repoRoot -WorktreePath $path -Config $config
+    }
 
     $openPlan = Get-WtCreateOpenPlan -Config $config -Code:$Code -Terminal:$Terminal -Agent:$Agent -All:$All -NoOpen:$NoOpen
     if ($openPlan.Code -or $openPlan.Terminal -or $openPlan.Agent) {
@@ -576,6 +679,15 @@ function Get-WtDoctorRows {
     } else {
         $rows += New-WtDoctorRow -Check 'reposRoot' -Ok $false `
             -FailDetail 'Sin configurar; usa: wt config set reposRoot C:\Repos' -FailState 'AVISO'
+    }
+
+    $copyPatterns = @($config.copyOnCreate)
+    $postCommands = @($config.postCreate)
+    if ($copyPatterns.Count -eq 0 -and $postCommands.Count -eq 0) {
+        $rows += New-WtDoctorRow -Check 'hooks de creacion' -Ok $true -OkDetail 'sin copyOnCreate ni postCreate configurados'
+    } else {
+        $rows += New-WtDoctorRow -Check 'hooks de creacion' -Ok $true `
+            -OkDetail ("{0} patron(es) copyOnCreate, {1} comando(s) postCreate" -f $copyPatterns.Count, $postCommands.Count)
     }
 
     $mainRoot = Find-WtMainRoot -Silent

@@ -193,6 +193,24 @@ function Get-WtWorktrees {
     return $result
 }
 
+function Get-WtWorktreesCached {
+    <#
+    .SYNOPSIS
+        Como Get-WtWorktrees, pero SOLO si el repo ya esta en la cache de esta
+        invocacion; si no, devuelve vacio en vez de invocar git.
+    .DESCRIPTION
+        Pensada para el completer de autocompletado (item 2 del plan de mejoras): un
+        completer lento arruina la terminal, asi que prefiere no sugerir nada antes
+        que disparar un 'git worktree list'. Util en la practica porque la cache de
+        B5 sigue poblada entre el fin de un 'wt <comando>' y el inicio del siguiente
+        (Invoke-Wt solo la limpia al EMPEZAR, no al terminar).
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $key = (ConvertTo-WtFullPath $RepoRoot).ToLowerInvariant()
+    if ($script:WorktreesCache.ContainsKey($key)) { return $script:WorktreesCache[$key] }
+    return @()
+}
+
 function Test-WtWorktreeMatchesName {
     <#
     .SYNOPSIS

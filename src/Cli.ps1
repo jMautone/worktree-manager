@@ -7,7 +7,7 @@
 # valor. Es la unica fuente de verdad del parser y de la validacion de flags.
 function Get-WtCommandSpecs {
     return [ordered]@{
-        'create'  = @{ Aliases = @();                    Flags = @('no-open', 'all', 'code', 'agent', 'terminal');           Values = @('base', 'branch') }
+        'create'  = @{ Aliases = @();                    Flags = @('no-open', 'all', 'code', 'agent', 'terminal', 'no-hooks'); Values = @('base', 'branch') }
         'list'    = @{ Aliases = @('ls');                Flags = @('json');                                                   Values = @() }
         'open'    = @{ Aliases = @();                    Flags = @('code', 'terminal', 'agent', 'all');                       Values = @() }
         'path'    = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
@@ -115,7 +115,7 @@ Worktree Manager (wt) - gestiona Git Worktrees para agentes en paralelo
 
 WORKTREES:
   wt create <nombre> [--base <rama>] [--branch <rama>]
-             [--all|--code|--agent|--terminal] [--no-open]
+             [--all|--code|--agent|--terminal] [--no-open] [--no-hooks]
   wt list [--json]                           (alias: ls)
   wt open [<nombre>] [--code] [--terminal] [--agent] [--all]
   wt path [<nombre>]
@@ -126,9 +126,11 @@ WORKTREES:
   wt clean                                    # borra tab configs de Warp huerfanos
 
   'create' usa el nombre tambien como rama (mas branchPrefix); --branch la cambia.
-  Que abre al terminar lo decide 'openOnCreate' ('all' = editor + agente, el
-  default; 'editor'; 'none'); --all/--code/--agent/--terminal fuerzan un plan
-  especifico (ganan a la config) y --no-open gana a todo (crea sin abrir nada).
+  Antes de abrir nada corren los hooks de creacion: copia 'copyOnCreate' y ejecuta
+  'postCreate' en el worktree nuevo (--no-hooks los saltea). Que abre al terminar lo
+  decide 'openOnCreate' ('all' = editor + agente, el default; 'editor'; 'none');
+  --all/--code/--agent/--terminal fuerzan un plan especifico (ganan a la config) y
+  --no-open gana a todo (crea sin abrir nada).
 
   'open' sin nombre abre el checkout actual (el worktree si estas dentro de uno).
   Sin flags abre solo el editor; --all = editor + agente. La terminal solo se abre
@@ -194,6 +196,8 @@ CONFIG (editable con 'wt config set', 'wt config edit', o a mano en
   fetchBeforeCreate     Hace fetch del remoto antes de crear desde <remote>/<rama>
   agentCommand          Comando del agente que corre el tab (default: copilot)
   agentShell            'powershell' | 'bash' | 'none' (sin comandos auxiliares, solo agentCommand)
+  copyOnCreate          Patrones (';'-separados) a copiar del repo al worktree nuevo
+  postCreate            Comandos (';'-separados) a correr en el worktree nuevo tras la copia
 '@ | Write-Host
 }
 
@@ -261,6 +265,7 @@ function Invoke-WtDispatch {
                 -Agent:(Test-WtFlag -Parsed $parsed -Key 'agent') `
                 -All:(Test-WtFlag -Parsed $parsed -Key 'all') `
                 -NoOpen:(Test-WtFlag -Parsed $parsed -Key 'no-open') `
+                -NoHooks:(Test-WtFlag -Parsed $parsed -Key 'no-hooks') `
             | Out-Null
             Clear-WtWorktreesCache
         }

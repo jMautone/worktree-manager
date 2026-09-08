@@ -111,7 +111,7 @@ try {
     git branch develop
 
     # Config aislada: sin editor/terminal para no abrir apps durante las pruebas.
-    # Las 15 claves con valores explicitos y neutros: WT_CONFIG_ONLY hace que esta
+    # Las 17 claves con valores explicitos y neutros: WT_CONFIG_ONLY hace que esta
     # sea la unica fuente (ademas de los defaults), sin importar la config real de
     # la maquina que corre las pruebas.
     $testConfig = [ordered]@{
@@ -130,6 +130,8 @@ try {
         openOnCreate         = 'none'
         agentCommand         = 'no-existe-el-agente'
         agentShell           = 'none'
+        copyOnCreate         = @()
+        postCreate           = @()
     }
     ([pscustomobject]$testConfig | ConvertTo-Json) | Set-Content -Path $configPath
     $env:WT_CONFIG = $configPath
@@ -169,6 +171,72 @@ try {
     $r = Invoke-Wt -CmdArgs @('create', 'feature-a', '--no-open') -Cwd $repoDir
     Assert-True 'create duplicado falla' ($r.ExitCode -ne 0)
     Assert-True 'mensaje de error claro' ($r.Output -match 'Ya existe un directorio') $r.Output
+
+    Write-Host '== wt create: hooks de creacion (copyOnCreate / postCreate) ==' -ForegroundColor Cyan
+    Set-Content -Path (Join-Path $repoDir '.env') -Value 'SECRET=1'
+    New-Item -ItemType Directory -Path (Join-Path $repoDir 'certs') -Force | Out-Null
+    Set-Content -Path (Join-Path $repoDir 'certs\dev.pfx') -Value 'cert-fake'
+    $hooksConfigPath = Join-Path $tempRoot 'config-hooks.json'
+    $hooksConfig = [ordered]@{}
+    foreach ($k in $testConfig.Keys) { $hooksConfig[$k] = $testConfig[$k] }
+    $hooksConfig['copyOnCreate'] = @('.env', 'certs/*.pfx')
+    $hooksConfig['postCreate'] = @('cmd /c echo hola> hook.txt')
+    ([pscustomobject]$hooksConfig | ConvertTo-Json) | Set-Content -Path $hooksConfigPath
+    $env:WT_CONFIG = $hooksConfigPath
+    try {
+        $r = Invoke-Wt -CmdArgs @('create', 'hooks-ok', '--no-open') -Cwd $repoDir
+        Assert-True 'create con hooks exit 0' ($r.ExitCode -eq 0) $r.Output
+        $hooksOkDir = Join-Path $wtRoot 'hooks-ok'
+        Assert-True 'copyOnCreate copio .env' (Test-Path (Join-Path $hooksOkDir '.env')) $r.Output
+        Assert-True 'copyOnCreate copio certs\dev.pfx preservando el subdirectorio' (Test-Path (Join-Path $hooksOkDir 'certs\dev.pfx')) $r.Output
+        Assert-True 'postCreate creo hook.txt en el worktree' (Test-Path (Join-Path $hooksOkDir 'hook.txt')) $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('create', 'hooks-no-hooks', '--no-open', '--no-hooks') -Cwd $repoDir
+        Assert-True 'create --no-hooks exit 0' ($r.ExitCode -eq 0) $r.Output
+        $hooksSkippedDir = Join-Path $wtRoot 'hooks-no-hooks'
+        Assert-True '--no-hooks no copia archivos' (-not (Test-Path (Join-Path $hooksSkippedDir '.env'))) $r.Output
+        Assert-True '--no-hooks no corre postCreate' (-not (Test-Path (Join-Path $hooksSkippedDir 'hook.txt'))) $r.Output
+
+        $hooksFailConfigPath = Join-Path $tempRoot 'config-hooks-fail.json'
+        $hooksFailConfig = [ordered]@{}
+        foreach ($k in $testConfig.Keys) { $hooksFailConfig[$k] = $testConfig[$k] }
+        $hooksFailConfig['postCreate'] = @('cmd /c exit 7')
+        ([pscustomobject]$hooksFailConfig | ConvertTo-Json) | Set-Content -Path $hooksFailConfigPath
+        $env:WT_CONFIG = $hooksFailConfigPath
+        $r = Invoke-Wt -CmdArgs @('create', 'hooks-fail', '--no-open') -Cwd $repoDir
+        Assert-True 'postCreate que falla sale distinto de 0' ($r.ExitCode -ne 0) $r.Output
+        Assert-True 'el mensaje nombra el comando que fallo' ($r.Output -match [regex]::Escape('cmd /c exit 7')) $r.Output
+        $hooksFailDir = Join-Path $wtRoot 'hooks-fail'
+        Assert-True 'el worktree queda creado pese al postCreate fallido' (Test-Path $hooksFailDir) $r.Output
+        Remove-Item -LiteralPath $hooksFailConfigPath -ErrorAction SilentlyContinue
+    } finally {
+        $env:WT_CONFIG = $configPath
+        # --force: copyOnCreate/postCreate dejan archivos sin trackear en el worktree
+        # (.env, hook.txt), asi que 'git worktree remove' sin --force los rechazaria.
+        Invoke-Wt -CmdArgs @('remove', 'hooks-ok', '--delete-branch', '--force') -Cwd $repoDir | Out-Null
+        Invoke-Wt -CmdArgs @('remove', 'hooks-no-hooks', '--delete-branch', '--force') -Cwd $repoDir | Out-Null
+        Invoke-Wt -CmdArgs @('remove', 'hooks-fail', '--delete-branch', '--force') -Cwd $repoDir | Out-Null
+        Remove-Item -LiteralPath $hooksConfigPath -ErrorAction SilentlyContinue
+    }
+
+    Write-Host '== wt create: postCreate/copyOnCreate en .wt.json del repo se ignoran (seguridad) ==' -ForegroundColor Cyan
+    # Requiere que .wt.json del repo sea un candidato real: se desactiva WT_CONFIG_ONLY
+    # solo para este caso (WT_CONFIG sigue seteado y sigue ganando por ser el ultimo).
+    $hooksRepoWtJsonPath = Join-Path $repoDir '.wt.json'
+    ([pscustomobject]@{ postCreate = @('cmd /c echo hostil> hostil.txt'); copyOnCreate = @('.env') } | ConvertTo-Json) |
+        Set-Content -Path $hooksRepoWtJsonPath
+    Remove-Item Env:\WT_CONFIG_ONLY -ErrorAction SilentlyContinue
+    try {
+        $r = Invoke-Wt -CmdArgs @('create', 'hooks-hostile', '--no-open') -Cwd $repoDir
+        Assert-True 'create con .wt.json hostil sigue en 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'avisa que postCreate no se admite en el .wt.json del repo' ($r.Output -match "'postCreate'.*no se admite") $r.Output
+        $hostileDir = Join-Path $wtRoot 'hooks-hostile'
+        Assert-True 'postCreate del .wt.json del repo NO se ejecuto' (-not (Test-Path (Join-Path $hostileDir 'hostil.txt'))) $r.Output
+    } finally {
+        $env:WT_CONFIG_ONLY = '1'
+        Remove-Item -LiteralPath $hooksRepoWtJsonPath -ErrorAction SilentlyContinue
+        Invoke-Wt -CmdArgs @('remove', 'hooks-hostile', '--delete-branch') -Cwd $repoDir | Out-Null
+    }
 
     Write-Host '== wt list ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('list') -Cwd $repoDir
@@ -631,7 +699,7 @@ try {
     Write-Host '== wt version ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('version') -Cwd $env:TEMP
     Assert-True 'version exit 0' ($r.ExitCode -eq 0) $r.Output
-    Assert-True 'version imprime la version del manifiesto' ($r.Output -match 'wt 0\.1\.0') $r.Output
+    Assert-True 'version imprime la version del manifiesto' ($r.Output -match 'wt 0\.2\.0') $r.Output
 
     Write-Host '== wt doctor ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('doctor') -Cwd $env:TEMP

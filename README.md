@@ -40,6 +40,7 @@ wt create logging --base origin/develop      # hace fetch del remoto y crea desd
 wt create hotfix --branch fix/urgente        # nombre de carpeta y de rama distintos
 wt create tmp --code                         # crea y abre solo el editor (el flag gana a openOnCreate)
 wt create tmp2 --no-open                     # crea sin abrir nada (gana a todo)
+wt create tmp3 --no-hooks                    # crea sin correr copyOnCreate/postCreate
 wt list                                      # tabla de worktrees (el principal va marcado)
 wt list --json                               # salida JSON para scripting
 wt open                                      # abre el checkout actual en VS Code (el worktree si estás dentro de uno)
@@ -99,6 +100,28 @@ Warp), `--terminal` (terminal en tab de Warp) y `--all` = **editor + agente**.
 **Sin flags** abre solo el editor. **La terminal nunca se abre sola**: solo cuando
 se pide explícitamente con `--terminal` (así `--all` no duplica terminales: el agente
 ya es una terminal con Copilot corriendo).
+
+### Hooks de creación: `copyOnCreate` y `postCreate`
+
+Un worktree nuevo es un checkout git limpio: no trae `.env`, certificados,
+`appsettings.Development.json` ni `node_modules`. Dos claves de config (solo en la
+config global o en `WT_CONFIG`, **nunca** en el `.wt.json` de un repo — ver la lista
+blanca abajo) preparan el árbol antes de abrir el editor o el agente:
+
+```powershell
+wt config set copyOnCreate ".env;certs/*.pfx"       # patrones (';'-separados), glob simple
+wt config set postCreate "npm install;cmd /c echo listo"  # comandos, en orden
+wt create feature-x                                  # copia, corre postCreate y recien despues abre
+wt create feature-y --no-hooks                       # crea sin correr ninguno de los dos
+```
+
+`copyOnCreate` es una lista de patrones relativos a la raíz del repo principal
+(`.env`, `certs/*.pfx`); los que no matchean ningún archivo se avisan y se sigue, no
+fallan. `postCreate` corre en el worktree recién creado, en orden, **después** de la
+copia y **antes** de abrir el editor/agente; si un comando falla, la cadena se
+detiene, se avisa qué comando falló, y **el worktree no se destruye** (ya existe;
+borrarlo sería peor que dejarlo a medio preparar). `wt doctor` informa cuántos
+patrones y comandos hay configurados.
 
 ## Workspace: raíz de repos
 
@@ -243,9 +266,13 @@ ruta arbitraria:
 - `branchPrefix`
 - `fetchBeforeCreate`
 
-Cualquier otra clave (`editor`, `warpPath`, `agentCommand`, ...) se **ignora** con un
-warning que nombra el archivo y la clave. Sin esta lista, un `.wt.json` hostil podría
-hacer que `wt open` lance el binario que ese archivo elija.
+Cualquier otra clave (`editor`, `warpPath`, `agentCommand`, `copyOnCreate`,
+`postCreate`, ...) se **ignora** con un warning que nombra el archivo y la clave. Sin
+esta lista, un `.wt.json` hostil podría hacer que `wt open` lance el binario que ese
+archivo elija, o que `wt create` copie o ejecute lo que ese archivo decida.
+`copyOnCreate` y sobre todo `postCreate` son ejecución de código: **nunca** entran en
+esta lista, ni aunque parezcan inofensivas — solo se pueden definir en la config
+global del usuario o en `WT_CONFIG`.
 
 | Clave | Default | Descripción |
 |---|---|---|
@@ -264,6 +291,8 @@ hacer que `wt open` lance el binario que ese archivo elija.
 | `fetchBeforeCreate` | `true` | Fetch + prune cuando la base es `<remote>/<rama>` de un remoto configurado del repo |
 | `agentCommand` | `copilot` | Comando que corre el tab del agente (`wt open --agent`) |
 | `agentShell` | `powershell` | `powershell` \| `bash` \| `none` (sin comandos auxiliares como `fnm use`, solo `agentCommand`) |
+| `copyOnCreate` | `[]` | Patrones (glob simple, relativos al repo) a copiar al worktree nuevo; en `wt config set` van separados por `;` |
+| `postCreate` | `[]` | Comandos a correr en el worktree nuevo, en orden, tras la copia; separados por `;` en `wt config set` |
 
 ## Decisiones de arquitectura
 
@@ -349,6 +378,16 @@ hacer que `wt open` lance el binario que ese archivo elija.
   `window` lo fuerzan. **Nunca abre ventanas sueltas de PowerShell**: el agente solo se
   lanza como tab de Warp; si `agentCommand` no existe en la sesión o `terminal` no es
   `warp`, avisa con un warning en vez de abrir otra cosa.
+- **Hooks de creación (`copyOnCreate`/`postCreate`)**: `Resolve-WtCopyOnCreatePlan`
+  (función pura) decide, a partir de los patrones configurados y un listado de
+  archivos del repo que le pasa el llamador, qué copiar y a dónde; rechaza patrones
+  absolutos o con `..` (no se puede copiar desde fuera del repo) sin abortar el resto.
+  `Invoke-WtCreateHooks` aplica ese plan y corre `postCreate` (vía `cmd.exe /c`, con
+  `Invoke-WtProcess -WorkingDirectory`) en el worktree recién creado, entre el `git
+  worktree add` y la apertura del editor/agente. Un `postCreate` que falla detiene la
+  cadena y se relanza como error de `wt create` (el worktree ya existe: destruirlo
+  sería peor), pero no impide que futuros `postCreate` de otra corrida se ejecuten.
+  `--no-hooks` saltea ambos.
 - **Agente desacoplado de `copilot` y del shell de Warp**: antes el tab del agente
   inyectaba un `if { Write-Warning ... }` en sintaxis de PowerShell entre sus
   `commands`; si el shell por defecto de Warp era bash, WSL o cmd, era un error de
