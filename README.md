@@ -361,6 +361,20 @@ Warp huérfanos (`wt clean`), `d` corre el doctor y `v` muestra la versión. Ant
 ejecutar cualquier acción se muestra el comando CLI equivalente
 (`Write-WtConsoleCommand`).
 
+### Modo tablero (terminal real) vs. modo transcript (stdin pipeado)
+
+Frente a una terminal real, `wt console` se comporta como un tablero: cada vuelta del
+loop limpia la pantalla y redibuja todo — banner, contexto del repo (nombre, resumen,
+**tabla de worktrees en vivo**, sin tener que pedirla con `1`) y un breadcrumb con el
+resultado de la última acción (`Último: <acción> - OK` en verde, o `- Error: <detalle>`
+en rojo). Después de cada acción se pausa con «Enter para continuar» para que la salida
+no desaparezca en el siguiente limpiado.
+
+Con stdin redirigido (los tests E2E, o un script que le manda comandos por pipe) se
+comporta como antes: un transcript que scrollea, sin limpiar pantalla ni pausar —
+pausar ahí consumiría una línea de entrada que el llamador no puso para eso. La
+detección es automática (`[Console]::IsInputRedirected`), no hay flag que elegirlo.
+
 ## Configuración
 
 Orden de precedencia (el primero que existe gana por clave):

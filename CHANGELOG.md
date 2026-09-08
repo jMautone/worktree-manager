@@ -150,6 +150,29 @@ original y su estado de cierre vive en
   clasica de Windows ademas de Unicode, asi que se ven bien tanto en la consola
   heredada como en Windows Terminal.
 
+### Plan de mejoras — item 10: consola en modo tablero
+
+- **Tablero con pantalla limpia**: frente a una terminal real, cada vuelta del loop
+  limpia la pantalla (`Clear-WtConsoleScreen`, con try/catch defensivo por si el host
+  no tiene un buffer de consola de verdad) y redibuja todo — banner, contexto y menu —
+  en vez de acumular un transcript que scrollea. Despues de cada accion se pausa con
+  «Enter para continuar» (`Wait-WtConsoleContinue`) para no perder su salida en el
+  siguiente limpiado.
+- **Deteccion automatica, sin flag**: `Test-WtConsoleInteractive`
+  (`-not [Console]::IsInputRedirected`) decide el modo. Con stdin redirigido (los 30
+  tests E2E de `wt console`, o un script que le manda comandos por pipe) el
+  comportamiento no cambia un bit respecto de antes: sin limpiar, sin pausar — pausar
+  ahi consumiria una linea de entrada que el llamador no puso para eso. Cero cambios en
+  la suite de tests.
+- **Contexto con tabla en vivo**: `Write-WtConsoleContext` ahora embebe la tabla de
+  worktrees (reusa `Get-WtWorktreeRows`, la misma funcion pura que usa `wt list`) en
+  vez de solo un contador, asi el panorama completo esta a la vista en cada vuelta sin
+  tener que pedirlo con `1`.
+- **Breadcrumb de la ultima accion**: `Set-WtConsoleLastAction`/
+  `Write-WtConsoleLastAction` guardan y muestran el resultado de la accion anterior
+  (`Ultimo: <accion> - OK` en verde, `- Error: <detalle>` en rojo) arriba del menu, para
+  no perderlo de vista apenas la pantalla se redibuja.
+
 ### Fase 0 — Red de contencion
 
 - **M6**: `WT_CONFIG_ONLY=1` aisla la config efectiva a `defaults < WT_CONFIG`,

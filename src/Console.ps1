@@ -213,6 +213,7 @@ function Invoke-WtConsoleExec {
     if ($null -eq $confirm) { return }
     if (-not $confirm) { Write-WtDetail 'Cancelado.'; return }
     Write-WtConsoleCommand $cli
+    Write-WtDetail 'Ejecutando, puede tardar...'
     Invoke-WtExec -Name $name -CommandArgs @($command)
 }
 
@@ -363,6 +364,73 @@ function Invoke-WtConsoleConfigSet {
 
 # --- Presentacion -------------------------------------------------------------
 
+function Test-WtConsoleInteractive {
+    <#
+    .SYNOPSIS
+        $true si hay una terminal real del otro lado (no stdin pipeado).
+    .DESCRIPTION
+        Unico punto de deteccion: limpiar pantalla y pausar con "Enter para
+        continuar" solo tiene sentido frente a una persona mirando la terminal.
+        Con stdin redirigido (los tests E2E, o 'echo ... | wt console' en un
+        script) la consola se comporta exactamente como antes: transcript que
+        scrollea, sin limpiar y sin pausas que consuman una linea de entrada que
+        el llamador no puso ahi para eso.
+    #>
+    return -not [Console]::IsInputRedirected
+}
+
+function Clear-WtConsoleScreen {
+    <#
+    .SYNOPSIS
+        Limpia la pantalla, solo en modo interactivo. 'Clear-Host' depende de un
+        buffer de consola real (RawUI): en un host sin consola (ISE vieja, algun
+        runner de CI) puede fallar, por eso el try/catch defensivo.
+    #>
+    if (-not (Test-WtConsoleInteractive)) { return }
+    try { Clear-Host } catch { }
+}
+
+function Wait-WtConsoleContinue {
+    <#
+    .SYNOPSIS
+        Pausa hasta Enter, solo en modo interactivo: da tiempo a leer el
+        resultado de la accion antes de que la proxima vuelta del loop limpie la
+        pantalla y lo borre.
+    #>
+    if (-not (Test-WtConsoleInteractive)) { return }
+    $rule = [string]([char]0x2500) * 52
+    Write-Host ''
+    Write-Host $rule -ForegroundColor DarkGray
+    Read-WtConsoleLine -Prompt 'Presiona Enter para continuar...' | Out-Null
+}
+
+$script:WtConsoleLastAction = $null
+
+function Set-WtConsoleLastAction {
+    param([Parameter(Mandatory)][string]$Label, [Parameter(Mandatory)][bool]$Success, [AllowEmptyString()][string]$Detail = '')
+    $script:WtConsoleLastAction = [pscustomobject]@{ Label = $Label; Success = $Success; Detail = $Detail }
+}
+
+function Write-WtConsoleLastAction {
+    <#
+    .SYNOPSIS
+        Breadcrumb con el resultado de la ultima accion, para no perderlo de
+        vista apenas la pantalla se redibuja.
+    #>
+    if (-not $script:WtConsoleLastAction) { return }
+    $last = $script:WtConsoleLastAction
+    Write-Host ''
+    Write-Host '  Ultimo: ' -ForegroundColor DarkGray -NoNewline
+    Write-Host $last.Label -NoNewline
+    if ($last.Success) {
+        Write-Host ' - OK' -ForegroundColor Green
+    } else {
+        $detail = $last.Detail
+        if ($detail) { Write-Host (' - Error: {0}' -f $detail) -ForegroundColor Red }
+        else { Write-Host ' - Error' -ForegroundColor Red }
+    }
+}
+
 function Write-WtConsoleBoxLine {
     <#
     .SYNOPSIS
@@ -419,9 +487,10 @@ function Write-WtConsoleSectionTitle {
 function Write-WtConsoleContext {
     <#
     .SYNOPSIS
-        Linea de estado que se redibuja en cada vuelta del loop: repo actual,
-        cantidad de worktrees, cuantos estan bloqueados y la rama del checkout
-        en el que esta parada la terminal (si aplica).
+        Cabecera de estado que se redibuja en cada vuelta del loop: repo actual,
+        resumen (cantidad de worktrees, cuantos bloqueados, rama del checkout en
+        el que esta parada la terminal) y la tabla de worktrees en vivo, para que
+        el panorama este a la vista sin tener que pedirlo con la opcion '1'.
     #>
     param([AllowEmptyString()][string]$RepoRoot)
     Write-Host ''
@@ -429,17 +498,24 @@ function Write-WtConsoleContext {
         Write-WtNotice 'No estas dentro de un repo: las opciones de worktrees se habilitan al entrar a uno (g).'
         return
     }
-    $worktrees = @(Get-WtWorktrees -RepoRoot $RepoRoot | Where-Object { -not $_.IsPrunable })
-    $locked = @($worktrees | Where-Object { $_.IsLocked })
+    $allWorktrees = @(Get-WtWorktrees -RepoRoot $RepoRoot)
+    $active = @($allWorktrees | Where-Object { -not $_.IsPrunable })
+    $locked = @($active | Where-Object { $_.IsLocked })
     $branch = ''
     $current = Get-WtCurrentRoot
     if ($current) { $branch = Get-WtBranchAt -Path $current }
-    $summary = "{0} worktree(s)" -f $worktrees.Count
+    $summary = "{0} worktree(s)" -f $active.Count
     if ($locked.Count -gt 0) { $summary += (", {0} bloqueado(s)" -f $locked.Count) }
     if ($branch) { $summary += (", rama actual: {0}" -f $branch) }
     Write-Host ("  {0}" -f (Split-Path -Leaf $RepoRoot)) -ForegroundColor White -NoNewline
     Write-Host ("  -  {0}" -f $summary) -ForegroundColor DarkGray
     Write-WtDetail ("  {0}" -f $RepoRoot)
+    if ($allWorktrees.Count -gt 0) {
+        Write-Host ''
+        $rows = @(Get-WtWorktreeRows -Worktrees $allWorktrees)
+        $lines = @($rows | Format-Table -AutoSize | Out-String -Stream | Where-Object { $_.Trim() })
+        foreach ($line in $lines) { Write-Host ("  {0}" -f $line) }
+    }
 }
 
 # --- Menu principal ---------------------------------------------------------
@@ -480,6 +556,7 @@ function Get-WtConsoleMenu {
 function Show-WtConsoleMenu {
     param([AllowEmptyString()][string]$RepoRoot, [Parameter(Mandatory)][object[]]$Menu)
     Write-WtConsoleContext -RepoRoot $RepoRoot
+    Write-WtConsoleLastAction
     $sections = @(
         [pscustomobject]@{ Name = 'Worktrees';              Color = 'Cyan' }
         [pscustomobject]@{ Name = 'Ejecutar y sincronizar'; Color = 'Green' }
@@ -502,11 +579,29 @@ function Show-WtConsoleMenu {
 }
 
 function Start-WtConsole {
+    <#
+    .SYNOPSIS
+        Punto de entrada del menu interactivo.
+    .DESCRIPTION
+        Dos modos, segun 'Test-WtConsoleInteractive':
+        - Interactivo (terminal real): cada vuelta limpia la pantalla y redibuja
+          todo como un tablero (banner + contexto + menu); despues de cada accion
+          se pausa con "Enter para continuar" para no perder su salida en el
+          siguiente limpiado.
+        - No interactivo (stdin pipeado: tests E2E, o un script que le manda
+          comandos por pipe): se comporta como antes, un transcript que scrollea
+          sin limpiar ni pausar, para no consumir lineas de entrada que el
+          llamador no puso ahi para eso.
+    #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification = 'Entrypoint del menu interactivo; pedir confirmacion para iniciarlo no tiene sentido.')]
     param()
-    Write-WtConsoleBanner
-    Write-WtDetail 'Antes de ejecutar se muestra el comando CLI equivalente, para aprenderlo.'
+    $interactive = Test-WtConsoleInteractive
+    $script:WtConsoleLastAction = $null
+    if (-not $interactive) {
+        Write-WtConsoleBanner
+        Write-WtDetail 'Antes de ejecutar se muestra el comando CLI equivalente, para aprenderlo.'
+    }
     $menu = @(Get-WtConsoleMenu)
     while ($true) {
         # Se re-evalua en cada vuelta: 'g' (ir a un repo) puede cambiar el repo actual, y
@@ -514,6 +609,10 @@ function Start-WtConsole {
         Clear-WtConfigCache
         Clear-WtWorktreesCache
         $repoRoot = Find-WtMainRoot -Silent
+        if ($interactive) {
+            Clear-WtConsoleScreen
+            Write-WtConsoleBanner
+        }
         Show-WtConsoleMenu -RepoRoot $repoRoot -Menu $menu
         $choice = Read-WtConsoleChoice -Prompt "`nwt> "
         if ($null -eq $choice) { break }
@@ -522,17 +621,22 @@ function Start-WtConsole {
         $item = $menu | Where-Object { $_.Key -eq $choice } | Select-Object -First 1
         if (-not $item) {
             Write-WtNotice "Opcion invalida: '$choice'."
+            Wait-WtConsoleContinue
             continue
         }
         if ($item.RequiresRepo -and -not $repoRoot) {
             Write-WtNotice 'Entra a un repo primero (g).'
+            Wait-WtConsoleContinue
             continue
         }
         try {
             & $item.Action $repoRoot
+            Set-WtConsoleLastAction -Label $item.Label -Success $true
         } catch {
             Write-WtError "Error: $($_.Exception.Message)"
+            Set-WtConsoleLastAction -Label $item.Label -Success $false -Detail $_.Exception.Message
         }
+        Wait-WtConsoleContinue
     }
     Write-WtDetail 'Fin de la consola (stdin cerrado).'
 }
