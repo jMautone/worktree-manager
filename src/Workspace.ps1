@@ -58,20 +58,32 @@ function Resolve-WtRepoDir {
     return $match[0]
 }
 
-function Find-WtRepoOwningWorktree {
+function Find-WtReposOwningWorktree {
     <#
     .SYNOPSIS
-        Primer repo de la raiz que tenga un worktree con ese nombre (carpeta o rama).
+        Todos los repos de la raiz que tengan un worktree con ese nombre (carpeta o
+        rama), con el worktree encontrado en cada uno.
+    .DESCRIPTION
+        Antes devolvia solo el primero por orden alfabetico, asi que dos worktrees
+        homonimos en repos distintos daban un "exito" silencioso sobre el repo
+        equivocado. Devolver todas las coincidencias deja que el llamador decida:
+        una es exito, mas de una es una ambiguedad real que hay que explicar (igual
+        que Resolve-WtRepoDir para el mismo problema con nombres de repo).
+    .OUTPUTS
+        Array de @{ Repo; Worktree }.
     #>
     param([Parameter(Mandatory)][string]$Root, [Parameter(Mandatory)][string]$Name)
+    $found = @()
     foreach ($dir in (Get-WtRepoDirs -Root $Root)) {
         $worktrees = @()
         try { $worktrees = @(Get-WtWorktrees -RepoRoot $dir.FullName) } catch { continue }
         foreach ($wt in $worktrees) {
-            if (Test-WtWorktreeMatchesName -Worktree $wt -Name $Name) { return $dir }
+            if (Test-WtWorktreeMatchesName -Worktree $wt -Name $Name) {
+                $found += @{ Repo = $dir; Worktree = $wt }
+            }
         }
     }
-    return $null
+    return $found
 }
 
 function Resolve-WtRepoContext {
@@ -103,9 +115,13 @@ function Resolve-WtRepoContext {
         return @{ RepoRoot = $repo.FullName; Source = 'repo'; ShouldRelocate = $true }
     }
 
-    $owner = Find-WtRepoOwningWorktree -Root $root -Name $Name
-    if ($owner) {
-        return @{ RepoRoot = $owner.FullName; Source = 'worktree'; ShouldRelocate = $true }
+    $owners = @(Find-WtReposOwningWorktree -Root $root -Name $Name)
+    if ($owners.Count -eq 1) {
+        return @{ RepoRoot = $owners[0].Repo.FullName; Source = 'worktree'; ShouldRelocate = $true }
+    }
+    if ($owners.Count -gt 1) {
+        $list = ($owners | ForEach-Object { "$($_.Repo.Name) ($($_.Repo.FullName))" }) -join ', '
+        throw "El worktree '$Name' existe en varios repos: $list. Entra al repo, o usa 'wt open <repo>' primero."
     }
 
     throw "No hay un repo ni worktree '$Name' bajo '$root'. Usa 'wt repos' para ver los disponibles."

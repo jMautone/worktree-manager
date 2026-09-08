@@ -562,6 +562,35 @@ try {
     Assert-True 'open inexistente fuera falla' ($r.ExitCode -ne 0)
     Assert-True 'open inexistente sugiere wt repos' ($r.Output -match 'wt repos') $r.Output
 
+    Write-Host '== worktree homonimo en dos repos: ambiguedad explicita (M4) ==' -ForegroundColor Cyan
+    $repoAmbDir = Join-Path $tempRoot 'MiRepoAmbiguo'
+    try {
+        New-Item -ItemType Directory -Path $repoAmbDir -Force | Out-Null
+        git -C $repoAmbDir init -b main --quiet
+        git -C $repoAmbDir config user.email 'wt-tests@local'
+        git -C $repoAmbDir config user.name 'wt-tests'
+        git -C $repoAmbDir config commit.gpgsign false
+        Set-Content -Path (Join-Path $repoAmbDir 'README.md') -Value 'ambiguo'
+        git -C $repoAmbDir add README.md
+        git -C $repoAmbDir commit -m 'init' --quiet
+        Invoke-Wt -CmdArgs @('create', 'ambiguo', '--no-open') -Cwd $repoAmbDir | Out-Null
+        Invoke-Wt -CmdArgs @('create', 'ambiguo', '--no-open') -Cwd $repoDir | Out-Null
+
+        $r = Invoke-Wt -CmdArgs @('path', 'ambiguo') -Cwd $env:TEMP
+        Assert-True 'worktree homonimo en dos repos falla' ($r.ExitCode -ne 0)
+        Assert-True 'el mensaje nombra ambos repos' ($r.Output -match 'MiRepo' -and $r.Output -match 'MiRepoAmbiguo') $r.Output
+        Assert-True 'el mensaje explica la ambiguedad' ($r.Output -match 'existe en varios repos') $r.Output
+
+        Invoke-Wt -CmdArgs @('remove', 'ambiguo', '--delete-branch') -Cwd $repoDir | Out-Null
+    } finally {
+        if (Test-Path $repoAmbDir) {
+            git -C $repoAmbDir worktree prune 2>&1 | Out-Null
+            Remove-Item -Recurse -Force $repoAmbDir -ErrorAction SilentlyContinue
+        }
+        $repoAmbWorktrees = Join-Path $tempRoot 'MiRepoAmbiguo.worktrees'
+        if (Test-Path $repoAmbWorktrees) { Remove-Item -Recurse -Force $repoAmbWorktrees -ErrorAction SilentlyContinue }
+    }
+
     Write-Host '== validacion de argumentos del CLI ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('create', 'x', '--base') -Cwd $repoDir
     Assert-True '--base sin valor falla' ($r.ExitCode -ne 0)

@@ -69,3 +69,11 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   imprimir. Ahora es pura (devuelve `ShouldRelocate`) y el efecto queda en el
   llamador: `Open-WtWorktree` relocaliza cuando corresponde, `Invoke-WtPathCommand`
   nunca lo hace.
+- **M4**: `Find-WtRepoOwningWorktree` devolvia el primer repo por orden
+  alfabetico entre los que tenian un worktree homonimo, mientras que
+  `Resolve-WtRepoDir` fallaba y listaba las coincidencias para la misma clase
+  de ambiguedad — dos criterios distintos para el mismo problema, y el
+  usuario veia un exito silencioso con el repo equivocado. Nueva
+  `Find-WtReposOwningWorktree` devuelve **todas** las coincidencias;
+  `Resolve-WtRepoContext` falla y las lista (mismo tono que
+  `Resolve-WtRepoDir`) cuando hay mas de una.
