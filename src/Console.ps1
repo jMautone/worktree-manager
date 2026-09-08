@@ -382,12 +382,21 @@ function Test-WtConsoleInteractive {
 function Clear-WtConsoleScreen {
     <#
     .SYNOPSIS
-        Limpia la pantalla, solo en modo interactivo. 'Clear-Host' depende de un
-        buffer de consola real (RawUI): en un host sin consola (ISE vieja, algun
-        runner de CI) puede fallar, por eso el try/catch defensivo.
+        Limpia la pantalla, solo en modo interactivo.
+    .DESCRIPTION
+        'Clear-Host' en Windows PowerShell 5.1 no limpia con una secuencia ANSI:
+        manipula el buffer de consola Win32 (RawUI: tamaño, scroll, cursor). Windows
+        Terminal tolera eso, pero en terminales basados en PTY con su propio
+        renderer (Warp) puede desincronizar buffer real vs. pantalla visible y dejar
+        todo en negro. La secuencia ANSI CSI 2J + CSI H (clear + home) es lo que
+        cualquier terminal moderno espera y evita ese camino. Try/catch defensivo
+        por si el host no tiene stream de salida real (ISE vieja, algun runner de CI).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '',
+        Justification = 'Limpiar pantalla es cosmetico: si el host no tiene stream de salida real, seguir sin limpiar.')]
+    param()
     if (-not (Test-WtConsoleInteractive)) { return }
-    try { Clear-Host } catch { }
+    try { [Console]::Out.Write("$([char]27)[2J$([char]27)[H") } catch { }
 }
 
 function Wait-WtConsoleContinue {
