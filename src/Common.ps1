@@ -363,3 +363,65 @@ function ConvertTo-WtSafeFileName {
     if ($safe.Length -gt 60) { $safe = $safe.Substring(0, 60) }
     return $safe
 }
+
+# --- Descubrimiento de repo sin git (para Config, que no depende de Repo) ---------
+
+function Read-WtGitDirPointer {
+    <#
+    .SYNOPSIS
+        Resuelve el 'gitdir: <ruta>' de un archivo .git (worktree o submodulo) a una
+        ruta absoluta. '' si el archivo no existe, no matchea el formato o la ruta
+        resuelta no existe.
+    #>
+    param([Parameter(Mandatory)][string]$GitFilePath)
+    $firstLine = Get-Content -LiteralPath $GitFilePath -TotalCount 1 -ErrorAction SilentlyContinue
+    if ($firstLine -notmatch '^gitdir:\s*(.+)$') { return '' }
+    $gitDir = $Matches[1].Trim()
+    if (-not [IO.Path]::IsPathRooted($gitDir)) {
+        $gitDir = Join-Path (Split-Path -Parent $GitFilePath) $gitDir
+    }
+    $gitDir = ConvertTo-WtFullPath $gitDir
+    if (-not (Test-WtPathExists $gitDir)) { return '' }
+    return $gitDir
+}
+
+function Find-WtRepoConfigFile {
+    <#
+    .SYNOPSIS
+        Ruta al .wt.json de la raiz del repo principal, caminando directorios hacia
+        arriba desde $StartPath (o el actual) SIN invocar git. $null si no se
+        encuentra un repo (o un worktree suyo) en ningun nivel.
+    .DESCRIPTION
+        Existe para que Config no dependa de Repo (que si depende de git via
+        Find-WtMainRoot): en cada nivel, si '.git' es un directorio, esa es la raiz
+        principal. Si es un archivo -un worktree apunta a
+        '<raiz>\.git\worktrees\<nombre>'-, se sigue el puntero y se sube dos niveles
+        mas para llegar a la raiz principal, igual que 'git rev-parse
+        --git-common-dir' pero sin el subproceso. Cualquier otro formato de archivo
+        .git (ej. un submodulo) no esta soportado: se trata como si no hubiera repo
+        en ese nivel, nunca se adivina una raiz incorrecta.
+    #>
+    param([string]$StartPath)
+    $dir = $StartPath
+    if (-not $dir) { $dir = (Get-Location).Path }
+    while ($dir) {
+        $gitPath = Join-Path $dir '.git'
+        if (Test-Path -LiteralPath $gitPath -PathType Container) {
+            return (Join-Path $dir '.wt.json')
+        }
+        if (Test-Path -LiteralPath $gitPath -PathType Leaf) {
+            $gitDir = Read-WtGitDirPointer -GitFilePath $gitPath
+            if ($gitDir -and (Split-Path -Leaf (Split-Path -Parent $gitDir)) -ieq 'worktrees') {
+                $mainRoot = Split-Path -Parent (Split-Path -Parent (Split-Path -Parent $gitDir))
+                if ($mainRoot -and (Test-WtPathExists $mainRoot)) {
+                    return (Join-Path $mainRoot '.wt.json')
+                }
+            }
+            return $null
+        }
+        $parent = Split-Path -Parent $dir
+        if ($parent -eq $dir) { break }
+        $dir = $parent
+    }
+    return $null
+}

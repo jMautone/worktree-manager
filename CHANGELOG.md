@@ -162,3 +162,14 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   obsoletos" si no depuro nada. La salida verbosa de
   `git worktree prune -v` va a **stderr**, no a stdout (descubierto al
   implementar esto); sale de `StdErr`, no de `StdOut` (ver M1).
+- **B8**: `Get-WtConfig` llamaba a `Find-WtMainRoot` (de `Repo`, que invoca
+  git) para ubicar el `.wt.json` del repo, contradiciendo el diagrama de
+  dependencias del README y el orden de carga de `wt.psm1` (`Config`
+  supuestamente depende solo de `Common`). Nuevo `Find-WtRepoConfigFile` (en
+  `Common`, sin invocar git) resuelve lo mismo caminando el filesystem: sube
+  directorios buscando `.git`; si es un directorio, esa es la raíz
+  principal; si es un archivo (worktree), sigue el puntero `gitdir:` dos
+  niveles hasta la raíz principal — mismo resultado que
+  `git rev-parse --git-common-dir`, sin el subproceso. Un submódulo (u otro
+  formato de `.git`-archivo) no se soporta: se trata como si no hubiera
+  repo en ese nivel, nunca se adivina una raíz incorrecta.

@@ -366,6 +366,12 @@ hacer que `wt open` lance el binario que ese archivo elija.
   las claves contra los defaults para evitar typos. La config efectiva se cachea por
   directorio actual dentro de un mismo proceso, así un comando no dispara varias
   llamadas a git para releer lo mismo.
+- **`Config` depende solo de `Common`, de verdad**: ubicar el `.wt.json` del repo
+  actual usaba `Find-WtMainRoot` (de `Repo`, que invoca git), contradiciendo tanto el
+  diagrama de dependencias de arriba como el orden de carga del módulo.
+  `Find-WtRepoConfigFile` (en `Common`) resuelve lo mismo caminando el filesystem —
+  sube directorios buscando `.git`; si es un archivo (worktree), sigue el puntero
+  `gitdir:` hasta la raíz principal — sin invocar ningún subproceso.
 - **Costo de arranque**: el bloque del perfil importa el módulo **una sola vez** (al
   abrir la terminal) en vez de reimportarlo en cada invocación de `wt` — `wt.ps1`
   sigue reimportando en cada llamada, pero solo se usa para el modo `-File`.

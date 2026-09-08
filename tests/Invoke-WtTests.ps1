@@ -546,6 +546,36 @@ try {
         Remove-Item -LiteralPath $repoWtJsonPath -ErrorAction SilentlyContinue
     }
 
+    Write-Host '== .wt.json se resuelve desde dentro de un worktree real (B8) ==' -ForegroundColor Cyan
+    # Find-WtRepoConfigFile camina el filesystem sin invocar git: este caso prueba que,
+    # parado en un worktree real, encuentra el .wt.json de la raiz PRINCIPAL (no busca
+    # uno en el worktree, que no tiene .wt.json propio). WT_CONFIG_ONLY tiene que estar
+    # apagado para que .wt.json sea candidato; se usa un WT_CONFIG que NO define
+    # defaultBase (a diferencia del resto de la suite) para que el valor del .wt.json
+    # no quede tapado, sin perder el aislamiento del resto de las claves.
+    Invoke-Wt -CmdArgs @('create', 'b8-worktree', '--no-open') -Cwd $repoDir | Out-Null
+    $b8WorktreeDir = Join-Path $wtRoot 'b8-worktree'
+    ([pscustomobject]@{ defaultBase = 'origin/b8-test' } | ConvertTo-Json) | Set-Content -Path $repoWtJsonPath
+    $testConfigSinDefaultBase = [ordered]@{}
+    foreach ($k in $testConfig.Keys) {
+        if ($k -eq 'defaultBase') { continue }
+        $testConfigSinDefaultBase[$k] = $testConfig[$k]
+    }
+    $configSinDefaultBasePath = Join-Path $tempRoot 'config-sin-defaultbase.json'
+    ([pscustomobject]$testConfigSinDefaultBase | ConvertTo-Json) | Set-Content -Path $configSinDefaultBasePath
+    Remove-Item Env:\WT_CONFIG_ONLY -ErrorAction SilentlyContinue
+    $env:WT_CONFIG = $configSinDefaultBasePath
+    try {
+        $r = Invoke-Wt -CmdArgs @('config', 'get', 'defaultBase') -Cwd $b8WorktreeDir
+        Assert-True 'defaultBase del .wt.json de la raiz se ve desde el worktree' ($r.Output.Trim() -eq 'origin/b8-test') $r.Output
+    } finally {
+        $env:WT_CONFIG = $configPath
+        $env:WT_CONFIG_ONLY = '1'
+        Remove-Item -LiteralPath $repoWtJsonPath -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $configSinDefaultBasePath -ErrorAction SilentlyContinue
+    }
+    Invoke-Wt -CmdArgs @('remove', 'b8-worktree', '--delete-branch') -Cwd $repoDir | Out-Null
+
     Write-Host '== wt version ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('version') -Cwd $env:TEMP
     Assert-True 'version exit 0' ($r.ExitCode -eq 0) $r.Output

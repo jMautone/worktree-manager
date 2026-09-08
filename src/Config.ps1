@@ -1,6 +1,7 @@
 # ---------------------------------------------------------------------------
 # Config: defaults, merge por precedencia, lectura/escritura y comando 'config'.
-# Depende de: Common, Repo (solo para ubicar el .wt.json del repo actual).
+# Depende de: Common (Find-WtRepoConfigFile ubica el .wt.json del repo actual
+# caminando el filesystem, sin invocar git ni depender de Repo).
 # ---------------------------------------------------------------------------
 
 function Get-WtDefaultConfig {
@@ -237,8 +238,8 @@ function Get-WtConfig {
         puede terminar siendo el ejecutable que 'wt open' lanza.
     .PARAMETER RepoRoot
         Si el llamador ya resolvio la raiz del repo (ej. Find-WtMainRoot), pasarla
-        evita repetir el 'git rev-parse' que Get-WtConfig haria por su cuenta para
-        ubicar el .wt.json.
+        evita que Get-WtConfig la busque por su cuenta (Find-WtRepoConfigFile, que
+        camina el filesystem sin invocar git).
     #>
     param([switch]$Refresh, [string]$RepoRoot)
     $cwd = (Get-Location).Path
@@ -253,12 +254,13 @@ function Get-WtConfig {
         if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
     } else {
         $candidates = @(Get-WtGlobalConfigPath)
-        $repoRoot = $RepoRoot
-        if (-not $repoRoot) { $repoRoot = Find-WtMainRoot -Silent }
-        if ($repoRoot) {
-            $repoConfigPath = Join-Path $repoRoot '.wt.json'
-            $candidates += $repoConfigPath
+        if ($RepoRoot) {
+            $repoConfigPath = Join-Path $RepoRoot '.wt.json'
+        } else {
+            $repoConfigPath = Find-WtRepoConfigFile
+            if (-not $repoConfigPath) { $repoConfigPath = '' }
         }
+        if ($repoConfigPath) { $candidates += $repoConfigPath }
         if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
     }
 

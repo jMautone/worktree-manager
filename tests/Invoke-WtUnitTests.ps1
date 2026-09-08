@@ -264,6 +264,38 @@ try {
     Remove-Item -Recurse -Force $bomTabDir -ErrorAction SilentlyContinue
 }
 
+Write-Host '== Find-WtRepoConfigFile: ubica .wt.json sin invocar git (B8) ==' -ForegroundColor Cyan
+$b8Root = Join-Path $env:TEMP ("wt-b8-test-" + [guid]::NewGuid().ToString('N'))
+try {
+    $mainRepo = Join-Path $b8Root 'repo'
+    $subDir = Join-Path $mainRepo 'sub\dir'
+    New-Item -ItemType Directory -Path $mainRepo\.git -Force | Out-Null
+    New-Item -ItemType Directory -Path $subDir -Force | Out-Null
+    $found = Find-WtRepoConfigFile -StartPath $subDir
+    Assert-True 'desde un subdirectorio del repo, encuentra la raiz principal' ($found -eq (Join-Path $mainRepo '.wt.json')) $found
+
+    # Worktree: <mainRepo>\.git\worktrees\<nombre> existe, y el .git del worktree es
+    # un archivo 'gitdir: <esa ruta>' -exactamente el formato que usa git.
+    $worktreeGitDir = Join-Path $mainRepo '.git\worktrees\feature-a'
+    New-Item -ItemType Directory -Path $worktreeGitDir -Force | Out-Null
+    $worktreeDir = Join-Path $b8Root 'repo.worktrees\feature-a'
+    New-Item -ItemType Directory -Path $worktreeDir -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $worktreeDir '.git') -Value "gitdir: $worktreeGitDir"
+    $foundFromWorktree = Find-WtRepoConfigFile -StartPath $worktreeDir
+    Assert-True 'desde un worktree, encuentra el .wt.json de la raiz PRINCIPAL (no la del worktree)' `
+        ($foundFromWorktree -eq (Join-Path $mainRepo '.wt.json')) $foundFromWorktree
+
+    $outsideAnyRepo = Join-Path $b8Root 'sin-repo'
+    New-Item -ItemType Directory -Path $outsideAnyRepo -Force | Out-Null
+    Assert-True 'fuera de cualquier repo devuelve null' ($null -eq (Find-WtRepoConfigFile -StartPath $outsideAnyRepo))
+
+    $bogusGitFile = Join-Path $b8Root 'bogus.git'
+    Set-Content -LiteralPath $bogusGitFile -Value 'no es un puntero gitdir'
+    Assert-True 'Read-WtGitDirPointer con formato invalido devuelve vacio' ((Read-WtGitDirPointer -GitFilePath $bogusGitFile) -eq '')
+} finally {
+    Remove-Item -Recurse -Force $b8Root -ErrorAction SilentlyContinue
+}
+
 Write-Host '== Get-WtAgentCommands: agentShell y agentCommand (M8) ==' -ForegroundColor Cyan
 $cfgNoneAgent = [pscustomobject]@{ agentShell = 'none'; agentCommand = 'copilot' }
 $cmdsNone = @(Get-WtAgentCommands -Config $cfgNoneAgent)
