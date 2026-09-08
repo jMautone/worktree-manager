@@ -173,3 +173,10 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   `git rev-parse --git-common-dir`, sin el subproceso. Un submódulo (u otro
   formato de `.git`-archivo) no se soporta: se trata como si no hubiera
   repo en ese nivel, nunca se adivina una raíz incorrecta.
+- **B9**: `New-WtWorktree` terminaba con `return $path`, y ni el dispatcher
+  del CLI ni la consola lo silenciaban: la ruta desnuda del worktree salia
+  por stdout ademas de los mensajes de progreso. La funcion sigue
+  devolviendo la ruta (documentado en `.OUTPUTS`, util para quien la llame
+  directamente como funcion del modulo); sus dos llamadores (`Invoke-
+  WtDispatch` y `Invoke-WtConsoleCreate`) mandan el retorno a `Out-Null`, asi
+  stdout queda reservado a `wt path` y `--json`.

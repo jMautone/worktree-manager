@@ -146,6 +146,9 @@ try {
     Assert-True 'directorio creado' (Test-Path (Join-Path $wtRoot 'feature-a'))
     git -C $repoDir show-ref --verify --quiet refs/heads/feature-a
     Assert-True 'rama feature-a creada' ($LASTEXITCODE -eq 0)
+    $featureAPath = Join-Path $wtRoot 'feature-a'
+    Assert-True 'create --no-open no contamina stdout con la ruta desnuda (B9)' `
+        ($r.Output -notmatch "(?m)^\s*$([regex]::Escape($featureAPath))\s*`$") $r.Output
 
     Write-Host '== wt create --base develop ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('create', 'feature-b', '--base', 'develop', '--no-open') -Cwd $repoDir

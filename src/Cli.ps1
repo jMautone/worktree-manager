@@ -259,7 +259,8 @@ function Invoke-WtDispatch {
                 -Terminal:(Test-WtFlag -Parsed $parsed -Key 'terminal') `
                 -Agent:(Test-WtFlag -Parsed $parsed -Key 'agent') `
                 -All:(Test-WtFlag -Parsed $parsed -Key 'all') `
-                -NoOpen:(Test-WtFlag -Parsed $parsed -Key 'no-open')
+                -NoOpen:(Test-WtFlag -Parsed $parsed -Key 'no-open') `
+            | Out-Null
             Clear-WtWorktreesCache
         }
         'list' {

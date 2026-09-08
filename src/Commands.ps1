@@ -39,6 +39,12 @@ function Get-WtCreateOpenPlan {
 }
 
 function New-WtWorktree {
+    <#
+    .OUTPUTS
+        La ruta del worktree creado (string). Util para consumidores del modulo que
+        llaman a la funcion directamente; el CLI y la consola mandan el retorno a
+        Out-Null a proposito, para que stdout quede reservado a 'wt path' y '--json'.
+    #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification = 'Comando principal del CLI: pedir confirmacion en cada create rompe el flujo. No es un cmdlet generico.')]
     param(

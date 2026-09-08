@@ -107,7 +107,7 @@ function Invoke-WtConsoleCreate {
     $cli = "wt create $name"
     if ($base) { $cli += " --base $base" }
     Write-WtConsoleCommand $cli
-    New-WtWorktree -Name $name -Base $base
+    New-WtWorktree -Name $name -Base $base | Out-Null
 }
 
 function Invoke-WtConsoleOpen {
