@@ -2,8 +2,10 @@
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Este archivo se actualiza por fase/item, siguiendo la ejecucion de
-[PLAN-CORRECCIONES.md](PLAN-CORRECCIONES.md) y, despues, de
-[PLAN-MEJORAS.md](PLAN-MEJORAS.md).
+[PLAN-CORRECCIONES.md](docs/historial/PLAN-CORRECCIONES.md) y, despues, de
+[PLAN-MEJORAS.md](docs/historial/PLAN-MEJORAS.md). El detalle de la auditoria
+original y su estado de cierre vive en
+[docs/historial/](docs/historial/).
 
 ## [Unreleased]
 
@@ -129,6 +131,24 @@ Este archivo se actualiza por fase/item, siguiendo la ejecucion de
   corre `wt status` del repo actual (sin prompts, es una consulta) e `y` corre `wt
   sync` con una base opcional. Renumeradas las opciones de worktrees (`1`-`9`) para
   hacer lugar a "solo agente"/"solo terminal".
+
+### Plan de mejoras — item 9: consola con todos los comandos y presentacion visual
+
+- **Consola completa**: `wt console` cubria un subconjunto del CLI. Nuevas entradas
+  de menu: `l`/`u` bloquean o desbloquean un worktree (`wt lock`/`wt unlock`, con
+  motivo opcional), `x` corre un comando en un worktree elegido (`wt exec`), `e` lo
+  corre en todos (`wt each`, con `--continue-on-error` opcional), `k` depura tab
+  configs de Warp huerfanos (`wt clean`) y `v` muestra la version (`wt version`).
+  Mismo patron que el resto del menu: arman el comando CLI equivalente, lo muestran y
+  llaman a la misma funcion que usa el CLI, sin logica nueva.
+- **Presentacion**: banner de encabezado, una linea de contexto que se redibuja en
+  cada vuelta del loop (repo actual, cantidad de worktrees, cuantos bloqueados, rama
+  activa) y el menu agrupado en tres secciones con color (Worktrees / Ejecutar y
+  sincronizar / Workspace) en vez de una lista plana. `Get-WtConsoleMenu` suma un
+  campo `Group` a la tabla existente; `Show-WtConsoleMenu` la particiona por seccion.
+  Bordes con box-drawing (`┌─┐`, `│`, `─`), que son parte de la pagina de codigos OEM
+  clasica de Windows ademas de Unicode, asi que se ven bien tanto en la consola
+  heredada como en Windows Terminal.
 
 ### Fase 0 — Red de contencion
 

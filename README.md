@@ -336,21 +336,30 @@ informativo.
 
 ## Consola interactiva
 
-`wt console` abre un menú en loop: lista los worktrees numerados para elegir sin
-escribir nombres, pide solo los datos mínimos (nombre, base, confirmaciones) y arma el
-comando CLI equivalente, que **muestra antes de ejecutarlo** para ir aprendiendo el
-CLI. Sale con `q`. No duplica lógica: es un wrapper fino sobre las mismas
-funciones del módulo, por lo que respeta la misma configuración y protecciones.
+`wt console` abre un menú en loop con un encabezado y secciones con color (banner,
+línea de contexto del repo actual — nombre, cantidad de worktrees, cuántos están
+bloqueados y la rama activa — y el menú agrupado en **Worktrees** / **Ejecutar y
+sincronizar** / **Workspace**). Cubre **todos** los comandos del CLI, no solo un
+subconjunto: lista los worktrees numerados para elegir sin escribir nombres, pide solo
+los datos mínimos (nombre, base, confirmaciones) y arma el comando CLI equivalente, que
+**muestra antes de ejecutarlo** para ir aprendiendo el CLI. Sale con `q`. No duplica
+lógica: es un wrapper fino sobre las mismas funciones del módulo, por lo que respeta la
+misma configuración y protecciones.
 
-Las opciones de worktrees (`1`–`9`, más `s` y `y`) solo aparecen si estás dentro de un
-repo: listar, crear, abrir (editor · solo agente · solo terminal · editor + agente,
-las cuatro combinaciones que expone el CLI), ver la ruta, eliminar, prune, `s` corre
-`wt status` del repo y `y` corre `wt sync`. Las de workspace siempre están: `r` lista
-los repos, `g` te deja elegir **un repo o un worktree de cualquiera de ellos** (B12) y
-hace `cd` ahí (si elegís un worktree, las opciones de worktrees se habilitan para el
-repo que lo contiene), `c` abre el submenú de configuración (ver / cambiar valores /
-abrir el archivo) y `d` corre el doctor. Antes de ejecutar cualquier acción se muestra
-el comando CLI equivalente (`Write-WtConsoleCommand`).
+Las opciones de **Worktrees** (`1`–`9`, más `l`/`u`) y **Ejecutar y sincronizar**
+(`s`/`y`/`x`/`e`) solo aparecen si estás dentro de un repo: listar, crear, abrir
+(editor · solo agente · solo terminal · editor + agente, las cuatro combinaciones que
+expone el CLI), ver la ruta, eliminar, prune, `l`/`u` bloquean o desbloquean un
+worktree (`wt lock`/`wt unlock`, con motivo opcional), `s` corre `wt status` del repo,
+`y` corre `wt sync`, `x` corre un comando en un worktree elegido (`wt exec`) y `e` lo
+corre en todos (`wt each`, con `--continue-on-error` opcional). Las de **Workspace**
+siempre están: `r` lista los repos, `g` te deja elegir **un repo o un worktree de
+cualquiera de ellos** (B12) y hace `cd` ahí (si elegís un worktree, las opciones de
+worktrees se habilitan para el repo que lo contiene), `c` abre el submenú de
+configuración (ver / cambiar valores / abrir el archivo), `k` depura tab configs de
+Warp huérfanos (`wt clean`), `d` corre el doctor y `v` muestra la versión. Antes de
+ejecutar cualquier acción se muestra el comando CLI equivalente
+(`Write-WtConsoleCommand`).
 
 ## Configuración
 
@@ -591,6 +600,17 @@ global del usuario o en `WT_CONFIG`.
   `Invoke-WtConsoleOpen` cubre las cuatro combinaciones. El menú suma `s` (`wt
   status` del repo) e `y` (`wt sync`, con una base opcional) — el wrapper cubre la
   superficie que envuelve.
+- **Consola con todos los comandos y presentación cuidada**: el menú cubría un
+  subconjunto del CLI (faltaban `lock`/`unlock`/`exec`/`each`/`clean`/`version`); ahora
+  `Get-WtConsoleMenu` los suma como filas de datos más (misma tabla, sin lógica nueva) y
+  `Show-WtConsoleMenu` las agrupa en tres secciones con color (Worktrees · Ejecutar y
+  sincronizar · Workspace) en vez de una lista plana. El banner y los bordes de sección
+  usan box-drawing (`┌─┐`, `│`, `─`) en vez de ASCII: son parte de la página de códigos
+  OEM clásica de Windows además de Unicode, así que se ven bien tanto en la consola
+  heredada como en Windows Terminal — el mismo criterio ya usado para el punto medio de
+  `wt version`. `Write-WtConsoleContext` se redibuja en cada vuelta del loop (repo
+  actual, cantidad de worktrees, cuántos bloqueados, rama activa) sin costo extra
+  relevante: son los mismos `git` que ya corrían las acciones del menú.
 - **Consola interactiva como wrapper**: `wt console` compone los mismos comandos del
   CLI en vez de duplicar lógica. Lee con `[Console]::In.ReadLine()`, así funciona igual
   en uso interactivo y con stdin pipeado (lo que la hace testeable E2E), y ante EOF
@@ -647,6 +667,8 @@ worktree-manager/
 ├── CHANGELOG.md                 # Historial por fase (Keep a Changelog)
 ├── LICENSE
 ├── .github/workflows/ci.yml     # CI: suites + PSScriptAnalyzer en PS 5.1 y 7
+├── docs/
+│   └── historial/               # Auditoría original y planes ya cerrados (referencia)
 ├── src/
 │   ├── Common.ps1               # Procesos externos, rutas, validación, presentación
 │   ├── Config.ps1               # Defaults, precedencia, get/set y comando 'config'

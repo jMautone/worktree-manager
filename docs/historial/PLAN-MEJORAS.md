@@ -34,7 +34,7 @@ Quedan por construir, entonces: **hooks de creación, `wt status`, autocompletad
    - un validador en la tabla de **M5**;
    - una decisión explícita en la lista blanca de **A1**. El default es **no** admitirla en el `.wt.json` del repo. Solo entra si no puede derivar en ejecución de código ni en escritura fuera del worktree — y eso hay que argumentarlo en el comentario de la función.
 3. **Decisión pura, efecto en `Commands`.** Cada comando nuevo aporta al menos una función pura testeable sin git ni disco. Es el patrón que ya tienen `Get-WtOpenPlan`, `ConvertFrom-WtWorktreePorcelain` y `ConvertFrom-WtArgs`.
-4. **Superficie del CLI:** todo comando nuevo se declara en `Get-WtCommandSpecs` ([src/Cli.ps1:9-23](src/Cli.ps1#L9-L23)) — es la única fuente de verdad del parser, de la validación de flags y (tras el ítem 3) del autocompletado.
+4. **Superficie del CLI:** todo comando nuevo se declara en `Get-WtCommandSpecs` ([src/Cli.ps1:9-23](../../src/Cli.ps1#L9-L23)) — es la única fuente de verdad del parser, de la validación de flags y (tras el ítem 3) del autocompletado.
 5. **Cada ítem cierra con:** pruebas unitarias de su parte pura, al menos una E2E del camino feliz y una del error esperado, entrada en `Show-WtHelp`, sección en el README, entrada en `CHANGELOG.md` y bump de `ModuleVersion` en `wt.psd1`.
 6. **Las dos suites en verde antes de commitear** (ver reglas de PLAN-CORRECCIONES.md).
 
@@ -129,7 +129,7 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 **Estado: implementado.** `Get-WtWindowsTerminalArgs` / `Open-WtAgentInWindowsTerminal`
 en `src/Launch.ps1`; `Open-WtAgent` despacha por `Config.terminal`. Ver `CHANGELOG.md`.
 
-**Por qué.** `terminal = 'wt'` hoy abre una terminal pero nunca un agente: `Open-WtAgent` exige Warp ([src/Commands.ps1:251-254](src/Commands.ps1#L251-L254)). Elimina la dependencia dura de un terminal propietario.
+**Por qué.** `terminal = 'wt'` hoy abre una terminal pero nunca un agente: `Open-WtAgent` exige Warp ([src/Commands.ps1:251-254](../../src/Commands.ps1#L251-L254)). Elimina la dependencia dura de un terminal propietario.
 
 **Contrato.**
 
@@ -215,7 +215,7 @@ en `src/Launch.ps1`; `Open-WtAgent` despacha por `Config.terminal`. Ver `CHANGEL
 
 - `wt exec <nombre> -- <comando...>` — corre el comando en ese worktree.
 - `wt each [--continue-on-error] [--json] -- <comando...>` — lo corre en **todos** los worktrees del repo actual, en serie (paralelo queda fuera de alcance: complica la salida y el orden).
-- El separador `--` es obligatorio y todo lo que le sigue es el comando, sin interpretación de flags por parte de `wt`. **Esto exige tocar `ConvertFrom-WtArgs`** ([src/Cli.ps1:40-89](src/Cli.ps1#L40-L89)): al encontrar `--` suelto, el resto va crudo a `result.Rest`. Es la única función pura del parser: agregar sus unitarias.
+- El separador `--` es obligatorio y todo lo que le sigue es el comando, sin interpretación de flags por parte de `wt`. **Esto exige tocar `ConvertFrom-WtArgs`** ([src/Cli.ps1:40-89](../../src/Cli.ps1#L40-L89)): al encontrar `--` suelto, el resto va crudo a `result.Rest`. Es la única función pura del parser: agregar sus unitarias.
 - Salida por worktree: encabezado con el nombre (`Write-WtInfo`), la salida del comando tal cual, y el exit code si es ≠ 0.
 - `each` sin `--continue-on-error` **corta en el primer fallo**; con el flag sigue y al final resume qué worktrees fallaron.
 - Exit code (B6): 0 si todos salieron 0; 2 si alguno falló.
@@ -262,7 +262,7 @@ en `src/Launch.ps1`; `Open-WtAgent` despacha por `Config.terminal`. Ver `CHANGEL
 nuevas `Invoke-WtConsoleStatus`/`Invoke-WtConsoleSync` y entradas de menu `s`/`y` en
 `src/Console.ps1`. Ver `CHANGELOG.md`.
 
-**Por qué.** El menú ofrece «editor» y «editor + agente», pero no «solo agente» ni «terminal», que sí existen en el CLI ([src/Console.ps1:225-235](src/Console.ps1#L225-L235)). El wrapper tiene que cubrir la superficie que envuelve.
+**Por qué.** El menú ofrece «editor» y «editor + agente», pero no «solo agente» ni «terminal», que sí existen en el CLI ([src/Console.ps1:225-235](../../src/Console.ps1#L225-L235)). El wrapper tiene que cubrir la superficie que envuelve.
 
 **Contrato.** El menú expone, para el worktree elegido: editor · agente · terminal · editor + agente. Y suma las capacidades nuevas: `status` del repo, `sync`, e ir a un worktree (B12 ya extendió `cd`; acá se refleja en el menú). Se mantiene la regla que la consola ya cumple: **antes de ejecutar se muestra el comando CLI equivalente** (`Write-WtConsoleCommand`), que es lo que la hace didáctica.
 

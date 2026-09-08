@@ -74,13 +74,17 @@ function Select-WtConsoleWorktree {
     Write-WtInfo $Title
     for ($i = 0; $i -lt $worktrees.Count; $i++) {
         $wt = $worktrees[$i]
+        $tagColor = 'Gray'
         $tag = ''
-        if ($wt.IsMain) { $tag = ' (principal)' }
-        if ($wt.IsLocked) { $tag = ' (bloqueado)' }
-        if ($wt.IsPrunable) { $tag = ' (obsoleto)' }
+        if ($wt.IsMain) { $tag = ' (principal)'; $tagColor = 'Cyan' }
+        if ($wt.IsLocked) { $tag = ' (bloqueado)'; $tagColor = 'Yellow' }
+        if ($wt.IsPrunable) { $tag = ' (obsoleto)'; $tagColor = 'DarkGray' }
         $branch = $wt.Branch
         if (-not $branch) { $branch = '(detached)' }
-        Write-WtLine ("  {0}) {1}{2} [{3}]" -f ($i + 1), (Split-Path -Leaf $wt.Path), $tag, $branch)
+        Write-Host ("  {0}) " -f ($i + 1)) -ForegroundColor Yellow -NoNewline
+        Write-Host (Split-Path -Leaf $wt.Path) -NoNewline
+        if ($tag) { Write-Host $tag -ForegroundColor $tagColor -NoNewline }
+        Write-Host (" [{0}]" -f $branch) -ForegroundColor DarkGray
     }
     $index = Select-WtConsoleIndex -Count $worktrees.Count
     if ($null -eq $index) { return $null }
@@ -161,6 +165,77 @@ function Invoke-WtConsoleRemove {
     Remove-WtWorktree -Name $name -DeleteBranch:$deleteBranch -Force:$force
 }
 
+function Invoke-WtConsoleLock {
+    <#
+    .SYNOPSIS
+        Bloquea un worktree elegido ('git worktree lock'), con motivo opcional.
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $wt = Select-WtConsoleWorktree -RepoRoot $RepoRoot -Title 'Elegi el worktree a bloquear:' -ExcludeMain
+    if (-not $wt) { return }
+    $name = Split-Path -Leaf $wt.Path
+    $reason = Read-WtConsoleLine -Prompt 'Motivo (opcional): '
+    if ($null -eq $reason) { return }
+    $reason = $reason.Trim()
+    $cli = "wt lock $name"
+    if ($reason) { $cli += " --reason `"$reason`"" }
+    Write-WtConsoleCommand $cli
+    Invoke-WtLock -Name $name -Reason $reason
+}
+
+function Invoke-WtConsoleUnlock {
+    <#
+    .SYNOPSIS
+        Desbloquea un worktree elegido ('git worktree unlock').
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $wt = Select-WtConsoleWorktree -RepoRoot $RepoRoot -Title 'Elegi el worktree a desbloquear:' -ExcludeMain
+    if (-not $wt) { return }
+    $name = Split-Path -Leaf $wt.Path
+    Write-WtConsoleCommand "wt unlock $name"
+    Invoke-WtUnlock -Name $name
+}
+
+function Invoke-WtConsoleExec {
+    <#
+    .SYNOPSIS
+        Corre un comando arbitrario en un worktree elegido ('wt exec').
+    #>
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $wt = Select-WtConsoleWorktree -RepoRoot $RepoRoot -Title 'Elegi el worktree donde ejecutar:'
+    if (-not $wt) { return }
+    $name = Split-Path -Leaf $wt.Path
+    $command = Read-WtConsoleLine -Prompt 'Comando a ejecutar: '
+    if ($null -eq $command -or -not $command.Trim()) { Write-WtDetail 'Cancelado.'; return }
+    $command = $command.Trim()
+    $cli = "wt exec $name -- $command"
+    $confirm = Read-WtYesNo -Prompt "Ejecutar '$cli'?" -Default $true
+    if ($null -eq $confirm) { return }
+    if (-not $confirm) { Write-WtDetail 'Cancelado.'; return }
+    Write-WtConsoleCommand $cli
+    Invoke-WtExec -Name $name -CommandArgs @($command)
+}
+
+function Invoke-WtConsoleEach {
+    <#
+    .SYNOPSIS
+        Corre un comando arbitrario en todos los worktrees del repo ('wt each').
+    #>
+    $command = Read-WtConsoleLine -Prompt 'Comando a ejecutar en todos los worktrees: '
+    if ($null -eq $command -or -not $command.Trim()) { Write-WtDetail 'Cancelado.'; return }
+    $command = $command.Trim()
+    $continueOnError = Read-WtYesNo -Prompt 'Seguir con los demas si alguno falla?'
+    if ($null -eq $continueOnError) { return }
+    $cli = 'wt each'
+    if ($continueOnError) { $cli += ' --continue-on-error' }
+    $cli += " -- $command"
+    $confirm = Read-WtYesNo -Prompt "Ejecutar '$cli'?" -Default $true
+    if ($null -eq $confirm) { return }
+    if (-not $confirm) { Write-WtDetail 'Cancelado.'; return }
+    Write-WtConsoleCommand $cli
+    Invoke-WtEach -CommandArgs @($command) -ContinueOnError:$continueOnError
+}
+
 function Invoke-WtConsoleStatus {
     <#
     .SYNOPSIS
@@ -185,6 +260,21 @@ function Invoke-WtConsoleSync {
     if (-not $confirm) { Write-WtDetail 'Cancelado.'; return }
     Write-WtConsoleCommand $cli
     Invoke-WtSync -Base $base
+}
+
+function Invoke-WtConsoleClean {
+    <#
+    .SYNOPSIS
+        'wt clean' (item de Workspace): depura tab configs de Warp huerfanos.
+        No necesita estar dentro de un repo.
+    #>
+    Write-WtConsoleCommand 'wt clean'
+    Invoke-WtClean
+}
+
+function Invoke-WtConsoleVersion {
+    Write-WtConsoleCommand 'wt version'
+    Invoke-WtVersion
 }
 
 function Invoke-WtConsoleGoToRepo {
@@ -271,58 +361,151 @@ function Invoke-WtConsoleConfigSet {
     return $true
 }
 
+# --- Presentacion -------------------------------------------------------------
+
+function Write-WtConsoleBoxLine {
+    <#
+    .SYNOPSIS
+        Una linea de un recuadro (borde + contenido + borde), centrada o alineada
+        a la izquierda. Usa box-drawing (cp437-safe: se ve bien tanto en consolas
+        UTF-8 como en el codepage OEM clasico de Windows).
+    #>
+    param(
+        [AllowEmptyString()][string]$Text = '',
+        [Parameter(Mandatory)][int]$Width,
+        [string]$BorderColor = 'DarkCyan',
+        [string]$TextColor = 'Gray',
+        [switch]$Center
+    )
+    $vert = [char]0x2502
+    if ($Text.Length -gt $Width) { $Text = $Text.Substring(0, $Width) }
+    if ($Center) {
+        $padTotal = $Width - $Text.Length
+        $padLeft = [int]($padTotal / 2)
+        $padRight = $padTotal - $padLeft
+        $content = (' ' * $padLeft) + $Text + (' ' * $padRight)
+    } else {
+        $content = $Text.PadRight($Width)
+    }
+    Write-Host $vert -ForegroundColor $BorderColor -NoNewline
+    Write-Host $content -ForegroundColor $TextColor -NoNewline
+    Write-Host $vert -ForegroundColor $BorderColor
+}
+
+function Write-WtConsoleBanner {
+    <#
+    .SYNOPSIS
+        Encabezado de la consola. Se imprime una sola vez, al arrancar.
+    #>
+    $width = 50
+    $horiz = [string]([char]0x2500) * $width
+    $topLeft = [char]0x250C; $topRight = [char]0x2510
+    $botLeft = [char]0x2514; $botRight = [char]0x2518
+    Write-Host ''
+    Write-Host ($topLeft + $horiz + $topRight) -ForegroundColor DarkCyan
+    Write-WtConsoleBoxLine -Text 'WORKTREE MANAGER' -Width $width -BorderColor DarkCyan -TextColor Cyan -Center
+    Write-WtConsoleBoxLine -Text 'consola interactiva' -Width $width -BorderColor DarkCyan -TextColor DarkGray -Center
+    Write-Host ($botLeft + $horiz + $botRight) -ForegroundColor DarkCyan
+}
+
+function Write-WtConsoleSectionTitle {
+    param([Parameter(Mandatory)][string]$Title, [string]$Color = 'Cyan')
+    $dash = [string]([char]0x2500)
+    $filler = $dash * [Math]::Max(3, (40 - $Title.Length))
+    Write-Host ''
+    Write-Host ("$dash$dash $Title $filler") -ForegroundColor $Color
+}
+
+function Write-WtConsoleContext {
+    <#
+    .SYNOPSIS
+        Linea de estado que se redibuja en cada vuelta del loop: repo actual,
+        cantidad de worktrees, cuantos estan bloqueados y la rama del checkout
+        en el que esta parada la terminal (si aplica).
+    #>
+    param([AllowEmptyString()][string]$RepoRoot)
+    Write-Host ''
+    if (-not $RepoRoot) {
+        Write-WtNotice 'No estas dentro de un repo: las opciones de worktrees se habilitan al entrar a uno (g).'
+        return
+    }
+    $worktrees = @(Get-WtWorktrees -RepoRoot $RepoRoot | Where-Object { -not $_.IsPrunable })
+    $locked = @($worktrees | Where-Object { $_.IsLocked })
+    $branch = ''
+    $current = Get-WtCurrentRoot
+    if ($current) { $branch = Get-WtBranchAt -Path $current }
+    $summary = "{0} worktree(s)" -f $worktrees.Count
+    if ($locked.Count -gt 0) { $summary += (", {0} bloqueado(s)" -f $locked.Count) }
+    if ($branch) { $summary += (", rama actual: {0}" -f $branch) }
+    Write-Host ("  {0}" -f (Split-Path -Leaf $RepoRoot)) -ForegroundColor White -NoNewline
+    Write-Host ("  -  {0}" -f $summary) -ForegroundColor DarkGray
+    Write-WtDetail ("  {0}" -f $RepoRoot)
+}
+
 # --- Menu principal ---------------------------------------------------------
 
 function Get-WtConsoleMenu {
     <#
     .SYNOPSIS
         Menu como datos: agregar una opcion es agregar una fila.
-        RequiresRepo marca las que solo tienen sentido dentro de un repositorio.
+        RequiresRepo marca las que solo tienen sentido dentro de un repositorio;
+        Group define en que seccion visual cae (item: consola completa y prolija).
     #>
     return @(
-        [pscustomobject]@{ Key = '1'; Label = 'Listar worktrees';                       RequiresRepo = $true;  Action = { Get-WtWorktreeList } }
-        [pscustomobject]@{ Key = '2'; Label = 'Crear worktree';                         RequiresRepo = $true;  Action = { Invoke-WtConsoleCreate } }
-        [pscustomobject]@{ Key = '3'; Label = 'Abrir worktree (editor)';                RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot } }
-        [pscustomobject]@{ Key = '4'; Label = 'Abrir worktree completo (editor + agente)'; RequiresRepo = $true; Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -All } }
-        [pscustomobject]@{ Key = '5'; Label = 'Abrir worktree (solo agente)';           RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -Agent } }
-        [pscustomobject]@{ Key = '6'; Label = 'Abrir worktree (solo terminal)';         RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -Terminal } }
-        [pscustomobject]@{ Key = '7'; Label = 'Ver la ruta de un worktree';             RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsolePath -RepoRoot $repoRoot } }
-        [pscustomobject]@{ Key = '8'; Label = 'Eliminar un worktree';                   RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleRemove -RepoRoot $repoRoot } }
-        [pscustomobject]@{ Key = '9'; Label = 'Prune (depurar metadatos huerfanos)';    RequiresRepo = $true;  Action = { Invoke-WtPrune } }
-        [pscustomobject]@{ Key = 's'; Label = 'Status del repo (wt status)';            RequiresRepo = $true;  Action = { Invoke-WtConsoleStatus } }
-        [pscustomobject]@{ Key = 'y'; Label = 'Sincronizar (wt sync)';                  RequiresRepo = $true;  Action = { Invoke-WtConsoleSync } }
-        [pscustomobject]@{ Key = 'r'; Label = 'Listar repos del root';                  RequiresRepo = $false; Action = { Get-WtRepoList } }
-        [pscustomobject]@{ Key = 'g'; Label = 'Ir a un repo o worktree (cd)';           RequiresRepo = $false; Action = { Invoke-WtConsoleGoToRepo } }
-        [pscustomobject]@{ Key = 'c'; Label = 'Configuracion';                          RequiresRepo = $false; Action = { Invoke-WtConsoleConfig } }
-        [pscustomobject]@{ Key = 'd'; Label = 'Doctor (chequeo del setup)';             RequiresRepo = $false; Action = { Invoke-WtDoctor } }
-        [pscustomobject]@{ Key = 'h'; Label = 'Ayuda del CLI';                          RequiresRepo = $false; Action = { Show-WtHelp } }
+        [pscustomobject]@{ Key = '1'; Label = 'Listar worktrees';                          Group = 'Worktrees';              RequiresRepo = $true;  Action = { Get-WtWorktreeList } }
+        [pscustomobject]@{ Key = '2'; Label = 'Crear worktree';                            Group = 'Worktrees';              RequiresRepo = $true;  Action = { Invoke-WtConsoleCreate } }
+        [pscustomobject]@{ Key = '3'; Label = 'Abrir worktree (editor)';                   Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = '4'; Label = 'Abrir worktree completo (editor + agente)'; Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -All } }
+        [pscustomobject]@{ Key = '5'; Label = 'Abrir worktree (solo agente)';              Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -Agent } }
+        [pscustomobject]@{ Key = '6'; Label = 'Abrir worktree (solo terminal)';            Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -Terminal } }
+        [pscustomobject]@{ Key = '7'; Label = 'Ver la ruta de un worktree';                Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsolePath -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = '8'; Label = 'Eliminar un worktree';                      Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleRemove -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = '9'; Label = 'Prune (depurar metadatos huerfanos)';       Group = 'Worktrees';              RequiresRepo = $true;  Action = { Invoke-WtPrune } }
+        [pscustomobject]@{ Key = 'l'; Label = 'Bloquear un worktree (lock)';               Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleLock -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = 'u'; Label = 'Desbloquear un worktree (unlock)';          Group = 'Worktrees';              RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleUnlock -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = 's'; Label = 'Status del repo (wt status)';               Group = 'Ejecutar y sincronizar'; RequiresRepo = $true;  Action = { Invoke-WtConsoleStatus } }
+        [pscustomobject]@{ Key = 'y'; Label = 'Sincronizar (wt sync)';                     Group = 'Ejecutar y sincronizar'; RequiresRepo = $true;  Action = { Invoke-WtConsoleSync } }
+        [pscustomobject]@{ Key = 'x'; Label = 'Ejecutar un comando en un worktree (exec)'; Group = 'Ejecutar y sincronizar'; RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleExec -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = 'e'; Label = 'Ejecutar un comando en todos (each)';       Group = 'Ejecutar y sincronizar'; RequiresRepo = $true;  Action = { Invoke-WtConsoleEach } }
+        [pscustomobject]@{ Key = 'r'; Label = 'Listar repos del root';                     Group = 'Workspace';              RequiresRepo = $false; Action = { Get-WtRepoList } }
+        [pscustomobject]@{ Key = 'g'; Label = 'Ir a un repo o worktree (cd)';              Group = 'Workspace';              RequiresRepo = $false; Action = { Invoke-WtConsoleGoToRepo } }
+        [pscustomobject]@{ Key = 'c'; Label = 'Configuracion';                             Group = 'Workspace';              RequiresRepo = $false; Action = { Invoke-WtConsoleConfig } }
+        [pscustomobject]@{ Key = 'k'; Label = 'Limpiar tab configs huerfanos (clean)';     Group = 'Workspace';              RequiresRepo = $false; Action = { Invoke-WtConsoleClean } }
+        [pscustomobject]@{ Key = 'd'; Label = 'Doctor (chequeo del setup)';                Group = 'Workspace';              RequiresRepo = $false; Action = { Invoke-WtDoctor } }
+        [pscustomobject]@{ Key = 'v'; Label = 'Version';                                   Group = 'Workspace';              RequiresRepo = $false; Action = { Invoke-WtConsoleVersion } }
+        [pscustomobject]@{ Key = 'h'; Label = 'Ayuda del CLI';                             Group = 'Workspace';              RequiresRepo = $false; Action = { Show-WtHelp } }
     )
 }
 
 function Show-WtConsoleMenu {
     param([AllowEmptyString()][string]$RepoRoot, [Parameter(Mandatory)][object[]]$Menu)
-    Write-WtLine ''
-    if ($RepoRoot) {
-        Write-WtDetail ("Repositorio actual: {0}" -f $RepoRoot)
-        Write-WtInfo 'Worktrees:'
-        foreach ($item in ($Menu | Where-Object { $_.RequiresRepo })) {
-            Write-WtLine ("  {0}) {1}" -f $item.Key, $item.Label)
+    Write-WtConsoleContext -RepoRoot $RepoRoot
+    $sections = @(
+        [pscustomobject]@{ Name = 'Worktrees';              Color = 'Cyan' }
+        [pscustomobject]@{ Name = 'Ejecutar y sincronizar'; Color = 'Green' }
+        [pscustomobject]@{ Name = 'Workspace';               Color = 'DarkYellow' }
+    )
+    foreach ($section in $sections) {
+        $items = @($Menu | Where-Object { $_.Group -eq $section.Name -and (-not $_.RequiresRepo -or $RepoRoot) })
+        if ($items.Count -eq 0) { continue }
+        Write-WtConsoleSectionTitle -Title $section.Name -Color $section.Color
+        foreach ($item in $items) {
+            Write-Host '   ' -NoNewline
+            Write-Host $item.Key.PadRight(3) -ForegroundColor Yellow -NoNewline
+            Write-Host $item.Label
         }
-    } else {
-        Write-WtDetail 'No estas dentro de un repo: las opciones de worktrees se habilitan al entrar a uno (g).'
     }
-    Write-WtInfo 'Workspace:'
-    foreach ($item in ($Menu | Where-Object { -not $_.RequiresRepo })) {
-        Write-WtLine ("  {0}) {1}" -f $item.Key, $item.Label)
-    }
-    Write-WtLine '  q) Salir'
+    Write-Host ''
+    Write-Host '   ' -NoNewline
+    Write-Host 'q'.PadRight(3) -ForegroundColor Yellow -NoNewline
+    Write-Host 'Salir'
 }
 
 function Start-WtConsole {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification = 'Entrypoint del menu interactivo; pedir confirmacion para iniciarlo no tiene sentido.')]
     param()
-    Write-WtInfo 'Worktree Manager - consola interactiva'
+    Write-WtConsoleBanner
     Write-WtDetail 'Antes de ejecutar se muestra el comando CLI equivalente, para aprenderlo.'
     $menu = @(Get-WtConsoleMenu)
     while ($true) {
@@ -332,9 +515,9 @@ function Start-WtConsole {
         Clear-WtWorktreesCache
         $repoRoot = Find-WtMainRoot -Silent
         Show-WtConsoleMenu -RepoRoot $repoRoot -Menu $menu
-        $choice = Read-WtConsoleChoice -Prompt 'wt> '
+        $choice = Read-WtConsoleChoice -Prompt "`nwt> "
         if ($null -eq $choice) { break }
-        if ($choice -in @('q', 'salir', 'exit')) { return }
+        if ($choice -in @('q', 'salir', 'exit')) { Write-WtSuccess 'Hasta la proxima!'; return }
         if ($choice -eq '') { continue }
         $item = $menu | Where-Object { $_.Key -eq $choice } | Select-Object -First 1
         if (-not $item) {
