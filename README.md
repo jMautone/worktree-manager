@@ -64,7 +64,11 @@ wt version                                   # versión del módulo (wt.psd1) y 
 wt help
 ```
 
-Los nombres se resuelven por **nombre de carpeta** o por **nombre de rama**.
+Los nombres se resuelven por **nombre de carpeta** o por **nombre de rama**. La
+carpeta se compara **sin distinguir mayúsculas** (Windows tampoco lo hace en el
+sistema de archivos: `Feature-A` y `feature-a` serían el mismo directorio); la rama
+se compara **distinguiendo mayúsculas**, porque git también las distingue
+(`Feature-A` y `feature-a` son ramas distintas) — es intencional, no un descuido.
 Hay alias para los comandos más usados: `ls` (`list`), `rm` (`remove`), `go` (`cd`),
 `ui`/`menu` (`console`) y `repos-list` (`repos`).
 

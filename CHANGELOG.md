@@ -180,3 +180,14 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   directamente como funcion del modulo); sus dos llamadores (`Invoke-
   WtDispatch` y `Invoke-WtConsoleCreate`) mandan el retorno a `Out-Null`, asi
   stdout queda reservado a `wt path` y `--json`.
+- **B10**: `Test-WtWorktreeMatchesName` comparaba la carpeta con `-ieq` y la
+  rama con `-eq`, sin explicacion de por que son criterios distintos.
+  Documentado como intencional: la carpeta no distingue mayusculas (Windows
+  tampoco, en el filesystem) y la rama si (git tambien las distingue). Al
+  documentar esto aparecio una discrepancia real: el operador `-eq` de
+  PowerShell **no** distingue mayusculas por defecto (haria falta `-ceq`
+  para eso), asi que la comparacion de ramas era accidentalmente
+  case-insensitive, al reves de la intencion que el propio codigo daba a
+  entender. Se corrige a `-ceq` para que el comportamiento sea el que el
+  diseno siempre quiso (y el que ahora dice el comentario), con una prueba
+  unitaria que lo fija.

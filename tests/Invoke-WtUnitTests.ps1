@@ -137,6 +137,15 @@ Assert-True 'comando nulo devuelve vacio' ((Get-WtCommandSource -Command $null) 
 $fakeCommand = [pscustomobject]@{ Source = 'C:\algun\comando.exe' }
 Assert-True 'comando real devuelve su Source' ((Get-WtCommandSource -Command $fakeCommand) -eq 'C:\algun\comando.exe')
 
+Write-Host '== Test-WtWorktreeMatchesName: mayusculas por diseno (B10) ==' -ForegroundColor Cyan
+$wtForCase = [pscustomobject]@{ Path = 'C:\repos\MiRepo.worktrees\Feature-A'; Branch = 'Feature-A' }
+Assert-True 'carpeta: NO distingue mayusculas (Windows tampoco en el filesystem)' `
+    (Test-WtWorktreeMatchesName -Worktree $wtForCase -Name 'feature-a')
+Assert-True 'rama: SI distingue mayusculas (git tambien las distingue)' `
+    (-not (Test-WtWorktreeMatchesName -Worktree $wtForCase -Name 'refs/heads/feature-a'))
+Assert-True 'rama con mayusculas exactas si matchea' `
+    (Test-WtWorktreeMatchesName -Worktree $wtForCase -Name 'refs/heads/Feature-A')
+
 Write-Host '== Rutas: normalizacion y comparacion ==' -ForegroundColor Cyan
 Assert-True 'convierte / en \' ((ConvertTo-WtFullPath 'C:/a/b') -eq 'C:\a\b')
 Assert-True 'quita la barra final' ((ConvertTo-WtFullPath 'C:\a\b\') -eq 'C:\a\b')

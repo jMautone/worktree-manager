@@ -194,10 +194,21 @@ function Get-WtWorktrees {
 }
 
 function Test-WtWorktreeMatchesName {
+    <#
+    .SYNOPSIS
+        $Name matchea a $Worktree por carpeta o por rama.
+    .DESCRIPTION
+        Intencional, no un descuido (B10): la carpeta se compara sin distinguir
+        mayusculas (-ieq) porque Windows tampoco lo hace en el sistema de archivos
+        -'Feature-A' y 'feature-a' serian el mismo directorio-; la rama se compara
+        distinguiendo mayusculas (-eq) porque git si las distingue ('Feature-A' y
+        'feature-a' son ramas distintas). Compararlas con el mismo criterio haria que
+        una de las dos formas mintiera.
+    #>
     param([Parameter(Mandatory)]$Worktree, [Parameter(Mandatory)][string]$Name)
     $leaf = Split-Path -Leaf $Worktree.Path
     if ($leaf -ieq $Name) { return $true }
-    if ($Worktree.Branch -and $Worktree.Branch -eq ($Name -replace '^refs/heads/', '')) { return $true }
+    if ($Worktree.Branch -and $Worktree.Branch -ceq ($Name -replace '^refs/heads/', '')) { return $true }
     return $false
 }
 
