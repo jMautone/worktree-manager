@@ -108,7 +108,7 @@ try {
     git branch develop
 
     # Config aislada: sin editor/terminal para no abrir apps durante las pruebas.
-    # Las 11 claves con valores explicitos y neutros: WT_CONFIG_ONLY hace que esta
+    # Las 14 claves con valores explicitos y neutros: WT_CONFIG_ONLY hace que esta
     # sea la unica fuente (ademas de los defaults), sin importar la config real de
     # la maquina que corre las pruebas.
     $testConfig = [ordered]@{
@@ -124,6 +124,8 @@ try {
         warpPath             = 'C:\no-existe\warp.exe'
         fetchBeforeCreate    = $false
         openOnCreate         = 'none'
+        agentCommand         = 'no-existe-el-agente'
+        agentShell           = 'none'
     }
     ([pscustomobject]$testConfig | ConvertTo-Json) | Set-Content -Path $configPath
     $env:WT_CONFIG = $configPath

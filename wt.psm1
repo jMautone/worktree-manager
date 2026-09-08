@@ -37,7 +37,7 @@ Export-ModuleMember -Function @(
     'Write-WtAgentTabConfig', 'New-WtWarpTabConfigContent', 'Open-WtAgentInWarp',
     'Open-WtTerminalInWarp', 'Test-WtWarpSameWindow', 'Test-WtWarpRunning', 'Open-WtEditor',
     'Get-WtTabConfigDir', 'Get-WtTabConfigFileName', 'Get-WtTabConfigDirectory',
-    'Remove-WtWorktreeTabConfigs',
+    'Remove-WtWorktreeTabConfigs', 'Get-WtAgentCommands',
     # Utilidades reutilizables / testeables
     'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtCreateOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
     'Invoke-WtProcess', 'Get-WtPathHash',

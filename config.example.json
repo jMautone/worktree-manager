@@ -8,5 +8,7 @@
   "warpAgentTarget": "auto",
   "warpAgentColor": "green",
   "warpTerminalColor": "blue",
-  "fetchBeforeCreate": true
+  "fetchBeforeCreate": true,
+  "agentCommand": "copilot",
+  "agentShell": "powershell"
 }

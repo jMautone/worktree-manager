@@ -179,6 +179,8 @@ CONFIG (editable con 'wt config set', 'wt config edit', o a mano en
   warpTerminalColor     Color del tab de terminal comun (blue por defecto; '' sin color)
   warpPath              Ruta a warp.exe
   fetchBeforeCreate     Hace fetch del remoto antes de crear desde <remote>/<rama>
+  agentCommand          Comando del agente que corre el tab (default: copilot)
+  agentShell            'powershell' | 'bash' | 'none' (sin comandos auxiliares, solo agentCommand)
 '@ | Write-Host
 }
 

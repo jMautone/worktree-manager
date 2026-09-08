@@ -25,6 +25,8 @@ function Get-WtDefaultConfig {
         warpPath             = (Join-Path $localAppData 'Programs\Warp\warp.exe')
         fetchBeforeCreate    = $true
         openOnCreate         = 'all'        # 'all' (editor + agente) | 'editor' | 'none'
+        agentCommand         = 'copilot'   # comando que corre el tab del agente
+        agentShell           = 'powershell' # 'powershell' | 'bash' | 'none' (solo agentCommand)
     }
 }
 
@@ -75,6 +77,11 @@ function Test-WtConfigValue {
         }
         'openOnCreate' {
             $allowed = @('all', 'editor', 'none')
+            if ($allowed -notcontains [string]$Value) { return "debe ser uno de: $($allowed -join ', ')" }
+            return ''
+        }
+        'agentShell' {
+            $allowed = @('powershell', 'bash', 'none')
             if ($allowed -notcontains [string]$Value) { return "debe ser uno de: $($allowed -join ', ')" }
             return ''
         }

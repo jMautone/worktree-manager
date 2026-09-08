@@ -144,8 +144,9 @@ archivo** y explica los valores admitidos; un archivo de config con un valor inv
 ## Doctor: chequeo del setup
 
 `wt doctor` verifica todo lo necesario para armar el workspace — con **Copilot CLI +
-Warp + VS Code**, o solo **Warp + Copilot** — y te dice qué falta y cómo instalarlo o
-configurarlo: git, Node ≥ 18, fnm (opcional), `copilot`, el editor configurado,
+Warp + VS Code**, o solo **Warp + Copilot** (o el agente que configures en
+`agentCommand`) — y te dice qué falta y cómo instalarlo o
+configurarlo: git, Node ≥ 18, fnm (opcional), `agentCommand`, el editor configurado,
 Warp/`wt.exe`, el archivo de config, `reposRoot` y que la config efectiva tenga
 valores válidos (lista las claves inválidas, si las hay, y avisa si
 `worktreeRootTemplate` no distingue repos entre sí). Sale con código `0` siempre: es
@@ -208,6 +209,8 @@ hacer que `wt open` lance el binario que ese archivo elija.
 | `warpTerminalColor` | `blue` | Color del tab de terminal común (`''` sin color) |
 | `warpPath` | `%LOCALAPPDATA%\Programs\Warp\warp.exe` | Ruta a `warp.exe` |
 | `fetchBeforeCreate` | `true` | Fetch + prune cuando la base es `<remote>/<rama>` de un remoto configurado del repo |
+| `agentCommand` | `copilot` | Comando que corre el tab del agente (`wt open --agent`) |
+| `agentShell` | `powershell` | `powershell` \| `bash` \| `none` (sin comandos auxiliares como `fnm use`, solo `agentCommand`) |
 
 ## Decisiones de arquitectura
 
@@ -277,8 +280,8 @@ hacer que `wt open` lance el binario que ese archivo elija.
   `warp://tab_config/...`. El sufijo de hash evita que dos worktrees homónimos de
   repos distintos (mismo `<nombre>` saneado) se pisen el tab config entre sí; el
   `name` legible adentro del TOML no lo necesita. El del agente suma `commands` =
-  `fnm use <major>` (versión de la sesión si es ≥ 18, si no la mayor instalada) +
-  chequeo de Node + `copilot`.
+  `fnm use <major>` (versión de la sesión si es ≥ 18, si no la mayor instalada; se
+  omite si `agentShell = 'none'`) + `agentCommand` (`copilot` por defecto).
   Los tabs se titulan `repo > worktree (rama)` y se colorean con `warpTerminalColor`
   (terminal, default azul) o `warpAgentColor` (agente, default verde) — los tab groups
   de Warp no son scriptables; título + color es la aproximación visual. El destino lo
@@ -286,8 +289,17 @@ hacer que `wt open` lance el binario que ese archivo elija.
   activa** cuando `wt` corre dentro de Warp (`TERM_PROGRAM=WarpTerminal`) **o hay un
   proceso de Warp corriendo**, y ventana nueva solo si Warp no está abierto; `tab` y
   `window` lo fuerzan. **Nunca abre ventanas sueltas de PowerShell**: el agente solo se
-  lanza como tab de Warp; si `copilot` no existe en la sesión o `terminal` no es
+  lanza como tab de Warp; si `agentCommand` no existe en la sesión o `terminal` no es
   `warp`, avisa con un warning en vez de abrir otra cosa.
+- **Agente desacoplado de `copilot` y del shell de Warp**: antes el tab del agente
+  inyectaba un `if { Write-Warning ... }` en sintaxis de PowerShell entre sus
+  `commands`; si el shell por defecto de Warp era bash, WSL o cmd, era un error de
+  sintaxis en cada tab, y el binario era la cadena literal `copilot`. `agentCommand`
+  (default `copilot`) es el comando que corre el tab; `agentShell` (`powershell` por
+  defecto; también `bash` y `none`) decide si se emiten comandos auxiliares como
+  `fnm use` (`none` = únicamente `agentCommand`). El chequeo de versión de Node salió
+  del tab: vive solo en `wt doctor`. Ninguna de las dos claves entra en la lista
+  blanca de `.wt.json`.
 - **Ciclo de vida de los tab configs**: `wt remove` borra los del worktree que
   elimina (agente y terminal) antes de borrarlo — el nombre de archivo depende del
   hash de la ruta, así que hay que resolverlo mientras esta todavía lo identifica.

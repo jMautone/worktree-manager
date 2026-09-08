@@ -87,3 +87,11 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   el resto del perfil byte a byte igual por ese sobrante; ahora usa
   `-NoNewline`. `uninstall.ps1` no toca `~\.wt\config.json` salvo
   `-RemoveConfig`.
+- **M8**: `Get-WtAgentCommands` inyectaba un `if { Write-Warning ... }` en
+  sintaxis de PowerShell entre los `commands` del tab del agente; si el shell
+  por defecto de Warp era bash, WSL o cmd, era un error de sintaxis en cada
+  tab. El binario del agente era ademas la cadena literal `copilot`. Nuevas
+  claves `agentCommand` (default `copilot`) y `agentShell` (`powershell` por
+  defecto, tambien `bash` y `none`); el chequeo de version de Node salio del
+  tab (vive solo en `wt doctor`, que ya lo hacia). Ninguna de las dos entra
+  en la lista blanca de `.wt.json` (A1).

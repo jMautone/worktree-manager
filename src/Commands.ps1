@@ -305,17 +305,18 @@ function Open-WtAgent {
         [string]$Title,
         [Parameter(Mandatory)]$Config
     )
-    if (-not (Test-WtCommand 'copilot')) {
-        Write-WtWarn "No se encontro 'copilot' en la sesion actual; no se lanza el agente."
+    $agentCommand = [string]$Config.agentCommand
+    if (-not (Test-WtCommand $agentCommand)) {
+        Write-WtWarn "No se encontro '$agentCommand' en la sesion actual; no se lanza el agente."
         return $false
     }
     if ([string]$Config.terminal -ne 'warp' -or -not (Test-WtPathExists ([string]$Config.warpPath))) {
         Write-WtWarn "El agente se abre solo en Warp; configura terminal = 'warp' y un warpPath valido."
         return $false
     }
-    $sameWindow = Open-WtAgentInWarp -Name $Name -Path $Path -Target ([string]$Config.warpAgentTarget) `
+    $sameWindow = Open-WtAgentInWarp -Name $Name -Path $Path -Config $Config -Target ([string]$Config.warpAgentTarget) `
         -Title $Title -Color ([string]$Config.warpAgentColor)
-    Write-WtSuccess ("Agente Copilot CLI iniciado en {0} ({1})" -f $Path, (Format-WtWarpTarget $sameWindow))
+    Write-WtSuccess ("Agente '{0}' iniciado en {1} ({2})" -f $agentCommand, $Path, (Format-WtWarpTarget $sameWindow))
     return $true
 }
 
@@ -484,9 +485,10 @@ function Get-WtDoctorRows {
     $rows += New-WtDoctorRow -Check 'fnm (opcional)' -Ok ($null -ne $fnm) -OkDetail ([string]$fnm.Source) `
         -FailDetail 'Recomendado para manejar versiones de Node' -FailState 'AVISO'
 
-    $copilot = Get-Command copilot -ErrorAction SilentlyContinue
-    $rows += New-WtDoctorRow -Check 'copilot (agente)' -Ok ($null -ne $copilot) -OkDetail ([string]$copilot.Source) `
-        -FailDetail 'Instala Copilot CLI: npm i -g @github/copilot'
+    $agentCommand = [string]$config.agentCommand
+    $agent = Get-Command $agentCommand -ErrorAction SilentlyContinue
+    $rows += New-WtDoctorRow -Check "agente ('$agentCommand')" -Ok ($null -ne $agent) -OkDetail ([string]$agent.Source) `
+        -FailDetail "No esta en PATH; ajusta con: wt config set agentCommand <comando> (ej. npm i -g @github/copilot)"
 
     $editor = [string]$config.editor
     if ($editor) {

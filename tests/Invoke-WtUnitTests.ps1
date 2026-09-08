@@ -183,7 +183,7 @@ Assert-True 'las claves no pisadas se conservan' ($merged.terminal -eq 'warp')
 Assert-True 'override nulo no rompe' ((Merge-WtConfig -Base $base -Override $null).editor -eq 'code')
 Assert-True 'no muta la base' ($base.editor -eq 'code')
 $defaults = Get-WtDefaultConfig
-Assert-True 'los defaults traen las 12 claves documentadas' (@($defaults.Keys).Count -eq 12) (@($defaults.Keys) -join ',')
+Assert-True 'los defaults traen las 14 claves documentadas' (@($defaults.Keys).Count -eq 14) (@($defaults.Keys) -join ',')
 
 Write-Host '== Select-WtRepoConfigKeys: lista blanca del .wt.json del repo ==' -ForegroundColor Cyan
 $selected = Select-WtRepoConfigKeys -Data ([ordered]@{ editor = 'mal.exe'; defaultBase = 'develop' })
@@ -235,6 +235,22 @@ Write-Host '== Get-WtTabConfigDirectory (M2) ==' -ForegroundColor Cyan
 $tabContent = New-WtWarpTabConfigContent -Name 'demo' -Path 'C:\repo\wt-demo' -Title 'MiRepo > demo'
 Assert-True 'extrae directory de un tab config generado' ((Get-WtTabConfigDirectory -Content $tabContent) -eq 'C:\repo\wt-demo')
 Assert-True 'contenido sin directory devuelve vacio' ((Get-WtTabConfigDirectory -Content "name = ""x""") -eq '')
+
+Write-Host '== Get-WtAgentCommands: agentShell y agentCommand (M8) ==' -ForegroundColor Cyan
+$cfgNoneAgent = [pscustomobject]@{ agentShell = 'none'; agentCommand = 'copilot' }
+$cmdsNone = @(Get-WtAgentCommands -Config $cfgNoneAgent)
+Assert-True "agentShell 'none': unicamente agentCommand (sin fnm)" ($cmdsNone.Count -eq 1 -and $cmdsNone[0] -eq 'copilot') ($cmdsNone -join '|')
+$cfgPs = [pscustomobject]@{ agentShell = 'powershell'; agentCommand = 'copilot' }
+$cmdsPs = @(Get-WtAgentCommands -Config $cfgPs)
+Assert-True "agentShell 'powershell' no inyecta sintaxis de PowerShell" (($cmdsPs -join ' ') -notmatch 'Write-Warning|-notmatch|[{}]') ($cmdsPs -join '|')
+Assert-True "agentShell 'powershell' incluye agentCommand" ($cmdsPs -contains 'copilot')
+$cfgBash = [pscustomobject]@{ agentShell = 'bash'; agentCommand = 'copilot' }
+$cmdsBash = @(Get-WtAgentCommands -Config $cfgBash)
+Assert-True "agentShell 'bash' no contiene sintaxis de PowerShell" (($cmdsBash -join ' ') -notmatch 'Write-Warning|-notmatch|[{}]') ($cmdsBash -join '|')
+Assert-True "agentShell 'bash' incluye agentCommand" ($cmdsBash -contains 'copilot')
+$cfgCustom = [pscustomobject]@{ agentShell = 'none'; agentCommand = 'claude' }
+$cmdsCustom = @(Get-WtAgentCommands -Config $cfgCustom)
+Assert-True 'agentCommand personalizado se respeta' ($cmdsCustom.Count -eq 1 -and $cmdsCustom[0] -eq 'claude')
 
 Write-Host '== Plan de apertura (flags de open) ==' -ForegroundColor Cyan
 $plan = Get-WtOpenPlan

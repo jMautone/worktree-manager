@@ -56,16 +56,30 @@ function Get-WtNodeMajor {
 function Get-WtAgentCommands {
     <#
     .SYNOPSIS
-        Comandos que corre el tab del agente: fijar Node con fnm (si esta), avisar si
-        la version es vieja y lanzar copilot.
+        Comandos que corre el tab del agente: fijar Node con fnm (si esta disponible y
+        agentShell lo permite) y lanzar agentCommand.
+    .DESCRIPTION
+        Antes esta funcion inyectaba un 'if { Write-Warning ... }' en sintaxis
+        PowerShell entre los comandos del tab: si el shell por defecto de Warp era
+        bash, WSL o cmd, era un error de sintaxis en cada tab que se abria. Ese
+        chequeo de version de Node se saco de aca (vive solo en 'wt doctor', que ya lo
+        hace) y el binario del agente dejo de ser la cadena literal 'copilot'.
+
+        agentShell decide si se emiten comandos auxiliares ('none' = unicamente
+        agentCommand, sin fnm). 'fnm use <major>' es una invocacion de ejecutable
+        neutra al shell (powershell y bash la escriben igual), asi que 'powershell' y
+        'bash' producen hoy el mismo comando auxiliar; el valor queda como contrato
+        explicito para cuando agentCommand necesite sintaxis propia de un shell.
     #>
+    param([Parameter(Mandatory)]$Config)
+    $agentShell = [string]$Config.agentShell
+    $agentCommand = [string]$Config.agentCommand
     $commands = @()
-    if (Test-WtCommand 'fnm') {
+    if ($agentShell -ne 'none' -and (Test-WtCommand 'fnm')) {
         $major = Get-WtNodeMajor
         if ($major) { $commands += "fnm use $major" }
     }
-    $commands += 'if ((node --version 2>$null) -notmatch "^v?(1[89]|[2-9]\d)") { Write-Warning "Node menor a 18: Copilot CLI puede fallar. Revisa la version activa (fnm)." }'
-    $commands += 'copilot'
+    $commands += $agentCommand
     return $commands
 }
 
@@ -270,16 +284,17 @@ function Open-WtWarpTab {
 function Open-WtAgentInWarp {
     <#
     .SYNOPSIS
-        Abre Warp con un tab config que corre Copilot CLI en el worktree.
+        Abre Warp con un tab config que corre el agente (agentCommand) en el worktree.
     #>
     param(
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)]$Config,
         [string]$Target = 'auto',
         [string]$Title,
         [string]$Color
     )
-    return (Open-WtWarpTab -Name $Name -Path $Path -Commands (Get-WtAgentCommands) `
+    return (Open-WtWarpTab -Name $Name -Path $Path -Commands (Get-WtAgentCommands -Config $Config) `
         -Title $Title -Color $Color -Kind 'agent' -Target $Target)
 }
 
