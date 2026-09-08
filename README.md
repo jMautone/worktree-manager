@@ -388,9 +388,13 @@ hacer que `wt open` lance el binario que ese archivo elija.
   cada vuelta del loop y la opción `g` (ir a un repo) habilita las opciones de worktrees
   sin salir de la consola.
 - **Workspace sin repo**: `repos`, `cd`, `config` y `doctor` no llaman a
-  `Find-WtMainRoot`, así funcionan desde cualquier directorio. `wt cd` resuelve por
-  nombre exacto o prefijo único (case-insensitive) entre los subdirectorios de
-  `reposRoot` que contienen `.git`; `open`/`path` reutilizan ese mismo criterio.
+  `Find-WtMainRoot`, así funcionan desde cualquier directorio. Para nombres de
+  **repo**, `Select-WtRepoMatches` es la única implementación del criterio (exacto o
+  prefijo único, case-insensitive), compartida por `cd`, `open` y `path`.
+  `Resolve-WtRepoOrWorktreeOwner` (B12) extiende esa resolución a **worktrees** de
+  cualquier repo de `reposRoot` (primero repo, después worktree), compartida ahora
+  también por los tres — antes solo `open`/`path` llegaban a un worktree fuera de un
+  repo, `cd` se quedaba corto en la raíz de su repo.
 - **Resolución sin efectos secundarios**: `Resolve-WtRepoContext` (y `Resolve-WtTarget`,
   que la usa) solo *resuelven* — nunca hacen `cd` ni imprimen nada; devuelven
   `ShouldRelocate` para que decida el llamador. `Open-WtWorktree` lo aplica (por eso
