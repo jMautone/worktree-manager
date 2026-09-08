@@ -114,12 +114,19 @@ wt cd                                        # va a la raíz de repos
 wt cd MiRepo                                 # va al repo (match exacto, case-insensitive)
 wt cd mire                                   # match por prefijo único
 wt cd MiRepo --open                          # además abre el editor ahí
+wt cd logging                                # si 'logging' es un worktree (no un repo), va A ESE worktree
 ```
 
 `wt cd` cambia el directorio **de tu terminal**: funciona porque la función `wt` que
 instala `install.ps1` corre en el mismo proceso de PowerShell. Los repos se detectan
 como subdirectorios de `reposRoot` que contienen `.git`, hasta `reposDepth` niveles
-(default `1`, solo subdirectorios inmediatos).
+(default `1`, solo subdirectorios inmediatos). Igual que `open`/`path` fuera de un
+repo, el nombre se busca primero como repo y después como worktree de cualquiera de
+ellos; si matchea un worktree, el destino es **su checkout**, no la raíz del repo que
+lo contiene (antes `wt cd` solo llegaba a repos; para un worktree había que usar
+`cd (wt path logging)`, que sigue funcionando igual). Un nombre que matchea en más de
+un repo o worktree es una ambigüedad real y falla listando las coincidencias (mismo
+criterio que para worktrees homónimos entre repos).
 
 ### Varias raíces y organizaciones anidadas
 
@@ -205,10 +212,11 @@ CLI. Sale con `q`. No duplica lógica: es un wrapper fino sobre las mismas
 funciones del módulo, por lo que respeta la misma configuración y protecciones.
 
 Las opciones de worktrees (`1`–`7`) solo aparecen si estás dentro de un repo. Las de
-workspace siempre están: `r` lista los repos, `g` te deja elegir un repo numerado y
-hace `cd` ahí (después las opciones de worktrees se habilitan para ese repo), `c`
-abre el submenú de configuración (ver / cambiar valores / abrir el archivo) y `d`
-corre el doctor.
+workspace siempre están: `r` lista los repos, `g` te deja elegir **un repo o un
+worktree de cualquiera de ellos** (B12) y hace `cd` ahí (si elegís un worktree, las
+opciones de worktrees se habilitan para el repo que lo contiene), `c` abre el
+submenú de configuración (ver / cambiar valores / abrir el archivo) y `d` corre el
+doctor.
 
 ## Configuración
 

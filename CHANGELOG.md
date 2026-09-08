@@ -207,3 +207,12 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   llamador tambien envuelva con `@()` — encontrado (y corregido en varios
   puntos) via el mismo tipo de error de `Set-StrictMode` que ya habia
   aparecido en B6.
+- **B12**: `Invoke-WtCd` solo resolvia contra repos de `reposRoot`; para
+  entrar a un worktree hacia falta `cd (wt path logging)` (que sigue
+  funcionando igual). `wt cd` ahora extiende la misma cadena de resolucion
+  que `open`/`path` fuera de un repo (primero repo, despues worktree de
+  cualquiera de ellos, con la ambiguedad de M4): si el nombre matchea un
+  worktree, el destino es su checkout, no la raiz del repo. Nueva
+  `Resolve-WtRepoOrWorktreeOwner` (funcion pura) unifica ese criterio,
+  compartida ahora por `Resolve-WtRepoContext` e `Invoke-WtCd`. La opcion
+  `g` de la consola tambien ofrece worktrees, no solo repos.

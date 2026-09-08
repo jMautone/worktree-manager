@@ -149,20 +149,40 @@ function Invoke-WtConsoleRemove {
 }
 
 function Invoke-WtConsoleGoToRepo {
+    <#
+    .SYNOPSIS
+        Menu de 'ir a un repo (cd)'. Ademas de los repos, ofrece los worktrees de
+        cualquiera de ellos (B12: 'wt cd' tambien puede llevarte a uno).
+    #>
     $config = Get-WtConfig
     $root = @(Get-WtReposRoot -Config $config)
-    $repos = @(Get-WtRepoDirs -Root $root -Depth (Get-WtReposDepth -Config $config))
+    $depth = Get-WtReposDepth -Config $config
+    $repos = @(Get-WtRepoDirs -Root $root -Depth $depth)
     if ($repos.Count -eq 0) {
         Write-WtNotice ("No hay repos git en '{0}'." -f ($root -join ', '))
         return
     }
-    Write-WtInfo 'Elegi el repo:'
-    for ($i = 0; $i -lt $repos.Count; $i++) {
-        Write-WtLine ("  {0}) {1}" -f ($i + 1), $repos[$i].Name)
+    $worktreeEntries = @()
+    foreach ($repo in $repos) {
+        $wts = @()
+        try { $wts = @(Get-WtWorktrees -RepoRoot $repo.FullName | Where-Object { -not $_.IsMain -and -not $_.IsPrunable }) } catch { continue }
+        foreach ($wt in $wts) {
+            $worktreeEntries += [pscustomobject]@{ Name = (Split-Path -Leaf $wt.Path); RepoName = $repo.Name }
+        }
     }
-    $index = Select-WtConsoleIndex -Count $repos.Count
+    Write-WtInfo 'Elegi el repo o worktree:'
+    $items = @()
+    foreach ($repo in $repos) {
+        Write-WtLine ("  {0}) {1}" -f ($items.Count + 1), $repo.Name)
+        $items += $repo.Name
+    }
+    foreach ($entry in $worktreeEntries) {
+        Write-WtLine ("  {0}) {1} (worktree de {2})" -f ($items.Count + 1), $entry.Name, $entry.RepoName)
+        $items += $entry.Name
+    }
+    $index = Select-WtConsoleIndex -Count $items.Count
     if ($null -eq $index) { return }
-    $name = $repos[$index].Name
+    $name = $items[$index]
     Write-WtConsoleCommand "wt cd $name"
     Invoke-WtCd -Name $name
 }

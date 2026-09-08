@@ -133,6 +133,33 @@ function Find-WtReposOwningWorktree {
     return $found
 }
 
+function Resolve-WtRepoOrWorktreeOwner {
+    <#
+    .SYNOPSIS
+        Resuelve $Name contra una o mas raices: primero como repo, despues como
+        worktree de alguno de ellos.
+    .DESCRIPTION
+        Funcion pura, compartida por Resolve-WtRepoContext ('open'/'path') e
+        Invoke-WtCd (B12: 'wt cd' tambien puede llevarte a un worktree, no solo a un
+        repo). Unico punto que aplica el criterio de ambiguedad de M4: 0 coincidencias
+        falla con guia, 1 sigue, mas de 1 falla listando repo y ruta de cada una.
+    .OUTPUTS
+        @{ Repo; Worktree } - Worktree es $null cuando $Name matcheo un repo
+        directamente; si no, es el worktree encontrado (y Repo, el que lo contiene).
+    #>
+    param([Parameter(Mandatory)][string[]]$Root, [Parameter(Mandatory)][string]$Name, [int]$Depth = 1)
+    $repo = Resolve-WtRepoDir -Root $Root -Name $Name -Depth $Depth -AllowMissing
+    if ($repo) { return @{ Repo = $repo; Worktree = $null } }
+
+    $owners = @(Find-WtReposOwningWorktree -Root $Root -Name $Name -Depth $Depth)
+    if ($owners.Count -eq 1) { return @{ Repo = $owners[0].Repo; Worktree = $owners[0].Worktree } }
+    if ($owners.Count -gt 1) {
+        $list = ($owners | ForEach-Object { "$($_.Repo.Name) ($($_.Repo.FullName))" }) -join ', '
+        throw "El worktree '$Name' existe en varios repos: $list. Entra al repo, o usa 'wt open <repo>' primero."
+    }
+    throw "No hay un repo ni worktree '$Name' bajo '$($Root -join ', ')'. Usa 'wt repos' para ver los disponibles."
+}
+
 function Resolve-WtRepoContext {
     <#
     .SYNOPSIS
@@ -159,21 +186,10 @@ function Resolve-WtRepoContext {
     $root = @(Get-WtReposRoot -Config $config)
     $depth = Get-WtReposDepth -Config $config
 
-    $repo = Resolve-WtRepoDir -Root $root -Name $Name -Depth $depth -AllowMissing
-    if ($repo) {
-        return @{ RepoRoot = $repo.FullName; Source = 'repo'; ShouldRelocate = $true }
-    }
-
-    $owners = @(Find-WtReposOwningWorktree -Root $root -Name $Name -Depth $depth)
-    if ($owners.Count -eq 1) {
-        return @{ RepoRoot = $owners[0].Repo.FullName; Source = 'worktree'; ShouldRelocate = $true }
-    }
-    if ($owners.Count -gt 1) {
-        $list = ($owners | ForEach-Object { "$($_.Repo.Name) ($($_.Repo.FullName))" }) -join ', '
-        throw "El worktree '$Name' existe en varios repos: $list. Entra al repo, o usa 'wt open <repo>' primero."
-    }
-
-    throw "No hay un repo ni worktree '$Name' bajo '$($root -join ', ')'. Usa 'wt repos' para ver los disponibles."
+    $found = Resolve-WtRepoOrWorktreeOwner -Root $root -Name $Name -Depth $depth
+    $source = 'repo'
+    if ($found.Worktree) { $source = 'worktree' }
+    return @{ RepoRoot = $found.Repo.FullName; Source = $source; ShouldRelocate = $true }
 }
 
 function Get-WtRepoList {
@@ -211,8 +227,12 @@ function Get-WtRepoList {
 function Invoke-WtCd {
     <#
     .SYNOPSIS
-        Cambia el directorio actual a la raiz de repos (la primera, si hay varias) o a
-        un repo.
+        Cambia el directorio actual a la raiz de repos (la primera, si hay varias), a
+        un repo, o a un worktree de cualquiera de ellos (B12).
+    .DESCRIPTION
+        Con nombre, resuelve igual que 'open'/'path' fuera de un repo (primero como
+        repo, despues como worktree de alguno de ellos; ambiguedad = M4): si matchea un
+        worktree, el destino es SU checkout, no la raiz del repo que lo contiene.
     .NOTES
         Funciona porque la funcion 'wt' del perfil llama a Invoke-Wt en el mismo
         proceso (el modulo se importa una vez al cargar el perfil, no en cada llamada).
@@ -223,7 +243,11 @@ function Invoke-WtCd {
     $root = @(Get-WtReposRoot -Config $config)
     $depth = Get-WtReposDepth -Config $config
     $target = $root[0]
-    if ($Name) { $target = (Resolve-WtRepoDir -Root $root -Name $Name -Depth $depth).FullName }
+    if ($Name) {
+        $found = Resolve-WtRepoOrWorktreeOwner -Root $root -Name $Name -Depth $depth
+        $target = $found.Repo.FullName
+        if ($found.Worktree) { $target = $found.Worktree.Path }
+    }
     Set-WtLocation -Path $target
     Write-WtSuccess "Ahora en: $target"
     if ($Open) { Open-WtEditor -Path $target -Config $config | Out-Null }

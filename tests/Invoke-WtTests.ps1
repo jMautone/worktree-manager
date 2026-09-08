@@ -509,6 +509,15 @@ try {
     $r = Invoke-Wt -CmdArgs @('cd', 'MiR') -Cwd $env:TEMP
     Assert-True 'cd por prefijo resuelve' ($r.ExitCode -eq 0 -and $r.Output -match [regex]::Escape($repoDir)) $r.Output
 
+    Write-Host '== wt cd lleva a un worktree, no solo a un repo (B12) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'b12-worktree', '--no-open') -Cwd $repoDir | Out-Null
+    $b12WorktreeDir = Join-Path $wtRoot 'b12-worktree'
+    $r = Invoke-WtAndLocation -CmdArgs @('cd', 'b12-worktree') -Cwd $env:TEMP
+    Assert-True 'cd a un worktree exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'cd deja el proceso en el directorio del worktree (no en la raiz del repo)' `
+        ($r.FinalLocation.TrimEnd('\') -ieq $b12WorktreeDir.TrimEnd('\')) $r.FinalLocation
+    Invoke-Wt -CmdArgs @('remove', 'b12-worktree', '--delete-branch') -Cwd $repoDir | Out-Null
+
     Write-Host '== wt cd ambiguo (debe fallar) ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('cd', 'Otro') -Cwd $env:TEMP
     Assert-True 'cd ambiguo falla' ($r.ExitCode -ne 0)

@@ -16,6 +16,7 @@
         # Workspace
         'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',
         'Resolve-WtRepoContext', 'Open-WtFolder', 'Get-WtReposRoot', 'Get-WtReposDepth',
+        'Resolve-WtRepoOrWorktreeOwner', 'Find-WtReposOwningWorktree',
         # Config
         'Get-WtConfig', 'Get-WtConfigFilePath', 'Set-WtConfigValue', 'Invoke-WtConfigCommand',
         'Get-WtDefaultConfig', 'Merge-WtConfig', 'Clear-WtConfigCache',

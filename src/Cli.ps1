@@ -147,7 +147,7 @@ WORKTREES:
 
 WORKSPACE (funcionan desde cualquier directorio):
   wt repos [--json]                          # lista los repos git de reposRoot
-  wt cd [<repo>] [--open]                    # va a reposRoot o a un repo (match por prefijo)
+  wt cd [<repo>|<worktree>] [--open]          # va a reposRoot, a un repo, o a un worktree suyo
   wt config [list]                           # muestra la config efectiva
   wt config get <clave>                      # muestra un valor
   wt config set <clave> <valor>              # guarda un valor en el archivo global
