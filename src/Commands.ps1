@@ -504,7 +504,7 @@ function Get-WtDoctorRows {
     }
 
     $git = Get-Command git -ErrorAction SilentlyContinue
-    $rows += New-WtDoctorRow -Check 'git' -Ok ($null -ne $git) -OkDetail ([string]$git.Source) `
+    $rows += New-WtDoctorRow -Check 'git' -Ok ($null -ne $git) -OkDetail (Get-WtCommandSource $git) `
         -FailDetail 'Instala Git: https://git-scm.com/download/win'
 
     $nodeVersion = Get-WtNodeVersion
@@ -513,18 +513,18 @@ function Get-WtDoctorRows {
         -FailDetail "$nodeVersion (Copilot CLI requiere Node >= 18)"
 
     $fnm = Get-Command fnm -ErrorAction SilentlyContinue
-    $rows += New-WtDoctorRow -Check 'fnm (opcional)' -Ok ($null -ne $fnm) -OkDetail ([string]$fnm.Source) `
+    $rows += New-WtDoctorRow -Check 'fnm (opcional)' -Ok ($null -ne $fnm) -OkDetail (Get-WtCommandSource $fnm) `
         -FailDetail 'Recomendado para manejar versiones de Node' -FailState 'AVISO'
 
     $agentCommand = [string]$config.agentCommand
     $agent = Get-Command $agentCommand -ErrorAction SilentlyContinue
-    $rows += New-WtDoctorRow -Check "agente ('$agentCommand')" -Ok ($null -ne $agent) -OkDetail ([string]$agent.Source) `
+    $rows += New-WtDoctorRow -Check "agente ('$agentCommand')" -Ok ($null -ne $agent) -OkDetail (Get-WtCommandSource $agent) `
         -FailDetail "No esta en PATH; ajusta con: wt config set agentCommand <comando> (ej. npm i -g @github/copilot)"
 
     $editor = [string]$config.editor
     if ($editor) {
         $ed = Get-Command $editor -ErrorAction SilentlyContinue
-        $rows += New-WtDoctorRow -Check "editor ('$editor')" -Ok ($null -ne $ed) -OkDetail ([string]$ed.Source) `
+        $rows += New-WtDoctorRow -Check "editor ('$editor')" -Ok ($null -ne $ed) -OkDetail (Get-WtCommandSource $ed) `
             -FailDetail 'No esta en PATH; ajusta con: wt config set editor <comando>'
     } else {
         $rows += New-WtDoctorRow -Check 'editor' -Ok $true -OkDetail 'desactivado en la config'
@@ -537,7 +537,7 @@ function Get-WtDoctorRows {
             -FailDetail "No existe '$warp'; ajusta warpPath o: wt config set terminal wt"
     } elseif ($terminal -eq 'wt') {
         $wtcmd = Get-Command wt.exe -ErrorAction SilentlyContinue
-        $rows += New-WtDoctorRow -Check 'windows terminal' -Ok ($null -ne $wtcmd) -OkDetail ([string]$wtcmd.Source) `
+        $rows += New-WtDoctorRow -Check 'windows terminal' -Ok ($null -ne $wtcmd) -OkDetail (Get-WtCommandSource $wtcmd) `
             -FailDetail 'wt.exe no encontrado'
     } else {
         $rows += New-WtDoctorRow -Check 'terminal' -Ok $true -OkDetail 'desactivado en la config'

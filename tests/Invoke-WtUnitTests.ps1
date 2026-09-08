@@ -132,6 +132,11 @@ Assert-True 'Text (stdout) contiene ok' ($mixed.Text -match 'ok') $mixed.Text
 Assert-True 'ErrorText (stderr) contiene warn' ($mixed.ErrorText -match 'warn') $mixed.ErrorText
 Assert-True 'StdOut y StdErr son arrays separados' (@($mixed.StdOut) -notcontains 'warn' -and (@($mixed.StdErr) -join ' ') -match 'warn')
 
+Write-Host '== Get-WtCommandSource: no revienta con $null bajo StrictMode (B6) ==' -ForegroundColor Cyan
+Assert-True 'comando nulo devuelve vacio' ((Get-WtCommandSource -Command $null) -eq '')
+$fakeCommand = [pscustomobject]@{ Source = 'C:\algun\comando.exe' }
+Assert-True 'comando real devuelve su Source' ((Get-WtCommandSource -Command $fakeCommand) -eq 'C:\algun\comando.exe')
+
 Write-Host '== Rutas: normalizacion y comparacion ==' -ForegroundColor Cyan
 Assert-True 'convierte / en \' ((ConvertTo-WtFullPath 'C:/a/b') -eq 'C:\a\b')
 Assert-True 'quita la barra final' ((ConvertTo-WtFullPath 'C:\a\b\') -eq 'C:\a\b')

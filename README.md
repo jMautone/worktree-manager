@@ -144,6 +144,20 @@ un rechazo— si le falta `{repo}`/`{repoParent}`); `editor`, `defaultBase` y
 archivo** y explica los valores admitidos; un archivo de config con un valor inválido
 (editado a mano) descarta esa clave con un warning en vez de romper el CLI.
 
+## Códigos de salida
+
+| Código | Significado |
+|---|---|
+| `0` | OK |
+| `1` | Error de uso: comando o flag desconocido, flag sin el valor que requiere, o argumento posicional faltante (ej. `wt create` sin nombre) |
+| `2` | Error de git o del entorno: worktree/repo inexistente o ambiguo, `git worktree remove` fallido, nombre o valor de config inválido, etc. |
+
+`Invoke-Wt` atrapa sus propios errores; nunca deja que una excepción se propague sin
+control. En el modo función del perfil (`wt <comando>`) deja el código en
+`$LASTEXITCODE` sin llamar a `exit`, para no cerrar la terminal del usuario; en el
+modo `wt.ps1 -File` (usado por scripts y CI) sí llama a `exit $LASTEXITCODE` al
+terminar, así el proceso externo devuelve el código correcto.
+
 ## Doctor: chequeo del setup
 
 `wt doctor` verifica todo lo necesario para armar el workspace — con **Copilot CLI +

@@ -43,5 +43,6 @@ Export-ModuleMember -Function @(
     'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtCreateOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
     'Invoke-WtProcess', 'Get-WtPathHash',
     'ConvertTo-WtFullPath', 'Test-WtPathEquals', 'Test-WtPathIsUnder', 'Test-WtWorktreeName',
+    'Get-WtCommandSource',
     'ConvertTo-WtSafeFileName', 'ConvertTo-WtJson'
 )

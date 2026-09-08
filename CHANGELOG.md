@@ -139,3 +139,20 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   suprimida), antes/despues del cambio (1): **237 ms/llamada -> 176 ms/llamada**
   (~26% menos), atribuible a evitar el reimport del modulo por llamada.
   El costo restante es sobre todo llamadas a `git` como proceso externo.
+- **B6**: se define y documenta el contrato de codigos de salida (`0` OK,
+  `1` error de uso, `2` error de git o del entorno). `Invoke-Wt` separa el
+  parseo (`ConvertFrom-WtArgs`; cualquier error ahi es por definicion un
+  problema de sintaxis, exit `1`) del despacho (`Invoke-WtDispatch`, en un
+  `try/catch` propio: los mensajes que empiezan con `Uso:` son `1`, el resto
+  `2`) y setea `$global:LASTEXITCODE` en ambos modos de invocacion; `wt.ps1`
+  hace `exit $LASTEXITCODE` al terminar para el modo `-File`, sin que la
+  funcion del perfil llame nunca a `exit` (cerraria la terminal del usuario).
+  Verificar esto a mano con `wt doctor` reveló un bug real preexistente:
+  `Get-Command <cmd> -ErrorAction SilentlyContinue` devuelve `$null` cuando
+  el comando no existe, y leer `.Source` de ese `$null` bajo
+  `Set-StrictMode -Version Latest` es un error terminante
+  (`PropertyNotFoundStrict`) — antes quedaba enmascarado porque
+  `$ErrorActionPreference = 'Continue'` lo volvia no terminante y `wt doctor`
+  seguia de largo con el detalle vacio. Nuevo `Get-WtCommandSource` (helper
+  puro y null-safe) reemplaza los cinco accesos directos a `.Source` en
+  `Get-WtDoctorRows`.

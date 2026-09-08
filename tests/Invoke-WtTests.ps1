@@ -32,7 +32,10 @@ function Invoke-Wt {
     $module = (Join-Path $PSScriptRoot '..\wt.psm1') -replace "'", "''"
     $cwdEscaped = $Cwd -replace "'", "''"
     $argLiterals = ($CmdArgs | ForEach-Object { "'{0}'" -f ($_ -replace "'", "''") }) -join ', '
-    $cmd = "Set-Location -LiteralPath '$cwdEscaped'; Import-Module '$module' -Force; Invoke-Wt -Arguments @($argLiterals)"
+    # exit $LASTEXITCODE: Invoke-Wt (B6) atrapa sus propios errores y solo deja el
+    # codigo de salida en la variable, para no cerrar la sesion del usuario en el modo
+    # funcion del perfil; en este -Command hay que propagarlo a mano como haria wt.ps1.
+    $cmd = "Set-Location -LiteralPath '$cwdEscaped'; Import-Module '$module' -Force; Invoke-Wt -Arguments @($argLiterals); exit `$LASTEXITCODE"
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
@@ -56,7 +59,7 @@ function Invoke-WtAndLocation {
     $cwdEscaped = $Cwd -replace "'", "''"
     $argLiterals = ($CmdArgs | ForEach-Object { "'{0}'" -f ($_ -replace "'", "''") }) -join ', '
     $cmd = "Set-Location -LiteralPath '$cwdEscaped'; Import-Module '$module' -Force; " +
-        "Invoke-Wt -Arguments @($argLiterals); Write-Output ('WT_FINAL_LOCATION:' + (Get-Location).Path)"
+        "Invoke-Wt -Arguments @($argLiterals); Write-Output ('WT_FINAL_LOCATION:' + (Get-Location).Path); exit `$LASTEXITCODE"
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     try {
@@ -76,7 +79,7 @@ function Invoke-WtConsole {
     param([string[]]$InputLines, [string]$Cwd)
     $module = (Join-Path $PSScriptRoot '..\wt.psm1') -replace "'", "''"
     $cwdEscaped = $Cwd -replace "'", "''"
-    $cmd = "Set-Location -LiteralPath '$cwdEscaped'; Import-Module '$module' -Force; Invoke-Wt -Arguments @('console')"
+    $cmd = "Set-Location -LiteralPath '$cwdEscaped'; Import-Module '$module' -Force; Invoke-Wt -Arguments @('console'); exit `$LASTEXITCODE"
     $stdin = ($InputLines -join "`n") + "`n"
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
@@ -324,6 +327,18 @@ try {
     Write-Host '== comando desconocido (debe fallar) ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('inventado') -Cwd $repoDir
     Assert-True 'comando desconocido falla' ($r.ExitCode -ne 0)
+
+    Write-Host '== contrato de codigos de salida (B6): 0 OK, 1 uso, 2 git/entorno ==' -ForegroundColor Cyan
+    $r = Invoke-Wt -CmdArgs @('inventado') -Cwd $repoDir
+    Assert-True "'wt inventado' sale con 1 (error de uso)" ($r.ExitCode -eq 1) $r.Output
+    $r = Invoke-Wt -CmdArgs @('open', 'no-existe') -Cwd $repoDir
+    Assert-True "'wt open no-existe' sale con 2 (error de git/entorno)" ($r.ExitCode -eq 2) $r.Output
+    $r = Invoke-Wt -CmdArgs @('list') -Cwd $repoDir
+    Assert-True "'wt list' sale con 0" ($r.ExitCode -eq 0) $r.Output
+    $r = Invoke-Wt -CmdArgs @('create') -Cwd $repoDir
+    Assert-True "'wt create' sin nombre sale con 1 (argumento faltante)" ($r.ExitCode -eq 1) $r.Output
+    $r = Invoke-Wt -CmdArgs @('open', 'feature-a', '--agente') -Cwd $repoDir
+    Assert-True "flag desconocido sale con 1" ($r.ExitCode -eq 1) $r.Output
 
     Write-Host '== wt fuera de un repo (debe fallar con mensaje claro) ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('list') -Cwd $env:TEMP

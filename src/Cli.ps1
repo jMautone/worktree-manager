@@ -173,6 +173,10 @@ EJEMPLOS:
 NOTA: 'wt cd' cambia el directorio de TU terminal porque la funcion 'wt' del perfil
 corre en el mismo proceso. Si invocas wt.ps1 con -File, el cd solo afecta a ese proceso.
 
+CODIGOS DE SALIDA: 0 OK; 1 error de uso (comando/flag desconocido, argumento
+faltante); 2 error de git o del entorno (worktree/repo inexistente, valor de config
+invalido, etc.).
+
 CONFIG (editable con 'wt config set', 'wt config edit', o a mano en
 %USERPROFILE%\.wt\config.json o .wt.json en la raiz del repo):
   worktreeRootTemplate  Plantilla de rutas: {repoParent} {repo} {name}
@@ -196,13 +200,53 @@ function Invoke-Wt {
     <#
     .SYNOPSIS
         Punto de entrada del CLI: parsea y despacha. Sin logica de negocio.
+    .DESCRIPTION
+        Codigos de salida: 0 OK; 1 error de uso (comando o flag invalido, argumento
+        faltante); 2 error de git o del entorno (worktree/repo inexistente, ambiguo,
+        git worktree remove fallido, etc.). Setea $global:LASTEXITCODE en los dos
+        modos de invocacion: la funcion del perfil (que no llama a 'exit', para no
+        cerrar la terminal) y wt.ps1 -File (que si hace 'exit $LASTEXITCODE' al final).
     #>
     param([Parameter(ValueFromRemainingArguments)][Alias('Args')][string[]]$Arguments)
 
     Clear-WtConfigCache
     Clear-WtWorktreesCache
-    $parsed = ConvertFrom-WtArgs -Arguments $Arguments
-    if (-not $parsed.Command) { Show-WtHelp; return }
+
+    try {
+        $parsed = ConvertFrom-WtArgs -Arguments $Arguments
+    } catch {
+        # Cualquier error de ConvertFrom-WtArgs (comando o flag desconocido, flag sin
+        # valor) es por definicion un problema de sintaxis de la linea de comandos.
+        Write-WtError $_.Exception.Message
+        $global:LASTEXITCODE = 1
+        return
+    }
+    if (-not $parsed.Command) {
+        Show-WtHelp
+        $global:LASTEXITCODE = 0
+        return
+    }
+
+    try {
+        Invoke-WtDispatch -Parsed $parsed
+        $global:LASTEXITCODE = 0
+    } catch {
+        $message = $_.Exception.Message
+        $exitCode = 2
+        if ($message.StartsWith('Uso:')) { $exitCode = 1 }
+        Write-WtError $message
+        $global:LASTEXITCODE = $exitCode
+    }
+}
+
+function Invoke-WtDispatch {
+    <#
+    .SYNOPSIS
+        Despacho por comando. Separado de Invoke-Wt para que el try/catch del
+        contrato de codigos de salida (B6) envuelva un solo punto.
+    #>
+    param([Parameter(Mandatory)]$Parsed)
+    $parsed = $Parsed
 
     switch ($parsed.Command) {
         'create' {

@@ -198,6 +198,21 @@ function Test-WtCommand {
     return ($null -ne (Get-Command $Name -ErrorAction SilentlyContinue))
 }
 
+function Get-WtCommandSource {
+    <#
+    .SYNOPSIS
+        '.Source' de un resultado de Get-Command, o '' si es $null.
+    .DESCRIPTION
+        'Get-Command X -ErrorAction SilentlyContinue' devuelve $null cuando X no
+        existe; bajo Set-StrictMode -Version Latest, leer '.Source' de ese $null es un
+        error terminante (PropertyNotFoundStrict), no uno silencioso -asi fallaba
+        'wt doctor' cuando faltaba un comando opcional (fnm, el agente configurado).
+    #>
+    param($Command)
+    if ($null -eq $Command) { return '' }
+    return [string]$Command.Source
+}
+
 # --- Rutas ------------------------------------------------------------------
 
 function ConvertTo-WtFullPath {
