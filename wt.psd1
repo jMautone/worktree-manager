@@ -11,6 +11,7 @@
         # Comandos
         'New-WtWorktree', 'Get-WtWorktreeList', 'Open-WtWorktree', 'Remove-WtWorktree',
         'Invoke-WtPrune', 'Invoke-WtPathCommand', 'Invoke-WtDoctor', 'Start-WtConsole',
+        'Invoke-WtLock', 'Invoke-WtUnlock',
         'Invoke-WtVersion', 'Invoke-WtClean',
         # Workspace
         'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',

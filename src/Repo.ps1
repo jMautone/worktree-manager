@@ -107,7 +107,9 @@ function New-WtWorktreeInfo {
         [bool]$IsDetached = $false,
         [bool]$IsMain = $false,
         [bool]$IsPrunable = $false,
-        [string]$PruneReason = ''
+        [string]$PruneReason = '',
+        [bool]$IsLocked = $false,
+        [string]$LockReason = ''
     )
     return [pscustomobject]@{
         Path        = $Path
@@ -118,6 +120,8 @@ function New-WtWorktreeInfo {
         IsMain      = $IsMain
         IsPrunable  = $IsPrunable
         PruneReason = $PruneReason
+        IsLocked    = $IsLocked
+        LockReason  = $LockReason
     }
 }
 
@@ -127,8 +131,9 @@ function ConvertFrom-WtWorktreePorcelain {
         Parsea la salida de 'git worktree list --porcelain' (formato estable).
     .DESCRIPTION
         Funcion pura (sin git ni disco): permite testear el parsing, incluida la
-        deteccion de worktrees obsoletos via el atributo 'prunable'. git garantiza
-        que la primera entrada es el worktree principal, y de ahi sale IsMain.
+        deteccion de worktrees obsoletos via el atributo 'prunable' y bloqueados via
+        'locked'. git garantiza que la primera entrada es el worktree principal, y de
+        ahi sale IsMain.
     #>
     param([AllowEmptyString()][string]$Text)
     $worktrees = @()
@@ -145,6 +150,10 @@ function ConvertFrom-WtWorktreePorcelain {
             elseif ($line -match '^prunable\s*(.*)$') {
                 $current.IsPrunable = $true
                 $current.PruneReason = $Matches[1].Trim()
+            }
+            elseif ($line -match '^locked\s*(.*)$') {
+                $current.IsLocked = $true
+                $current.LockReason = $Matches[1].Trim()
             }
         }
     }

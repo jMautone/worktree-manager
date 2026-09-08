@@ -83,14 +83,20 @@ branch refs/heads/main
 worktree C:/repos/MiRepo.worktrees/feature-a
 HEAD def1234567890
 branch refs/heads/feature-a
+locked reviewing sensitive changes
 
 worktree C:/repos/MiRepo.worktrees/stale
 HEAD 999
 detached
 prunable gitdir file points to non-existent location
+
+worktree C:/repos/MiRepo.worktrees/locked-sin-motivo
+HEAD 888
+branch refs/heads/locked-sin-motivo
+locked
 '@
 $wts = @(ConvertFrom-WtWorktreePorcelain -Text $porcelain)
-Assert-True 'parsea 3 worktrees' ($wts.Count -eq 3) ("count={0}" -f $wts.Count)
+Assert-True 'parsea 4 worktrees' ($wts.Count -eq 4) ("count={0}" -f $wts.Count)
 Assert-True 'normaliza las barras a Windows' ($wts[0].Path -eq 'C:\repos\MiRepo') $wts[0].Path
 Assert-True 'el primero es el principal' ($wts[0].IsMain)
 Assert-True 'los demas no son principales' (-not $wts[1].IsMain -and -not $wts[2].IsMain)
@@ -98,6 +104,9 @@ Assert-True 'lee la rama' ($wts[1].Branch -eq 'feature-a')
 Assert-True 'detecta detached' ($wts[2].IsDetached)
 Assert-True 'detecta prunable' ($wts[2].IsPrunable)
 Assert-True 'guarda el motivo del prunable' ($wts[2].PruneReason -match 'non-existent') $wts[2].PruneReason
+Assert-True 'detecta locked con motivo (B4)' ($wts[1].IsLocked -and $wts[1].LockReason -eq 'reviewing sensitive changes') $wts[1].LockReason
+Assert-True 'detecta locked sin motivo (B4)' ($wts[3].IsLocked -and $wts[3].LockReason -eq '')
+Assert-True 'un worktree no bloqueado no queda marcado' (-not $wts[2].IsLocked)
 Assert-True 'texto vacio no rompe' ((@(ConvertFrom-WtWorktreePorcelain -Text '')).Count -eq 0)
 
 Write-Host '== ConvertFrom-WtWorktreePorcelain con un warning intercalado (M1) ==' -ForegroundColor Cyan
@@ -312,6 +321,8 @@ $rows = @(Get-WtWorktreeRows -Worktrees $wts)
 Assert-True 'marca el principal' ($rows[0].Nombre -match 'principal') $rows[0].Nombre
 Assert-True 'marca el obsoleto' ($rows[2].Nombre -match 'obsoleto') $rows[2].Nombre
 Assert-True 'muestra el detached acortado' ($rows[2].Rama -match 'detached') $rows[2].Rama
+Assert-True 'marca el bloqueado con motivo (B4)' ($rows[1].Nombre -match 'bloqueado.*reviewing sensitive changes') $rows[1].Nombre
+Assert-True 'marca el bloqueado sin motivo (B4)' ($rows[3].Nombre -match 'bloqueado' -and $rows[3].Nombre -notmatch ':') $rows[3].Nombre
 
 Write-Host '== ConvertTo-WtJson ==' -ForegroundColor Cyan
 Assert-True 'coleccion vacia -> []' ((ConvertTo-WtJson -InputObject @()) -eq '[]')

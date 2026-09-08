@@ -255,6 +255,22 @@ try {
     $r = Invoke-Wt -CmdArgs @('remove', 'dirty', '--force', '--delete-branch') -Cwd $repoDir
     Assert-True 'remove dirty --force funciona' ($r.ExitCode -eq 0) $r.Output
 
+    Write-Host '== ciclo lock / remove / unlock / remove (B4) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'lockable', '--no-open') -Cwd $repoDir | Out-Null
+    $r = Invoke-Wt -CmdArgs @('lock', 'lockable', '--reason', 'revision pendiente') -Cwd $repoDir
+    Assert-True 'lock exit 0' ($r.ExitCode -eq 0) $r.Output
+    $r = Invoke-Wt -CmdArgs @('list') -Cwd $repoDir
+    Assert-True 'list marca el bloqueado con motivo' ($r.Output -match 'bloqueado' -and $r.Output -match 'revision pendiente') $r.Output
+    $r = Invoke-Wt -CmdArgs @('remove', 'lockable', '--delete-branch') -Cwd $repoDir
+    Assert-True 'remove de un worktree bloqueado falla' ($r.ExitCode -ne 0)
+    Assert-True 'el mensaje es claro y sugiere wt unlock' ($r.Output -match 'bloqueado' -and $r.Output -match 'wt unlock lockable') $r.Output
+    Assert-True 'el worktree bloqueado no se elimino' (Test-Path (Join-Path $wtRoot 'lockable'))
+    $r = Invoke-Wt -CmdArgs @('unlock', 'lockable') -Cwd $repoDir
+    Assert-True 'unlock exit 0' ($r.ExitCode -eq 0) $r.Output
+    $r = Invoke-Wt -CmdArgs @('remove', 'lockable', '--delete-branch') -Cwd $repoDir
+    Assert-True 'remove funciona tras unlock' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'el worktree ya no existe' (-not (Test-Path (Join-Path $wtRoot 'lockable')))
+
     Write-Host '== wt prune ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('prune') -Cwd $repoDir
     Assert-True 'prune exit 0' ($r.ExitCode -eq 0) $r.Output

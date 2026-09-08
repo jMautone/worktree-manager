@@ -76,6 +76,7 @@ function Select-WtConsoleWorktree {
         $wt = $worktrees[$i]
         $tag = ''
         if ($wt.IsMain) { $tag = ' (principal)' }
+        if ($wt.IsLocked) { $tag = ' (bloqueado)' }
         if ($wt.IsPrunable) { $tag = ' (obsoleto)' }
         $branch = $wt.Branch
         if (-not $branch) { $branch = '(detached)' }

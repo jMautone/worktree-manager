@@ -111,3 +111,10 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   (`EF BB BF`), que muchos parsers TOML rechazan. Nuevo
   `Set-WtFileUtf8NoBom` (`[IO.File]::WriteAllText` con `UTF8Encoding($false)`)
   usado tanto para los tab configs de Warp como para `config.json`.
+- **B4**: `ConvertFrom-WtWorktreePorcelain` manejaba `bare`, `detached` y
+  `prunable`, pero no `locked`. Se agregan `IsLocked`/`LockReason` al parser y
+  al modelo (`New-WtWorktreeInfo`), marcados en `wt list`, `--json` y la
+  consola. `wt remove` traduce el error crudo de git en un mensaje propio que
+  nombra el motivo y sugiere `wt unlock`. Nuevos comandos `wt lock <nombre>
+  [--reason <texto>]` y `wt unlock <nombre>` sobre `git worktree lock`/
+  `unlock`.

@@ -54,6 +54,8 @@ wt remove logging                            # elimina el worktree (conserva la 
 wt remove logging --delete-branch            # elimina worktree y rama (borrado seguro: git branch -d)
 wt remove logging --delete-branch --force-branch  # fuerza el borrado de rama aunque tenga commits sin mergear
 wt remove logging --force                    # fuerza aunque haya cambios sin commit
+wt lock logging --reason "revision en curso"  # bloquea el worktree (git worktree lock)
+wt unlock logging                            # lo desbloquea
 wt prune                                     # depura metadatos de worktrees huérfanos
 wt clean                                     # depura tab configs de Warp huérfanos
 wt console                                   # menú interactivo que arma los comandos sin escribirlos
@@ -267,6 +269,11 @@ hacer que `wt open` lance el binario que ese archivo elija.
   fuerza `git worktree remove --force` (árbol de trabajo sucio) y nunca implica
   `--force-branch`. `Remove-WtWorktree` declara `SupportsShouldProcess` y confirma el
   worktree y la rama por separado.
+- **`wt lock`/`wt unlock`**: envuelven `git worktree lock`/`unlock`. El parser del
+  porcelain (`ConvertFrom-WtWorktreePorcelain`) detecta el atributo `locked` (con o
+  sin motivo) igual que ya hacía con `prunable`; `wt list`, `--json` y la consola lo
+  marcan, y `wt remove` lo rechaza con un mensaje que nombra el motivo (si lo hay) y
+  sugiere `wt unlock` en vez de dejar que git falle con su mensaje crudo.
 - **`create` cumple lo que promete abrir**: `Get-WtCreateOpenPlan` (función pura)
   resuelve `openOnCreate` (`all` por defecto = editor + agente) contra los flags
   explícitos de apertura (`--all`/`--code`/`--agent`/`--terminal`, que ganan a la

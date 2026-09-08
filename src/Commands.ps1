@@ -113,6 +113,10 @@ function Get-WtWorktreeRows {
     return @(foreach ($wt in $Worktrees) {
         $nombre = Split-Path -Leaf $wt.Path
         if ($wt.IsMain) { $nombre = "$nombre (principal)" }
+        if ($wt.IsLocked) {
+            $nombre = "$nombre (bloqueado)"
+            if ($wt.LockReason) { $nombre = "${nombre}: $($wt.LockReason)" }
+        }
         if ($wt.IsPrunable) { $nombre = "$nombre (obsoleto: corre wt prune)" }
         $rama = $wt.Branch
         if (-not $rama -and $wt.IsDetached -and $wt.Head) {
@@ -127,7 +131,7 @@ function Get-WtWorktreeList {
     $repoRoot = Find-WtMainRoot
     $worktrees = @(Get-WtWorktrees -RepoRoot $repoRoot)
     if ($Json) {
-        ConvertTo-WtJson -InputObject @($worktrees | Select-Object Path, Branch, Head, IsMain, IsDetached, IsPrunable)
+        ConvertTo-WtJson -InputObject @($worktrees | Select-Object Path, Branch, Head, IsMain, IsDetached, IsPrunable, IsLocked, LockReason)
         return
     }
     Write-WtDetail ("Repositorio: {0}" -f $repoRoot)
@@ -333,6 +337,11 @@ function Remove-WtWorktree {
     $repoRoot = Find-WtMainRoot
     $wt = Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name
     if ($wt.IsMain) { throw 'No se puede eliminar el worktree principal del repositorio.' }
+    if ($wt.IsLocked) {
+        $reason = $wt.LockReason
+        if (-not $reason) { $reason = 'sin motivo especificado' }
+        throw "El worktree '$Name' esta bloqueado ($reason). Usa 'wt unlock $Name' para desbloquearlo antes de eliminarlo."
+    }
 
     if (-not $PSCmdlet.ShouldProcess($wt.Path, 'git worktree remove')) { return }
 
@@ -372,6 +381,38 @@ function Remove-WtWorktree {
             throw ($template -f $wt.Branch)
         }
     }
+}
+
+function Invoke-WtLock {
+    <#
+    .SYNOPSIS
+        Bloquea un worktree ('git worktree lock'): 'wt remove' y 'wt prune' lo rechazan
+        mientras siga bloqueado.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [AllowEmptyString()][string]$Reason
+    )
+    $repoRoot = Find-WtMainRoot
+    $wt = Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name
+    if ($wt.IsMain) { throw 'El worktree principal no se bloquea.' }
+    $gitArgs = @('worktree', 'lock')
+    if ($Reason) { $gitArgs += @('--reason', $Reason) }
+    $gitArgs += $wt.Path
+    Invoke-WtGit -WorkingDirectory $repoRoot -Arguments $gitArgs | Out-Null
+    Write-WtSuccess "OK - worktree '$Name' bloqueado."
+}
+
+function Invoke-WtUnlock {
+    <#
+    .SYNOPSIS
+        Desbloquea un worktree ('git worktree unlock').
+    #>
+    param([Parameter(Mandatory)][string]$Name)
+    $repoRoot = Find-WtMainRoot
+    $wt = Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name
+    Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('worktree', 'unlock', $wt.Path) | Out-Null
+    Write-WtSuccess "OK - worktree '$Name' desbloqueado."
 }
 
 function Invoke-WtPrune {

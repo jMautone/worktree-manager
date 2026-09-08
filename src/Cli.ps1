@@ -12,6 +12,8 @@ function Get-WtCommandSpecs {
         'open'    = @{ Aliases = @();                    Flags = @('code', 'terminal', 'agent', 'all');                       Values = @() }
         'path'    = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'remove'  = @{ Aliases = @('rm');                Flags = @('delete-branch', 'force', 'force-branch');                 Values = @() }
+        'lock'    = @{ Aliases = @();                    Flags = @();                                                         Values = @('reason') }
+        'unlock'  = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'prune'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'clean'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'repos'   = @{ Aliases = @('repos-list');        Flags = @('json');                                                   Values = @() }
@@ -118,6 +120,8 @@ WORKTREES:
   wt open [<nombre>] [--code] [--terminal] [--agent] [--all]
   wt path [<nombre>]
   wt remove <nombre> [--delete-branch] [--force] [--force-branch]   (alias: rm)
+  wt lock <nombre> [--reason <texto>]
+  wt unlock <nombre>
   wt prune
   wt clean                                    # borra tab configs de Warp huerfanos
 
@@ -136,6 +140,10 @@ WORKTREES:
   para forzarlo con 'git branch -D'. --force es independiente: solo fuerza el borrado
   del worktree ('git worktree remove --force', arbol de trabajo sucio) y nunca implica
   --force-branch.
+
+  'wt lock'/'wt unlock' bloquean o desbloquean un worktree ('git worktree lock/unlock');
+  un worktree bloqueado se marca en 'wt list' y en la consola, y 'wt remove' lo rechaza
+  con un mensaje que sugiere 'wt unlock' primero.
 
 WORKSPACE (funcionan desde cualquier directorio):
   wt repos [--json]                          # lista los repos git de reposRoot
@@ -228,6 +236,16 @@ function Invoke-Wt {
                 -DeleteBranch:(Test-WtFlag -Parsed $parsed -Key 'delete-branch') `
                 -Force:(Test-WtFlag -Parsed $parsed -Key 'force') `
                 -ForceBranch:(Test-WtFlag -Parsed $parsed -Key 'force-branch')
+        }
+        'lock' {
+            $name = Get-WtPositional -Parsed $parsed -Index 0
+            if (-not $name) { throw 'Uso: wt lock <nombre> [--reason <texto>]' }
+            Invoke-WtLock -Name $name -Reason (Get-WtValue -Parsed $parsed -Key 'reason')
+        }
+        'unlock' {
+            $name = Get-WtPositional -Parsed $parsed -Index 0
+            if (-not $name) { throw 'Uso: wt unlock <nombre>' }
+            Invoke-WtUnlock -Name $name
         }
         'prune' { Invoke-WtPrune }
         'clean' { Invoke-WtClean }
