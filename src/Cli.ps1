@@ -200,6 +200,7 @@ function Invoke-Wt {
     param([Parameter(ValueFromRemainingArguments)][Alias('Args')][string[]]$Arguments)
 
     Clear-WtConfigCache
+    Clear-WtWorktreesCache
     $parsed = ConvertFrom-WtArgs -Arguments $Arguments
     if (-not $parsed.Command) { Show-WtHelp; return }
 
@@ -215,6 +216,7 @@ function Invoke-Wt {
                 -Agent:(Test-WtFlag -Parsed $parsed -Key 'agent') `
                 -All:(Test-WtFlag -Parsed $parsed -Key 'all') `
                 -NoOpen:(Test-WtFlag -Parsed $parsed -Key 'no-open')
+            Clear-WtWorktreesCache
         }
         'list' {
             Get-WtWorktreeList -Json:(Test-WtFlag -Parsed $parsed -Key 'json')
@@ -236,18 +238,21 @@ function Invoke-Wt {
                 -DeleteBranch:(Test-WtFlag -Parsed $parsed -Key 'delete-branch') `
                 -Force:(Test-WtFlag -Parsed $parsed -Key 'force') `
                 -ForceBranch:(Test-WtFlag -Parsed $parsed -Key 'force-branch')
+            Clear-WtWorktreesCache
         }
         'lock' {
             $name = Get-WtPositional -Parsed $parsed -Index 0
             if (-not $name) { throw 'Uso: wt lock <nombre> [--reason <texto>]' }
             Invoke-WtLock -Name $name -Reason (Get-WtValue -Parsed $parsed -Key 'reason')
+            Clear-WtWorktreesCache
         }
         'unlock' {
             $name = Get-WtPositional -Parsed $parsed -Index 0
             if (-not $name) { throw 'Uso: wt unlock <nombre>' }
             Invoke-WtUnlock -Name $name
+            Clear-WtWorktreesCache
         }
-        'prune' { Invoke-WtPrune }
+        'prune' { Invoke-WtPrune; Clear-WtWorktreesCache }
         'clean' { Invoke-WtClean }
         'repos' { Get-WtRepoList -Json:(Test-WtFlag -Parsed $parsed -Key 'json') }
         'cd' {

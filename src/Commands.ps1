@@ -55,7 +55,7 @@ function New-WtWorktree {
     Assert-WtWorktreeName -Name $Name
 
     $repoRoot = Find-WtMainRoot
-    $config = Get-WtConfig
+    $config = Get-WtConfig -RepoRoot $repoRoot
     $baseExplicit = [bool]$Base
     if (-not $Base) { $Base = [string]$config.defaultBase }
     if (-not $Branch) { $Branch = ([string]$config.branchPrefix) + $Name }
@@ -237,7 +237,7 @@ function Open-WtWorktree {
             Write-WtDetail "El worktree '$Name' es del repo '$(Split-Path -Leaf $target.RepoRoot)'; ahora en $($target.RepoRoot)"
         }
     }
-    $config = Get-WtConfig
+    $config = Get-WtConfig -RepoRoot $target.RepoRoot
     $path = $target.Worktree.Path
     if (-not (Test-WtPathExists $path)) {
         throw "El directorio del worktree no existe: $path. Corre 'wt prune' para depurar los metadatos y volve a crearlo con 'wt create $($target.Name)'."

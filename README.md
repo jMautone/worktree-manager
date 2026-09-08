@@ -11,11 +11,12 @@ powershell -ExecutionPolicy Bypass -File C:\worktree-manager\install.ps1
 ```
 
 El instalador es **idempotente**: agrega/actualiza un bloque delimitado en
-`$PROFILE.CurrentUserAllHosts` que define la función `wt` (y alias `wtm`), y crea
-`%USERPROFILE%\.wt\config.json` a partir de `config.example.json` solo si no existe.
-Luego reiniciá la terminal o ejecutá `. $PROFILE`. Soporta `-WhatIf` (no modifica nada,
-solo informa qué haría) y `-Confirm` (pide confirmación antes de cada escritura:
-perfil, config).
+`$PROFILE.CurrentUserAllHosts` que **importa el módulo una sola vez** (al abrir la
+terminal) y define la función `wt` (y alias `wtm`) como un wrapper liviano sobre
+`Invoke-Wt`, ya cargado; crea `%USERPROFILE%\.wt\config.json` a partir de
+`config.example.json` solo si no existe. Luego reiniciá la terminal o ejecutá
+`. $PROFILE`. Soporta `-WhatIf` (no modifica nada, solo informa qué haría) y
+`-Confirm` (pide confirmación antes de cada escritura: perfil, config).
 
 ### Desinstalación
 
@@ -351,6 +352,15 @@ hacer que `wt open` lance el binario que ese archivo elija.
   las claves contra los defaults para evitar typos. La config efectiva se cachea por
   directorio actual dentro de un mismo proceso, así un comando no dispara varias
   llamadas a git para releer lo mismo.
+- **Costo de arranque**: el bloque del perfil importa el módulo **una sola vez** (al
+  abrir la terminal) en vez de reimportarlo en cada invocación de `wt` — `wt.ps1`
+  sigue reimportando en cada llamada, pero solo se usa para el modo `-File`.
+  `Get-WtWorktrees` cachea por repo dentro de una misma invocación (`wt open
+  <worktree-de-otro-repo>` puede recorrer varios repos de `reposRoot`); `Invoke-Wt`
+  la invalida junto a la cache de config al empezar y después de
+  `create`/`remove`/`lock`/`unlock`/`prune`, y `wt console` la invalida en cada
+  vuelta del menú. `Get-WtConfig` acepta `-RepoRoot` para no repetir el
+  `git rev-parse` cuando el llamador ya lo resolvió.
 
 ## Estructura
 

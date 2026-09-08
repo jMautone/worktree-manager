@@ -13,18 +13,19 @@ param()
 $ErrorActionPreference = 'Stop'
 
 $moduleDir = $PSScriptRoot
-$wtScript = Join-Path $moduleDir 'wt.ps1'
-if (-not (Test-Path -LiteralPath $wtScript)) { throw "No se encontro '$wtScript'." }
+$wtModule = Join-Path $moduleDir 'wt.psm1'
+if (-not (Test-Path -LiteralPath $wtModule)) { throw "No se encontro '$wtModule'." }
 
 $markerStart = '# >>> worktree-manager >>>'
 $markerEnd = '# <<< worktree-manager <<<'
 # La ruta se embebe en un string literal de PowerShell: hay que duplicar las comillas
 # simples por si el directorio de instalacion las contiene.
-$scriptLiteral = $wtScript.Replace("'", "''")
+$moduleLiteral = $wtModule.Replace("'", "''")
 $block = @"
 $markerStart
+Import-Module '$moduleLiteral' -Force
 function wt {
-    & '$scriptLiteral' @args
+    Invoke-Wt @args
 }
 Set-Alias wtm -Value wt -ErrorAction SilentlyContinue
 $markerEnd

@@ -162,18 +162,35 @@ function ConvertFrom-WtWorktreePorcelain {
     return $worktrees
 }
 
+# Cache por invocacion: 'wt open <worktree>' fuera de un repo puede recorrer varios
+# repos de reposRoot (Find-WtReposOwningWorktree) y volver a consultar el mismo repo
+# mas de una vez en el mismo comando. Invoke-Wt la limpia al empezar (junto a
+# Clear-WtConfigCache) y despues de create/remove/prune/lock/unlock, asi que nunca
+# sobrevive entre comandos distintos aunque el proceso de PowerShell si.
+$script:WorktreesCache = @{}
+
+function Clear-WtWorktreesCache {
+    $script:WorktreesCache = @{}
+}
+
 function Get-WtWorktrees {
     <#
     .SYNOPSIS
         Worktrees del repositorio, con Path, Head, Branch, IsMain, IsBare, IsDetached,
-        IsPrunable y PruneReason.
+        IsPrunable, PruneReason, IsLocked y LockReason.
     .NOTES
         IsMain se deriva de $RepoRoot (primera entrada del porcelain), no del directorio
         actual: asi el resultado es el mismo se llame desde donde se llame.
     #>
-    param([Parameter(Mandatory)][string]$RepoRoot)
+    param([Parameter(Mandatory)][string]$RepoRoot, [switch]$Refresh)
+    $key = (ConvertTo-WtFullPath $RepoRoot).ToLowerInvariant()
+    if (-not $Refresh -and $script:WorktreesCache.ContainsKey($key)) {
+        return $script:WorktreesCache[$key]
+    }
     $r = Invoke-WtGit -WorkingDirectory $RepoRoot -Arguments @('worktree', 'list', '--porcelain')
-    return @(ConvertFrom-WtWorktreePorcelain -Text ($r.StdOut | Out-String))
+    $result = @(ConvertFrom-WtWorktreePorcelain -Text ($r.StdOut | Out-String))
+    $script:WorktreesCache[$key] = $result
+    return $result
 }
 
 function Test-WtWorktreeMatchesName {

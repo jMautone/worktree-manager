@@ -262,8 +262,10 @@ function Start-WtConsole {
     Write-WtDetail 'Antes de ejecutar se muestra el comando CLI equivalente, para aprenderlo.'
     $menu = @(Get-WtConsoleMenu)
     while ($true) {
-        # Se re-evalua en cada vuelta: 'g' (ir a un repo) puede cambiar el repo actual.
+        # Se re-evalua en cada vuelta: 'g' (ir a un repo) puede cambiar el repo actual, y
+        # las acciones de create/remove/lock/unlock cambian los worktrees del repo actual.
         Clear-WtConfigCache
+        Clear-WtWorktreesCache
         $repoRoot = Find-WtMainRoot -Silent
         Show-WtConsoleMenu -RepoRoot $repoRoot -Menu $menu
         $choice = Read-WtConsoleChoice -Prompt 'wt> '

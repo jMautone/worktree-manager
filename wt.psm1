@@ -32,7 +32,7 @@ Export-ModuleMember -Function @(
     'Get-WtRepoConfigAllowedKeys', 'Select-WtRepoConfigKeys',
     'Test-WtConfigValue', 'Assert-WtConfigValue', 'Test-WtWorktreeRootTemplateNeedsRepoToken', 'Get-WtKnownWarpColors',
     # Repo / worktrees
-    'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Resolve-WtWorktree',
+    'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Clear-WtWorktreesCache', 'Resolve-WtWorktree',
     'ConvertFrom-WtWorktreePorcelain', 'Get-WtWorktreePath',
     # Warp / apertura
     'Write-WtAgentTabConfig', 'New-WtWarpTabConfigContent', 'Open-WtAgentInWarp',

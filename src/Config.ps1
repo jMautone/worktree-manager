@@ -235,8 +235,12 @@ function Get-WtConfig {
         (Select-WtRepoConfigKeys): es el unico archivo de config que puede llegar de
         un repo ajeno (clonado), asi que una clave como 'editor' o 'warpPath' ahi no
         puede terminar siendo el ejecutable que 'wt open' lanza.
+    .PARAMETER RepoRoot
+        Si el llamador ya resolvio la raiz del repo (ej. Find-WtMainRoot), pasarla
+        evita repetir el 'git rev-parse' que Get-WtConfig haria por su cuenta para
+        ubicar el .wt.json.
     #>
-    param([switch]$Refresh)
+    param([switch]$Refresh, [string]$RepoRoot)
     $cwd = (Get-Location).Path
     if (-not $Refresh -and $script:ConfigCache -and $script:ConfigCache.Cwd -eq $cwd) {
         return $script:ConfigCache.Config
@@ -249,7 +253,8 @@ function Get-WtConfig {
         if ($env:WT_CONFIG) { $candidates += $env:WT_CONFIG }
     } else {
         $candidates = @(Get-WtGlobalConfigPath)
-        $repoRoot = Find-WtMainRoot -Silent
+        $repoRoot = $RepoRoot
+        if (-not $repoRoot) { $repoRoot = Find-WtMainRoot -Silent }
         if ($repoRoot) {
             $repoConfigPath = Join-Path $repoRoot '.wt.json'
             $candidates += $repoConfigPath

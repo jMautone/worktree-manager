@@ -148,7 +148,8 @@ function Invoke-WtCd {
     .SYNOPSIS
         Cambia el directorio actual a la raiz de repos o a un repo.
     .NOTES
-        Funciona porque la funcion 'wt' del perfil invoca el script en el mismo proceso.
+        Funciona porque la funcion 'wt' del perfil llama a Invoke-Wt en el mismo
+        proceso (el modulo se importa una vez al cargar el perfil, no en cada llamada).
         Con -Open abre el editor (la terminal nunca se abre sola).
     #>
     param([AllowEmptyString()][string]$Name, [switch]$Open)

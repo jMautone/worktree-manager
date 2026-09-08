@@ -118,3 +118,24 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   nombra el motivo y sugiere `wt unlock`. Nuevos comandos `wt lock <nombre>
   [--reason <texto>]` y `wt unlock <nombre>` sobre `git worktree lock`/
   `unlock`.
+- **B5**: tres cambios de costo de arranque y llamadas a git redundantes,
+  independientes entre si:
+  1. El bloque del perfil importa el modulo **una sola vez** (al abrir la
+     terminal) y define `function wt { Invoke-Wt @args }`, en vez de invocar
+     `wt.ps1` (que reimporta con `-Force`) en cada llamada. `wt.ps1` se
+     conserva para el modo `-File`.
+  2. `Get-WtWorktrees` cachea por `RepoRoot` dentro de una misma invocacion
+     (relevante para `wt open <worktree-de-otro-repo>`, que puede recorrer
+     varios repos de `reposRoot`); `Invoke-Wt` la invalida junto a la cache
+     de config al empezar y despues de
+     `create`/`remove`/`lock`/`unlock`/`prune`, y `wt console` la invalida
+     en cada vuelta del menu (una sola invocacion de `Invoke-Wt` cubre toda
+     la sesion interactiva).
+  3. `Get-WtConfig` acepta `-RepoRoot` opcional para no repetir el
+     `git rev-parse` que hace por su cuenta cuando el llamador (`create`,
+     `open`) ya lo resolvio.
+
+  Medido con `Measure-Command` sobre 15 llamadas a `wt list` (salida
+  suprimida), antes/despues del cambio (1): **237 ms/llamada -> 176 ms/llamada**
+  (~26% menos), atribuible a evitar el reimport del modulo por llamada.
+  El costo restante es sobre todo llamadas a `git` como proceso externo.
