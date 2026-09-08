@@ -16,6 +16,10 @@ function Get-WtCommandSpecs {
         'unlock'  = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'prune'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'clean'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
+        'status'  = @{ Aliases = @('st');                Flags = @('json', 'fetch');                                          Values = @() }
+        'exec'    = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
+        'each'    = @{ Aliases = @();                    Flags = @('continue-on-error', 'json');                              Values = @() }
+        'sync'    = @{ Aliases = @();                    Flags = @('continue-on-error');                                      Values = @('base', 'strategy') }
         'repos'   = @{ Aliases = @('repos-list');        Flags = @('json');                                                   Values = @() }
         'cd'      = @{ Aliases = @('go');                Flags = @('open');                                                   Values = @() }
         'config'  = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
@@ -51,11 +55,15 @@ function ConvertFrom-WtArgs {
           faltante se convertia silenciosamente en el string 'True'.
         - Los flags no reconocidos por el comando se rechazan, para que un typo
           (--agente) no pase inadvertido.
+        - Un '--' suelto corta el parseo ahi: todo lo que sigue va crudo a
+          'Rest', sin interpretarse como flags (lo usan 'exec'/'each' para separar
+          el comando externo de los propios flags de wt).
     .OUTPUTS
-        @{ Command; Positional; Flags (hashtable de bool); Values (hashtable de string) }
+        @{ Command; Positional; Flags (hashtable de bool); Values (hashtable de
+        string); Rest (array de string, lo que sigue a un '--' suelto) }
     #>
     param([AllowEmptyCollection()][string[]]$Arguments)
-    $result = @{ Command = ''; Positional = @(); Flags = @{}; Values = @{} }
+    $result = @{ Command = ''; Positional = @(); Flags = @{}; Values = @{}; Rest = @() }
     if (-not $Arguments -or $Arguments.Count -eq 0) { return $result }
 
     $command = Resolve-WtCommandName -Token $Arguments[0]
@@ -65,11 +73,21 @@ function ConvertFrom-WtArgs {
     $rest = @($Arguments | Select-Object -Skip 1)
     for ($i = 0; $i -lt $rest.Count; $i++) {
         $token = $rest[$i]
+        if ($token -eq '--') {
+            $result.Rest = @($rest | Select-Object -Skip ($i + 1))
+            break
+        }
         if (-not ($token -match '^--?([^-].*)$')) {
             $result.Positional += $token
             continue
         }
         $key = $Matches[1].ToLowerInvariant()
+        if ($key -eq 'dry-run') {
+            # Global: valido para cualquier comando (item 4), no forma parte de la
+            # spec de cada uno.
+            $result.Flags[$key] = $true
+            continue
+        }
         if ($spec.Values -contains $key) {
             $next = $null
             if ($i + 1 -lt $rest.Count) { $next = $rest[$i + 1] }
@@ -124,6 +142,10 @@ WORKTREES:
   wt unlock <nombre>
   wt prune
   wt clean                                    # borra tab configs de Warp huerfanos
+  wt status [<nombre>] [--json] [--fetch]     # estado de uno o todos los worktrees (alias: st)
+  wt exec <nombre> -- <comando...>            # corre <comando> en ese worktree
+  wt each [--continue-on-error] [--json] -- <comando...>   # corre <comando> en todos
+  wt sync [<nombre>] [--base <rama>] [--strategy rebase|merge] [--continue-on-error]
 
   'create' usa el nombre tambien como rama (mas branchPrefix); --branch la cambia.
   Antes de abrir nada corren los hooks de creacion: copia 'copyOnCreate' y ejecuta
@@ -146,6 +168,23 @@ WORKTREES:
   'wt lock'/'wt unlock' bloquean o desbloquean un worktree ('git worktree lock/unlock');
   un worktree bloqueado se marca en 'wt list' y en la consola, y 'wt remove' lo rechaza
   con un mensaje que sugiere 'wt unlock' primero.
+
+  'wt status' sin nombre muestra todos los worktrees del repo actual: rama, archivos
+  staged/modified/sin trackear, ahead/behind contra el upstream (o 'defaultBase' si no
+  tiene) y el ultimo commit. --fetch actualiza contra el remoto antes de calcular; sin
+  el flag nunca toca la red. Un worktree que falla (bloqueado, disco desconectado) se
+  reporta con su error en la fila, sin romper el resto.
+
+  'wt exec'/'wt each' corren un comando externo tal cual, sin que wt interprete sus
+  flags: todo lo que sigue a un '--' suelto va crudo al comando. 'each' lo corre en
+  todos los worktrees del repo (menos el principal y los obsoletos), en serie; sin
+  --continue-on-error corta en el primer fallo, con el flag sigue y resume al final
+  que worktrees fallaron. Exit 2 si alguno fallo.
+
+  'wt sync' rebasa (default) o mergea (--strategy merge) cada worktree contra su base
+  (--base explicito > upstream de la rama > defaultBase). Un worktree sucio se saltea
+  siempre (nunca hace stash automatico); un conflicto se reporta y el worktree queda
+  como git lo dejo, sin resolverlo ni abortarlo solo. Un solo 'git fetch' al inicio.
 
 WORKSPACE (funcionan desde cualquier directorio):
   wt repos [--json]                          # lista los repos git de reposRoot
@@ -175,9 +214,18 @@ EJEMPLOS:
 NOTA: 'wt cd' cambia el directorio de TU terminal porque la funcion 'wt' del perfil
 corre en el mismo proceso. Si invocas wt.ps1 con -File, el cd solo afecta a ese proceso.
 
+AUTOCOMPLETADO: install.ps1 registra el autocompletado de comandos, flags, claves y
+valores de config (TAB en 'wt <TAB>', 'wt open --<TAB>', 'wt config set terminal <TAB>')
+y nombres de worktree/repo en la 2da posicion de open/path/remove/cd/lock/unlock.
+
 CODIGOS DE SALIDA: 0 OK; 1 error de uso (comando/flag desconocido, argumento
 faltante); 2 error de git o del entorno (worktree/repo inexistente, valor de config
 invalido, etc.).
+
+--dry-run: valido para CUALQUIER comando. Ningun comando externo se ejecuta y ningun
+archivo se escribe; cada operacion se imprime con el prefijo '[dry-run]'. Las lecturas
+(git rev-parse, worktree list, show-ref, ...) se siguen ejecutando de verdad. Exit 0
+si el ensayo no encuentra errores de uso.
 
 CONFIG (editable con 'wt config set', 'wt config edit', o a mano en
 %USERPROFILE%\.wt\config.json o .wt.json en la raiz del repo):
@@ -233,6 +281,10 @@ function Invoke-Wt {
     }
 
     try {
+        # Set-WtDryRun se resetea SIEMPRE en el finally: si quedara encendida entre
+        # invocaciones dentro del mismo proceso (modo instalado, el perfil importa el
+        # modulo una sola vez) todo comando posterior seria un no-op silencioso.
+        Set-WtDryRun -Value (Test-WtFlag -Parsed $parsed -Key 'dry-run')
         Invoke-WtDispatch -Parsed $parsed
         $global:LASTEXITCODE = 0
     } catch {
@@ -241,6 +293,8 @@ function Invoke-Wt {
         if ($message.StartsWith('Uso:')) { $exitCode = 1 }
         Write-WtError $message
         $global:LASTEXITCODE = $exitCode
+    } finally {
+        Set-WtDryRun -Value $false
     }
 }
 
@@ -305,6 +359,30 @@ function Invoke-WtDispatch {
         }
         'prune' { Invoke-WtPrune; Clear-WtWorktreesCache }
         'clean' { Invoke-WtClean }
+        'status' {
+            Invoke-WtStatus -Name (Get-WtPositional -Parsed $parsed -Index 0) `
+                -Json:(Test-WtFlag -Parsed $parsed -Key 'json') `
+                -Fetch:(Test-WtFlag -Parsed $parsed -Key 'fetch')
+        }
+        'exec' {
+            $name = Get-WtPositional -Parsed $parsed -Index 0
+            if (-not $name -or @($parsed.Rest).Count -eq 0) { throw 'Uso: wt exec <nombre> -- <comando...>' }
+            Invoke-WtExec -Name $name -CommandArgs $parsed.Rest
+        }
+        'each' {
+            if (@($parsed.Rest).Count -eq 0) { throw 'Uso: wt each [--continue-on-error] [--json] -- <comando...>' }
+            Invoke-WtEach -CommandArgs $parsed.Rest `
+                -ContinueOnError:(Test-WtFlag -Parsed $parsed -Key 'continue-on-error') `
+                -Json:(Test-WtFlag -Parsed $parsed -Key 'json')
+        }
+        'sync' {
+            $strategy = Get-WtValue -Parsed $parsed -Key 'strategy'
+            if (-not $strategy) { $strategy = 'rebase' }
+            Invoke-WtSync -Name (Get-WtPositional -Parsed $parsed -Index 0) `
+                -Base (Get-WtValue -Parsed $parsed -Key 'base') `
+                -Strategy $strategy `
+                -ContinueOnError:(Test-WtFlag -Parsed $parsed -Key 'continue-on-error')
+        }
         'repos' { Get-WtRepoList -Json:(Test-WtFlag -Parsed $parsed -Key 'json') }
         'cd' {
             Invoke-WtCd -Name (Get-WtPositional -Parsed $parsed -Index 0) `

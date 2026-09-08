@@ -111,14 +111,27 @@ function Invoke-WtConsoleCreate {
 }
 
 function Invoke-WtConsoleOpen {
-    param([Parameter(Mandatory)][string]$RepoRoot, [switch]$All)
+    <#
+    .SYNOPSIS
+        Abre un worktree elegido con la combinacion de flags que pida el llamador
+        (editor, agente, terminal, o editor+agente con -All). El menu cubre las
+        cuatro combinaciones que expone el CLI (item 8).
+    #>
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [switch]$Agent,
+        [switch]$Terminal,
+        [switch]$All
+    )
     $wt = Select-WtConsoleWorktree -RepoRoot $RepoRoot -Title 'Elegi el worktree a abrir:'
     if (-not $wt) { return }
     $name = Split-Path -Leaf $wt.Path
     $cli = "wt open $name"
     if ($All) { $cli += ' --all' }
+    elseif ($Agent) { $cli += ' --agent' }
+    elseif ($Terminal) { $cli += ' --terminal' }
     Write-WtConsoleCommand $cli
-    Open-WtWorktree -Name $name -All:$All
+    Open-WtWorktree -Name $name -Agent:$Agent -Terminal:$Terminal -All:$All
 }
 
 function Invoke-WtConsolePath {
@@ -146,6 +159,32 @@ function Invoke-WtConsoleRemove {
     if ($null -eq $confirm) { return }
     if (-not $confirm) { Write-WtDetail 'Cancelado.'; return }
     Remove-WtWorktree -Name $name -DeleteBranch:$deleteBranch -Force:$force
+}
+
+function Invoke-WtConsoleStatus {
+    <#
+    .SYNOPSIS
+        'wt status' del repo actual (item 8): sin prompts, es un comando de consulta.
+    #>
+    Write-WtConsoleCommand 'wt status'
+    Invoke-WtStatus
+}
+
+function Invoke-WtConsoleSync {
+    <#
+    .SYNOPSIS
+        'wt sync' del repo actual (item 8), con una base opcional.
+    #>
+    $base = Read-WtConsoleLine -Prompt 'Base (vacio = upstream/defaultBase de cada worktree): '
+    if ($null -eq $base) { return }
+    $base = $base.Trim()
+    $cli = 'wt sync'
+    if ($base) { $cli += " --base $base" }
+    $confirm = Read-WtYesNo -Prompt "Ejecutar '$cli'?" -Default $true
+    if ($null -eq $confirm) { return }
+    if (-not $confirm) { Write-WtDetail 'Cancelado.'; return }
+    Write-WtConsoleCommand $cli
+    Invoke-WtSync -Base $base
 }
 
 function Invoke-WtConsoleGoToRepo {
@@ -245,11 +284,15 @@ function Get-WtConsoleMenu {
         [pscustomobject]@{ Key = '2'; Label = 'Crear worktree';                         RequiresRepo = $true;  Action = { Invoke-WtConsoleCreate } }
         [pscustomobject]@{ Key = '3'; Label = 'Abrir worktree (editor)';                RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot } }
         [pscustomobject]@{ Key = '4'; Label = 'Abrir worktree completo (editor + agente)'; RequiresRepo = $true; Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -All } }
-        [pscustomobject]@{ Key = '5'; Label = 'Ver la ruta de un worktree';             RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsolePath -RepoRoot $repoRoot } }
-        [pscustomobject]@{ Key = '6'; Label = 'Eliminar un worktree';                   RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleRemove -RepoRoot $repoRoot } }
-        [pscustomobject]@{ Key = '7'; Label = 'Prune (depurar metadatos huerfanos)';    RequiresRepo = $true;  Action = { Invoke-WtPrune } }
+        [pscustomobject]@{ Key = '5'; Label = 'Abrir worktree (solo agente)';           RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -Agent } }
+        [pscustomobject]@{ Key = '6'; Label = 'Abrir worktree (solo terminal)';         RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -Terminal } }
+        [pscustomobject]@{ Key = '7'; Label = 'Ver la ruta de un worktree';             RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsolePath -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = '8'; Label = 'Eliminar un worktree';                   RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleRemove -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = '9'; Label = 'Prune (depurar metadatos huerfanos)';    RequiresRepo = $true;  Action = { Invoke-WtPrune } }
+        [pscustomobject]@{ Key = 's'; Label = 'Status del repo (wt status)';            RequiresRepo = $true;  Action = { Invoke-WtConsoleStatus } }
+        [pscustomobject]@{ Key = 'y'; Label = 'Sincronizar (wt sync)';                  RequiresRepo = $true;  Action = { Invoke-WtConsoleSync } }
         [pscustomobject]@{ Key = 'r'; Label = 'Listar repos del root';                  RequiresRepo = $false; Action = { Get-WtRepoList } }
-        [pscustomobject]@{ Key = 'g'; Label = 'Ir a un repo (cd)';                      RequiresRepo = $false; Action = { Invoke-WtConsoleGoToRepo } }
+        [pscustomobject]@{ Key = 'g'; Label = 'Ir a un repo o worktree (cd)';           RequiresRepo = $false; Action = { Invoke-WtConsoleGoToRepo } }
         [pscustomobject]@{ Key = 'c'; Label = 'Configuracion';                          RequiresRepo = $false; Action = { Invoke-WtConsoleConfig } }
         [pscustomobject]@{ Key = 'd'; Label = 'Doctor (chequeo del setup)';             RequiresRepo = $false; Action = { Invoke-WtDoctor } }
         [pscustomobject]@{ Key = 'h'; Label = 'Ayuda del CLI';                          RequiresRepo = $false; Action = { Show-WtHelp } }

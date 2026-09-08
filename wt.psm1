@@ -25,6 +25,9 @@ Export-ModuleMember -Function @(
     'Invoke-WtLock', 'Invoke-WtUnlock',
     'Invoke-WtVersion', 'Invoke-WtClean',
     'Resolve-WtCopyOnCreatePlan', 'Invoke-WtCreateHooks',
+    'Invoke-WtStatus', 'Get-WtStatusRows', 'Get-WtStatusEntry',
+    'Invoke-WtExec', 'Invoke-WtEach', 'Get-WtEachPlan', 'Invoke-WtCommandLine',
+    'Invoke-WtSync', 'Get-WtSyncPlan',
     # Workspace
     'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',
     'Resolve-WtRepoContext', 'Open-WtFolder', 'Get-WtReposRoot', 'Get-WtReposDepth',
@@ -40,15 +43,16 @@ Export-ModuleMember -Function @(
     # Repo / worktrees
     'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Get-WtWorktreesCached', 'Clear-WtWorktreesCache', 'Resolve-WtWorktree',
     'Test-WtWorktreeMatchesName',
-    'ConvertFrom-WtWorktreePorcelain', 'Get-WtWorktreePath',
+    'ConvertFrom-WtWorktreePorcelain', 'Get-WtWorktreePath', 'ConvertFrom-WtStatusPorcelainV2',
     # Warp / apertura
     'Write-WtAgentTabConfig', 'New-WtWarpTabConfigContent', 'Open-WtAgentInWarp',
     'Open-WtTerminalInWarp', 'Test-WtWarpSameWindow', 'Test-WtWarpRunning', 'Open-WtEditor',
+    'Get-WtWindowsTerminalArgs', 'Open-WtAgentInWindowsTerminal',
     'Get-WtTabConfigDir', 'Get-WtTabConfigFileName', 'Get-WtTabConfigDirectory',
     'Remove-WtWorktreeTabConfigs', 'Get-WtAgentCommands',
     # Utilidades reutilizables / testeables
     'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtCreateOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
-    'Invoke-WtProcess', 'Get-WtPathHash',
+    'Invoke-WtProcess', 'Get-WtPathHash', 'Set-WtDryRun', 'Test-WtDryRun', 'Start-WtProcess',
     'ConvertTo-WtFullPath', 'Test-WtPathEquals', 'Test-WtPathIsUnder', 'Test-WtWorktreeName',
     'Get-WtCommandSource', 'Find-WtRepoConfigFile', 'Read-WtGitDirPointer', 'ConvertTo-WtReposRootList',
     'ConvertTo-WtSafeFileName', 'ConvertTo-WtJson'

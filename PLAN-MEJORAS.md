@@ -1,5 +1,9 @@
 # Plan de mejoras — Worktree Manager
 
+**Estado: los 8 ítems están implementados.** Cada sección abajo tiene su propio
+"Estado: implementado" con los archivos que lo resuelven; el detalle completo está en
+`CHANGELOG.md` y el checklist de cierre al final de este documento.
+
 **Guía de ejecución para un agente.** Cubre las 12 capacidades propuestas en [AUDITORIA.md](AUDITORIA.md).
 
 > **Requisito de entrada:** este plan **se ejecuta después** de [PLAN-CORRECCIONES.md](PLAN-CORRECCIONES.md)
@@ -95,6 +99,10 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 
 # 2 · Autocompletado con `Register-ArgumentCompleter`
 
+**Estado: implementado.** `src/Completion.ps1` (`Get-WtCompletion` pura,
+`Register-WtCompletion` efecto), invocado desde el bloque del perfil de
+`install.ps1`. Ver `CHANGELOG.md`.
+
 **Por qué.** El parser declarativo de `Get-WtCommandSpecs` ya tiene toda la información necesaria; es casi gratis y cambia la experiencia diaria.
 
 **Contrato.**
@@ -118,6 +126,9 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 
 # 3 · Agente en Windows Terminal
 
+**Estado: implementado.** `Get-WtWindowsTerminalArgs` / `Open-WtAgentInWindowsTerminal`
+en `src/Launch.ps1`; `Open-WtAgent` despacha por `Config.terminal`. Ver `CHANGELOG.md`.
+
 **Por qué.** `terminal = 'wt'` hoy abre una terminal pero nunca un agente: `Open-WtAgent` exige Warp ([src/Commands.ps1:251-254](src/Commands.ps1#L251-L254)). Elimina la dependencia dura de un terminal propietario.
 
 **Contrato.**
@@ -138,6 +149,11 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 ---
 
 # 4 · `--dry-run` global
+
+**Estado: implementado.** Bandera de modulo en `src/Common.ps1`
+(`Set-WtDryRun`/`Test-WtDryRun`), reconocida en `ConvertFrom-WtArgs` y aplicada por
+`Invoke-Wt` (con reset en `finally`). `Invoke-WtProcess`/`Invoke-WtGit` ganaron
+`-ReadOnly`; nuevo `Start-WtProcess` centraliza `Start-Process`. Ver `CHANGELOG.md`.
 
 **Por qué.** Encaja con la filosofía que ya tiene la consola — mostrar el comando equivalente antes de correrlo — y hace auditable lo destructivo. Es además la red de contención de `each` y `sync`, que se construyen después.
 
@@ -160,6 +176,10 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 ---
 
 # 5 · `wt status`
+
+**Estado: implementado.** `ConvertFrom-WtStatusPorcelainV2` en `src/Repo.ps1`;
+`Get-WtStatusEntry`/`Get-WtStatusRows`/`Invoke-WtStatus` en `src/Commands.ps1`. Ver
+`CHANGELOG.md`.
 
 **Por qué.** Es la vista que falta para operar N agentes: hoy hay que entrar a cada worktree para saber qué pasó. Se apoya en el modelo de worktrees que ya existe.
 
@@ -185,6 +205,10 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 
 # 6 · `wt exec` y `wt each`
 
+**Estado: implementado.** Soporte de `--` en `ConvertFrom-WtArgs`;
+`Invoke-WtExec`/`Invoke-WtEach`/`Get-WtEachPlan`/`Invoke-WtCommandLine` en
+`src/Commands.ps1`. Ver `CHANGELOG.md`.
+
 **Por qué.** Correr un comando en un worktree, o en todos, sin cambiar de directorio: build, tests, `git fetch`. Complemento natural de `status` para supervisar trabajo paralelo.
 
 **Contrato.**
@@ -207,6 +231,9 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 ---
 
 # 7 · `wt sync`
+
+**Estado: implementado.** `Get-WtSyncPlan`/`Invoke-WtSync` en `src/Commands.ps1`. Ver
+`CHANGELOG.md`.
 
 **Por qué.** Con varios agentes, la divergencia contra `develop` es el problema recurrente.
 
@@ -231,6 +258,10 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 
 # 8 · Consola: agente, terminal y worktrees
 
+**Estado: implementado.** `Invoke-WtConsoleOpen` extendido con `-Agent`/`-Terminal`;
+nuevas `Invoke-WtConsoleStatus`/`Invoke-WtConsoleSync` y entradas de menu `s`/`y` en
+`src/Console.ps1`. Ver `CHANGELOG.md`.
+
 **Por qué.** El menú ofrece «editor» y «editor + agente», pero no «solo agente» ni «terminal», que sí existen en el CLI ([src/Console.ps1:225-235](src/Console.ps1#L225-L235)). El wrapper tiene que cubrir la superficie que envuelve.
 
 **Contrato.** El menú expone, para el worktree elegido: editor · agente · terminal · editor + agente. Y suma las capacidades nuevas: `status` del repo, `sync`, e ir a un worktree (B12 ya extendió `cd`; acá se refleja en el menú). Se mantiene la regla que la consola ya cumple: **antes de ejecutar se muestra el comando CLI equivalente** (`Write-WtConsoleCommand`), que es lo que la hace didáctica.
@@ -246,9 +277,16 @@ Los ítems 1–4 son independientes entre sí y se pueden paralelizar. 5 → 6 �
 
 ## Cierre del plan
 
-- [ ] Las dos suites en verde, con las aserciones de los 8 ítems sumadas.
-- [ ] CI en verde bajo PS 5.1 y 7.
-- [ ] `README.md` con una sección por capacidad nueva y la tabla de config actualizada (todas las claves nuevas: `copyOnCreate`, `postCreate`, más las de correcciones).
-- [ ] `wt help` cubre todos los comandos: `status`, `exec`, `each`, `sync`, `clean`, `lock`, `unlock`, `version`, y el `--dry-run` global.
-- [ ] Ninguna clave nueva quedó admitida en el `.wt.json` del repo sin justificación escrita (A1).
-- [ ] `CHANGELOG.md` y `ModuleVersion` al día.
+- [x] Las dos suites en verde, con las aserciones de los 8 ítems sumadas (270+ E2E,
+      239+ unitarias; ver el resultado real de la última corrida en el commit).
+- [x] `PSScriptAnalyzer -Settings PSScriptAnalyzerSettings.psd1` sin hallazgos.
+- [ ] CI en verde bajo PS 5.1 y 7 — requiere push/PR; no verificable localmente en
+      esta sesión, pero el workflow (`M9`) ya corre ambas suites y el analyzer.
+- [x] `README.md` con una sección por capacidad nueva y la tabla de config
+      actualizada (`copyOnCreate`, `postCreate`, más las de correcciones).
+- [x] `wt help` cubre todos los comandos: `status`, `exec`, `each`, `sync`, `clean`,
+      `lock`, `unlock`, `version`, y el `--dry-run` global.
+- [x] Ninguna clave nueva quedó admitida en el `.wt.json` del repo sin justificación
+      escrita (A1): `copyOnCreate`, `postCreate`, `agentCommand`, `agentShell` — todas
+      documentadas como excluidas a propósito (ejecución de código o binario/shell).
+- [x] `CHANGELOG.md` y `ModuleVersion` al día (`0.9.0`, un bump por ítem).

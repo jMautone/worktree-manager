@@ -61,12 +61,62 @@ function Set-WtFileUtf8NoBom {
         'Set-Content -Encoding UTF8' en PowerShell 5.1 antepone EF BB BF (BOM), que
         muchos parsers (TOML incluido) rechazan o interpretan como parte del primer
         valor. Unico punto de escritura para los archivos que wt genera (config.json,
-        tab configs de Warp).
+        tab configs de Warp): por eso tambien es el unico punto que necesita consultar
+        Test-WtDryRun (item 4) para que ninguno de los dos escriba bajo --dry-run.
     #>
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification = 'Efecto directo de escritura de archivo, invocado por comandos que ya decidieron escribir.')]
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][AllowEmptyString()][string]$Content)
+    if (Test-WtDryRun) {
+        Write-WtDetail "[dry-run] escribir $Path"
+        return
+    }
     [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding $false))
+}
+
+# --- --dry-run global (item 4) -----------------------------------------------
+# Bandera de modulo, no de proceso: Invoke-Wt la setea antes de despachar y la
+# resetea SIEMPRE en un finally (ver Invoke-Wt en Cli.ps1). Si quedara encendida
+# entre invocaciones dentro del mismo proceso (modo instalado, el perfil importa el
+# modulo una sola vez) seria un bug grave: todo comando posterior se volveria un
+# no-op silencioso.
+$script:WtDryRun = $false
+
+function Set-WtDryRun {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Setter de una bandera de modulo en memoria; no es un cambio de estado del sistema.')]
+    param([Parameter(Mandatory)][bool]$Value)
+    $script:WtDryRun = $Value
+}
+
+function Test-WtDryRun {
+    return $script:WtDryRun
+}
+
+function Start-WtProcess {
+    <#
+    .SYNOPSIS
+        Unico punto de invocacion de Start-Process para lanzar procesos "fire and
+        forget" (editor, terminal, agente, tab de Warp/Windows Terminal): wt no
+        espera su salida ni le importa el exit code. Bajo --dry-run no lanza nada.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Wrapper directo de Start-Process; --dry-run ya lo intercepta explicitamente antes de llegar aca.')]
+    param(
+        [Parameter(Mandatory)][string]$FilePath,
+        [AllowEmptyCollection()][string[]]$ArgumentList = @()
+    )
+    if (Test-WtDryRun) {
+        $display = $FilePath
+        if ($ArgumentList.Count -gt 0) { $display += ' ' + ($ArgumentList -join ' ') }
+        Write-WtDetail "[dry-run] Start-Process $display"
+        return
+    }
+    if ($ArgumentList.Count -gt 0) {
+        Start-Process -FilePath $FilePath -ArgumentList $ArgumentList
+    } else {
+        Start-Process -FilePath $FilePath
+    }
 }
 
 # --- Procesos externos ------------------------------------------------------
@@ -96,14 +146,28 @@ function Invoke-WtProcess {
         Opcional. Cambia la ubicacion actual antes de invocar (y la restaura despues,
         incluso si el proceso falla): a diferencia de git, la mayoria de los
         ejecutables externos no aceptan un '-C <ruta>' propio.
+    .PARAMETER ReadOnly
+        El llamador garantiza que esta invocacion solo lee (no escribe nada, ni local
+        ni remoto): sigue ejecutandose de verdad bajo --dry-run (item 4). Sin este
+        switch, --dry-run activo hace que la invocacion sea un no-op: se imprime con
+        '[dry-run]' y se devuelve un resultado sintetico exitoso, sin correr nada.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string]$FilePath,
         [AllowEmptyCollection()][string[]]$Arguments = @(),
         [string]$WorkingDirectory,
-        [switch]$AllowFailure
+        [switch]$AllowFailure,
+        [switch]$ReadOnly
     )
+    if ((Test-WtDryRun) -and -not $ReadOnly) {
+        $display = $FilePath
+        if ($Arguments.Count -gt 0) { $display += ' ' + ($Arguments -join ' ') }
+        Write-WtDetail "[dry-run] $display"
+        return [pscustomobject]@{
+            StdOut = @(); StdErr = @(); Text = ''; ErrorText = ''; Output = @(); ExitCode = 0; Success = $true
+        }
+    }
     $prevEAP = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     $raw = @()
@@ -151,17 +215,23 @@ function Invoke-WtGit {
     <#
     .SYNOPSIS
         Especializacion de Invoke-WtProcess para git, con -C opcional.
+    .PARAMETER ReadOnly
+        Este llamado solo lee (rev-parse, show-ref, worktree list, remote,
+        check-ref-format, ...): sigue corriendo de verdad bajo --dry-run (item 4). Las
+        escrituras (worktree add/remove, branch -d/-D, worktree lock/unlock, prune,
+        fetch) NO pasan este switch, asi --dry-run las vuelve no-ops por defecto.
     #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory)][string[]]$Arguments,
         [string]$WorkingDirectory,
-        [switch]$AllowFailure
+        [switch]$AllowFailure,
+        [switch]$ReadOnly
     )
     $full = @()
     if ($WorkingDirectory) { $full += @('-C', $WorkingDirectory) }
     $full += $Arguments
-    $result = Invoke-WtProcess -FilePath 'git' -Arguments $full -AllowFailure
+    $result = Invoke-WtProcess -FilePath 'git' -Arguments $full -AllowFailure -ReadOnly:$ReadOnly
     if (-not $result.Success -and -not $AllowFailure) {
         $detail = $result.ErrorText
         if (-not $detail) { $detail = $result.Text }
@@ -355,7 +425,7 @@ function Assert-WtBranchName {
     #>
     param([AllowEmptyString()][string]$Branch)
     if (-not $Branch) { throw 'El nombre de rama no puede estar vacio.' }
-    $check = Invoke-WtGit -Arguments @('check-ref-format', '--branch', $Branch) -AllowFailure
+    $check = Invoke-WtGit -Arguments @('check-ref-format', '--branch', $Branch) -AllowFailure -ReadOnly
     if (-not $check.Success) {
         throw "Nombre de rama invalido: '$Branch'. Revisa 'branchPrefix' en la config o el valor de --branch."
     }

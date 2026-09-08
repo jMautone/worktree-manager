@@ -1,8 +1,9 @@
 # Changelog
 
 Formato basado en [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Este archivo se actualiza por fase, siguiendo la ejecucion de
-[PLAN-CORRECCIONES.md](PLAN-CORRECCIONES.md).
+Este archivo se actualiza por fase/item, siguiendo la ejecucion de
+[PLAN-CORRECCIONES.md](PLAN-CORRECCIONES.md) y, despues, de
+[PLAN-MEJORAS.md](PLAN-MEJORAS.md).
 
 ## [Unreleased]
 
@@ -29,6 +30,105 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   worktree, no en el cwd del proceso), reutilizable por cualquier otro llamador que
   necesite invocar un ejecutable en una ruta especifica sin ser git (que ya tenia
   `-C` via `Invoke-WtGit`).
+
+### Plan de mejoras — item 2: autocompletado
+
+- **Autocompletado (`Register-ArgumentCompleter`)**: nuevo `src/Completion.ps1`.
+  `Get-WtCompletion` (funcion pura) decide los candidatos para comandos/alias,
+  flags de cada comando (leidos de `Get-WtCommandSpecs`, la misma fuente de verdad
+  que el parser), claves de `wt config get|set` y sus valores admitidos cuando son
+  una enumeracion cerrada (M5: `terminal`, `warpAgentTarget`, `openOnCreate`,
+  `agentShell`, colores, `fetchBeforeCreate`), y nombres de worktree/repo en la 2da
+  posicion de `open`/`path`/`remove`/`cd`/`lock`/`unlock` (y `status`/`exec` cuando
+  existan). `Register-WtCompletion` arma ese contexto y lo registra para `wt`/`wtm`
+  con `Register-ArgumentCompleter`; se invoca desde el bloque del perfil de
+  `install.ps1`, no al importar el modulo. Presupuesto de tiempo: nunca dispara
+  `git`; nuevo `Get-WtWorktreesCached` (en `Repo.ps1`) devuelve los worktrees de un
+  repo solo si ya estan en la cache de la invocacion anterior de `wt` en la sesion
+  (B5), vacio si no.
+
+### Plan de mejoras — item 3: agente en Windows Terminal
+
+- **Agente en Windows Terminal**: `terminal = 'wt'` abría una terminal pero nunca el
+  agente (`Open-WtAgent` exigía Warp). Nueva `Get-WtWindowsTerminalArgs` (funcion
+  pura, en `src/Launch.ps1`) arma los argumentos de `wt.exe new-tab` reusando
+  `Get-WtAgentCommands` (M8): `powershell -NoExit -Command "..."` o `bash -lc "..."`
+  segun `agentShell`, o el comando desnudo con `agentShell = 'none'`.
+  `Open-WtAgentInWindowsTerminal` lanza `Start-Process wt.exe` con esos argumentos.
+  `Open-WtAgent` ahora despacha por `Config.terminal` en vez de exigir Warp; con
+  `terminal = 'none'` sigue avisando y devolviendo `$false`, sin cambios.
+
+### Plan de mejoras — item 4: `--dry-run` global
+
+- **`--dry-run` global**: reconocido en una sola linea de `ConvertFrom-WtArgs` (no es
+  parte de la spec de ningun comando individual), setea una bandera de modulo
+  (`Set-WtDryRun`/`Test-WtDryRun`, en `Common.ps1`) que `Invoke-Wt` resetea siempre en
+  un `finally`. `Invoke-WtProcess`/`Invoke-WtGit` ganan un `-ReadOnly` opcional: bajo
+  `--dry-run`, cualquier invocacion se vuelve un no-op (se imprime con `[dry-run]` y
+  devuelve un resultado sintetico exitoso) salvo que el llamador garantice que solo
+  lee. Se marcaron como `-ReadOnly` todos los `rev-parse`, `worktree list`,
+  `show-ref`, `remote`, `check-ref-format`, `node --version` y `fnm list`; las
+  escrituras (`worktree add/remove`, `branch -d/-D`, `worktree lock/unlock`, `prune`,
+  `fetch`) quedan como no-ops por defecto. Nuevo `Start-WtProcess` centraliza todos
+  los `Start-Process` "fire and forget" (editor, terminal, agente) con el mismo
+  criterio. `Set-WtFileUtf8NoBom` (unico punto de escritura de archivos que `wt`
+  genera) tambien consulta `Test-WtDryRun`, asi que cubre tab configs y
+  `config.json` de una vez; `Save-WtConfigFile` no crea el directorio de config bajo
+  dry-run. `copyOnCreate` y el borrado de tab configs huerfanos (`wt clean`,
+  `Remove-WtWorktreeTabConfigs`) tienen su propio chequeo porque no pasan por esos
+  puntos centralizados. `New-WtWorktree` no llama a `Open-WtWorktree` bajo dry-run
+  (el path nunca se creo de verdad; fallaria el chequeo de existencia), solo informa
+  que se abriria.
+
+### Plan de mejoras — item 5: `wt status`
+
+- **`wt status [<nombre>] [--json] [--fetch]`** (alias `st`): estado de uno o todos
+  los worktrees del repo actual, sin entrar a cada uno. Nueva
+  `ConvertFrom-WtStatusPorcelainV2` (funcion pura, en `src/Repo.ps1`) parsea `git
+  status --porcelain=v2 --branch` (formato estable; las lineas `# branch.*` traen
+  ahead/behind del upstream directo). `Get-WtStatusEntry` (efecto) suma el ultimo
+  commit (`git log -1 --format=%h%x09%s%x09%cr`) y, cuando la rama no tiene upstream,
+  ahead/behind contra `defaultBase` (`git rev-list --left-right --count`,
+  best-effort). Un worktree que falle al consultarse queda con su error en la fila,
+  sin romper el resto del listado. `--fetch` corre `git fetch --all --prune` antes de
+  calcular; sin el flag, `wt status` nunca toca la red.
+
+### Plan de mejoras — item 6: `wt exec` y `wt each`
+
+- **`wt exec <nombre> -- <comando...>`** y **`wt each [--continue-on-error] [--json]
+  -- <comando...>`**: corren un comando externo en un worktree o en todos (menos el
+  principal y los obsoletos), en serie, sin cambiar de directorio. `ConvertFrom-
+  WtArgs` gana soporte de un `--` suelto: todo lo que sigue va crudo a `Rest`, sin
+  interpretarse como flags de `wt` (asi `wt each -- git log --oneline -1` no confunde
+  `--oneline` con un flag propio). Nueva `Get-WtEachPlan` (funcion pura) decide sobre
+  que worktrees opera `each`; `Invoke-WtCommandLine` (compartida por ambos comandos)
+  corre la linea reconstruida via `cmd.exe /c` con `Invoke-WtProcess`, heredando el
+  soporte de `--dry-run` (item 4) sin codigo adicional. `each` corta en el primer
+  fallo salvo `--continue-on-error` (sigue y resume al final que worktrees fallaron).
+  Exit code (B6): `0` si todos salieron `0`, `2` si alguno fallo.
+
+### Plan de mejoras — item 7: `wt sync`
+
+- **`wt sync [<nombre>] [--base <rama>] [--strategy rebase|merge]
+  [--continue-on-error]`**: rebasa (default) o mergea cada worktree contra su base
+  (`--base` explicito > upstream de la rama > `defaultBase`). Nueva `Get-WtSyncPlan`
+  (funcion pura) decide la accion por worktree a partir del modelo de estado del
+  item 5; un worktree sucio se saltea SIEMPRE (nunca stash automatico). `Invoke-
+  WtSync` hace un solo `git fetch --all --prune` al inicio (no uno por worktree); un
+  conflicto se reporta y el worktree queda como git lo dejo -ni se resuelve ni se
+  aborta solo-, y se sigue con el proximo worktree del plan (o se corta, segun
+  `--continue-on-error`). El resumen final lista sincronizados, salteados por
+  sucios, salteados sin base, y en conflicto. Exit code 2 si hubo algun conflicto.
+
+### Plan de mejoras — item 8: consola alineada con el CLI
+
+- **Consola: agente, terminal y worktrees**: el menu ofrecia "editor" y "editor +
+  agente" pero no "solo agente" ni "solo terminal", que si existen en `wt open`.
+  `Invoke-WtConsoleOpen` gana `-Agent`/`-Terminal` (ademas de `-All`) y arma el
+  comando CLI equivalente segun la combinacion elegida. Nuevas entradas de menu: `s`
+  corre `wt status` del repo actual (sin prompts, es una consulta) e `y` corre `wt
+  sync` con una base opcional. Renumeradas las opciones de worktrees (`1`-`9`) para
+  hacer lugar a "solo agente"/"solo terminal".
 
 ### Fase 0 — Red de contencion
 

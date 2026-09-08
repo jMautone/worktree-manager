@@ -28,6 +28,7 @@ function wt {
     Invoke-Wt @args
 }
 Set-Alias wtm -Value wt -ErrorAction SilentlyContinue
+Register-WtCompletion
 $markerEnd
 "@
 

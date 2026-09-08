@@ -74,6 +74,20 @@ Assert-True 'config set conserva todos los positionales' (@($p.Positional).Count
 $p = ConvertFrom-WtArgs -Arguments @('config', 'set', 'editor', '')
 Assert-True 'config set acepta valor vacio' (@($p.Positional).Count -eq 3 -and $p.Positional[2] -eq '')
 
+Write-Host "== ConvertFrom-WtArgs: '--' suelto (wt exec/each, item 6) ==" -ForegroundColor Cyan
+$p = ConvertFrom-WtArgs -Arguments @('exec', 'feature-a', '--', 'git', 'log', '--oneline', '-1')
+Assert-True "positional antes de '--'" (@($p.Positional).Count -eq 1 -and $p.Positional[0] -eq 'feature-a')
+Assert-True "'--' captura todo crudo, incluidos flags del comando externo" `
+    (($p.Rest -join ' ') -eq 'git log --oneline -1') ($p.Rest -join '|')
+Assert-True "el comando externo no se interpreta como flag de wt" (-not $p.Flags.ContainsKey('oneline'))
+$p = ConvertFrom-WtArgs -Arguments @('each', '--continue-on-error', '--', 'cmd', '/c', 'echo', 'hola')
+Assert-True "flags de wt antes de '--' se parsean normal" ($p.Flags.ContainsKey('continue-on-error'))
+Assert-True "Rest despues de '--'" (($p.Rest -join ' ') -eq 'cmd /c echo hola')
+$p = ConvertFrom-WtArgs -Arguments @('each', '--')
+Assert-True "'--' sin nada despues deja Rest vacio" (@($p.Rest).Count -eq 0)
+$p = ConvertFrom-WtArgs -Arguments @('list')
+Assert-True 'sin --, Rest queda vacio' (@($p.Rest).Count -eq 0)
+
 Write-Host '== ConvertFrom-WtWorktreePorcelain ==' -ForegroundColor Cyan
 $porcelain = @'
 worktree C:/repos/MiRepo
@@ -482,6 +496,134 @@ Assert-True "'wt open ' sin worktrees cae a repos" (
 Assert-True "'wt list ' no tiene 2da posicion de nombre" ((@(Get-WtCompletion -Words @('list') -WordToComplete '' -Worktrees @('feature-a'))).Count -eq 0)
 Assert-True "alias 'rm' resuelve igual que 'remove' para --flags" (
     (@(Get-WtCompletion -Words @('rm') -WordToComplete '--del')) -contains '--delete-branch')
+
+Write-Host '== Get-WtWindowsTerminalArgs (agente en Windows Terminal, item 3) ==' -ForegroundColor Cyan
+$wtCfgPowershell = [pscustomobject]@{ agentCommand = 'copilot'; agentShell = 'powershell' }
+$wtArgs = @(Get-WtWindowsTerminalArgs -Path 'C:\repo wt\feature-a' -Title 'MiRepo > feature-a' -Config $wtCfgPowershell)
+Assert-True 'new-tab primero' ($wtArgs[0] -eq 'new-tab')
+Assert-True 'ruta con espacios entrecomillada' ($wtArgs -contains '"C:\repo wt\feature-a"') ($wtArgs -join ' ')
+Assert-True 'titulo presente' ($wtArgs -contains '--title') ($wtArgs -join ' ')
+Assert-True 'agentShell powershell envuelve en powershell -NoExit' ($wtArgs -contains 'powershell' -and $wtArgs -contains '-NoExit') ($wtArgs -join ' ')
+Assert-True 'agentCommand custom presente' (($wtArgs -join ' ') -match 'copilot') ($wtArgs -join ' ')
+
+$wtCfgNone = [pscustomobject]@{ agentCommand = 'mi-agente-custom'; agentShell = 'none' }
+$wtArgsNone = @(Get-WtWindowsTerminalArgs -Path 'C:\repo\feature-a' -Title '' -Config $wtCfgNone)
+Assert-True "agentShell 'none': agentCommand directo, sin shell wrapper" ($wtArgsNone[-1] -eq 'mi-agente-custom') ($wtArgsNone -join ' ')
+Assert-True "agentShell 'none': no arma --title sin titulo" (-not ($wtArgsNone -contains '--title'))
+
+$wtCfgBash = [pscustomobject]@{ agentCommand = 'copilot'; agentShell = 'bash' }
+$wtArgsBash = @(Get-WtWindowsTerminalArgs -Path 'C:\repo\feature-a' -Title 't' -Config $wtCfgBash)
+Assert-True "agentShell 'bash' usa bash -lc" ($wtArgsBash -contains 'bash' -and $wtArgsBash -contains '-lc') ($wtArgsBash -join ' ')
+
+Write-Host '== --dry-run global (item 4) ==' -ForegroundColor Cyan
+$p = ConvertFrom-WtArgs -Arguments @('create', 'x', '--dry-run')
+Assert-True "--dry-run se parsea como flag" ($p.Flags.ContainsKey('dry-run'))
+$p = ConvertFrom-WtArgs -Arguments @('list', '--dry-run')
+Assert-True "--dry-run es valido en un comando que no lo declara en su spec ('list')" ($p.Flags.ContainsKey('dry-run'))
+Assert-True 'Test-WtDryRun arranca apagado' (-not (Test-WtDryRun))
+try {
+    Set-WtDryRun -Value $true
+    Assert-True 'Set-WtDryRun lo enciende' (Test-WtDryRun)
+    $dryResult = Invoke-WtProcess -FilePath 'cmd.exe' -Arguments @('/c', 'echo', 'no-deberia-correr')
+    Assert-True 'Invoke-WtProcess bajo dry-run no corre nada (Text vacio)' ($dryResult.Text -eq '') $dryResult.Text
+    Assert-True 'Invoke-WtProcess bajo dry-run devuelve exito sintetico' ($dryResult.Success -and $dryResult.ExitCode -eq 0)
+    $readResult = Invoke-WtProcess -FilePath 'cmd.exe' -Arguments @('/c', 'echo', 'si-corre') -ReadOnly
+    Assert-True '-ReadOnly sigue corriendo de verdad bajo dry-run' ($readResult.Text -match 'si-corre') $readResult.Text
+} finally {
+    Set-WtDryRun -Value $false
+}
+Assert-True 'Test-WtDryRun vuelve a apagarse' (-not (Test-WtDryRun))
+
+Write-Host '== ConvertFrom-WtStatusPorcelainV2 (wt status, item 5) ==' -ForegroundColor Cyan
+$statusLimpio = @'
+# branch.oid abc1234
+# branch.head main
+# branch.upstream origin/main
+# branch.ab +0 -0
+'@
+$m = ConvertFrom-WtStatusPorcelainV2 -Text $statusLimpio
+Assert-True 'limpio: rama' ($m.Branch -eq 'main')
+Assert-True 'limpio: upstream' ($m.Upstream -eq 'origin/main')
+Assert-True 'limpio: sin cambios' (@($m.Staged).Count -eq 0 -and @($m.Modified).Count -eq 0 -and @($m.Untracked).Count -eq 0)
+
+$statusConCambios = @'
+# branch.oid abc1234
+# branch.head feature-a
+# branch.upstream origin/feature-a
+# branch.ab +2 -3
+1 M. N... 100644 100644 100644 aaa bbb src/a.txt
+1 .M N... 100644 100644 100644 ccc ddd src/b.txt
+1 MM N... 100644 100644 100644 eee fff src/c.txt
+? nuevo.txt
+? carpeta/otro nuevo.txt
+'@
+$m = ConvertFrom-WtStatusPorcelainV2 -Text $statusConCambios
+Assert-True 'ahead/behind del branch.ab' ($m.Ahead -eq 2 -and $m.Behind -eq 3)
+Assert-True 'staged: X != .' ((@($m.Staged) -join ',') -eq 'src/a.txt,src/c.txt') (@($m.Staged) -join ',')
+Assert-True 'modified: Y != .' ((@($m.Modified) -join ',') -eq 'src/b.txt,src/c.txt') (@($m.Modified) -join ',')
+Assert-True 'untracked con espacio en la ruta' (@($m.Untracked) -contains 'carpeta/otro nuevo.txt') (@($m.Untracked) -join ',')
+Assert-True 'untracked count' (@($m.Untracked).Count -eq 2)
+
+$statusSinUpstream = @'
+# branch.oid abc1234
+# branch.head sin-upstream
+'@
+$m = ConvertFrom-WtStatusPorcelainV2 -Text $statusSinUpstream
+Assert-True 'sin upstream: Upstream vacio' ($m.Upstream -eq '')
+Assert-True 'sin upstream: ahead/behind en 0' ($m.Ahead -eq 0 -and $m.Behind -eq 0)
+
+$statusDetached = @'
+# branch.oid abc1234
+# branch.head (detached)
+'@
+$m = ConvertFrom-WtStatusPorcelainV2 -Text $statusDetached
+Assert-True 'detached: Branch vacio (no "(detached)" literal)' ($m.Branch -eq '')
+
+$statusVacio = ConvertFrom-WtStatusPorcelainV2 -Text ''
+Assert-True 'texto vacio no rompe' ($statusVacio.Branch -eq '' -and @($statusVacio.Staged).Count -eq 0)
+
+Write-Host '== Get-WtEachPlan (wt each, item 6) ==' -ForegroundColor Cyan
+$eachWorktrees = @(
+    [pscustomobject]@{ Path = 'C:\r\main'; IsMain = $true; IsPrunable = $false }
+    [pscustomobject]@{ Path = 'C:\r.worktrees\a'; IsMain = $false; IsPrunable = $false }
+    [pscustomobject]@{ Path = 'C:\r.worktrees\stale'; IsMain = $false; IsPrunable = $true }
+)
+$plan = @(Get-WtEachPlan -Worktrees $eachWorktrees)
+Assert-True 'excluye el principal por defecto' (-not ($plan | Where-Object { $_.IsMain }))
+Assert-True 'excluye los obsoletos siempre' (-not ($plan | Where-Object { $_.IsPrunable }))
+Assert-True 'sin -IncludeMain: solo 1 worktree' ($plan.Count -eq 1 -and $plan[0].Path -eq 'C:\r.worktrees\a')
+$planConMain = @(Get-WtEachPlan -Worktrees $eachWorktrees -IncludeMain)
+Assert-True '-IncludeMain suma el principal (pero no los obsoletos)' ($planConMain.Count -eq 2)
+
+Write-Host '== Get-WtSyncPlan (wt sync, item 7) ==' -ForegroundColor Cyan
+function New-WtSyncEntry {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Constructor puro de un objeto sintetico para pruebas; el verbo New no implica efectos.')]
+    param($Name, $Upstream = '', $Staged = 0, $Modified = 0, $Untracked = 0)
+    return [pscustomobject]@{ Name = $Name; Upstream = $Upstream; Staged = $Staged; Modified = $Modified; Untracked = $Untracked }
+}
+$planLimpioConUpstream = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'a' -Upstream 'origin/a') -DefaultBase 'develop')
+Assert-True 'limpio con upstream: sync contra el upstream' ($planLimpioConUpstream[0].Action -eq 'sync' -and $planLimpioConUpstream[0].Base -eq 'origin/a')
+Assert-True 'default strategy es rebase (GitArgs)' (($planLimpioConUpstream[0].GitArgs -join ' ') -eq 'rebase origin/a')
+
+$planSucio = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'b' -Upstream 'origin/b' -Modified 1) -DefaultBase 'develop')
+Assert-True 'sucio (modified): skip-dirty, nunca stash' ($planSucio[0].Action -eq 'skip-dirty')
+$planSucioStaged = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'c' -Staged 1) -DefaultBase 'develop')
+Assert-True 'sucio (staged): skip-dirty' ($planSucioStaged[0].Action -eq 'skip-dirty')
+$planSucioUntracked = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'd' -Untracked 1) -DefaultBase 'develop')
+Assert-True 'sucio (untracked): skip-dirty' ($planSucioUntracked[0].Action -eq 'skip-dirty')
+
+$planSinBase = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'e') -DefaultBase '')
+Assert-True 'sin upstream ni defaultBase: skip-no-base' ($planSinBase[0].Action -eq 'skip-no-base')
+
+$planDefaultBase = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'f') -DefaultBase 'develop')
+Assert-True 'sin upstream, con defaultBase: sync contra defaultBase' ($planDefaultBase[0].Action -eq 'sync' -and $planDefaultBase[0].Base -eq 'develop')
+
+$planExplicito = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'g' -Upstream 'origin/g') -ExplicitBase 'origin/main' -DefaultBase 'develop')
+Assert-True '--base explicito gana sobre upstream y defaultBase' ($planExplicito[0].Base -eq 'origin/main')
+
+$planMerge = @(Get-WtSyncPlan -Entries @(New-WtSyncEntry -Name 'h' -Upstream 'origin/h') -Strategy 'merge' -DefaultBase 'develop')
+Assert-True "strategy 'merge' arma 'git merge <base>'" (($planMerge[0].GitArgs -join ' ') -eq 'merge origin/h')
 
 Write-Host ''
 $color = 'Green'

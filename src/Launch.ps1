@@ -21,7 +21,7 @@ function Open-WtEditor {
         Write-WtWarn "Editor '$editor' no encontrado en PATH."
         return $false
     }
-    Start-Process -FilePath $editor -ArgumentList (Format-WtProcessArgument $Path)
+    Start-WtProcess -FilePath $editor -ArgumentList (Format-WtProcessArgument $Path)
     Write-WtSuccess "Editor abierto en $Path"
     return $true
 }
@@ -30,7 +30,7 @@ function Open-WtEditor {
 
 function Get-WtNodeVersion {
     if (-not (Test-WtCommand 'node')) { return '' }
-    $r = Invoke-WtProcess -FilePath 'node' -Arguments @('--version') -AllowFailure
+    $r = Invoke-WtProcess -FilePath 'node' -Arguments @('--version') -AllowFailure -ReadOnly
     if (-not $r.Success) { return '' }
     return [string]($r.StdOut | Select-Object -First 1)
 }
@@ -44,7 +44,7 @@ function Get-WtNodeMajor {
     $version = Get-WtNodeVersion
     if ($version -match '^v?(\d+)' -and [int]$Matches[1] -ge 18) { return $Matches[1] }
     if (-not (Test-WtCommand 'fnm')) { return $null }
-    $listed = (Invoke-WtProcess -FilePath 'fnm' -Arguments @('list') -AllowFailure).StdOut -join "`n"
+    $listed = (Invoke-WtProcess -FilePath 'fnm' -Arguments @('list') -AllowFailure -ReadOnly).StdOut -join "`n"
     $candidates = @([regex]::Matches($listed, 'v?(\d+)\.\d+\.\d+') |
         ForEach-Object { [int]$_.Groups[1].Value } |
         Where-Object { $_ -ge 18 } |
@@ -103,7 +103,12 @@ function Remove-WtWorktreeTabConfigs {
     $dir = Get-WtTabConfigDir
     foreach ($kind in @('agent', 'term')) {
         $file = Join-Path $dir (Get-WtTabConfigFileName -Name $Name -Path $Path -Kind $kind)
-        if (Test-WtPathExists $file) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
+        if (-not (Test-WtPathExists $file)) { continue }
+        if (Test-WtDryRun) {
+            Write-WtDetail "[dry-run] borrar $file"
+            continue
+        }
+        Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -277,7 +282,7 @@ function Open-WtWarpTab {
     $uri = "warp://tab_config/" + [uri]::EscapeDataString($stem)
     $sameWindow = Test-WtWarpSameWindow -Target $Target
     if (-not $sameWindow) { $uri += '?new_window=true' }
-    Start-Process $uri
+    Start-WtProcess -FilePath $uri
     return $sameWindow
 }
 
@@ -313,6 +318,49 @@ function Open-WtTerminalInWarp {
     )
     return (Open-WtWarpTab -Name $Name -Path $Path -Title $Title -Color $Color `
         -Kind 'term' -Target $Target)
+}
+
+function Get-WtWindowsTerminalArgs {
+    <#
+    .SYNOPSIS
+        Argumentos de 'wt.exe new-tab' para abrir el agente en un worktree. Funcion
+        pura (arma el array; no invoca Start-Process): testeable sin Windows Terminal
+        instalado.
+    .DESCRIPTION
+        Reusa Get-WtAgentCommands (M8: fnm use <major> si agentShell lo permite, mas
+        agentCommand), igual que el tab de Warp. 'agentShell' decide como se corren:
+        'powershell' y 'bash' los encadenan en el shell correspondiente; 'none' pasa
+        agentCommand directo como comando del tab, sin wrapper.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [string]$Title,
+        [Parameter(Mandatory)]$Config
+    )
+    $arguments = @('new-tab', '-d', (Format-WtProcessArgument $Path))
+    if ($Title) { $arguments += @('--title', (Format-WtProcessArgument $Title)) }
+    $commands = @(Get-WtAgentCommands -Config $Config)
+    $arguments += '--'
+    switch ([string]$Config.agentShell) {
+        'bash' { $arguments += @('bash', '-lc', (Format-WtProcessArgument ($commands -join '; '))) }
+        'none' { $arguments += @($commands) }
+        default { $arguments += @('powershell', '-NoExit', '-Command', (Format-WtProcessArgument ($commands -join '; '))) }
+    }
+    return $arguments
+}
+
+function Open-WtAgentInWindowsTerminal {
+    <#
+    .SYNOPSIS
+        Abre una pestana de Windows Terminal que corre el agente en el worktree.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [string]$Title,
+        [Parameter(Mandatory)]$Config
+    )
+    $arguments = Get-WtWindowsTerminalArgs -Path $Path -Title $Title -Config $Config
+    Start-WtProcess -FilePath 'wt.exe' -ArgumentList $arguments
 }
 
 function Get-WtTabTitle {

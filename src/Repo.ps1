@@ -47,7 +47,7 @@ function Find-WtMainRoot {
     #>
     param([switch]$Silent, [string]$WorkingDirectory)
     $result = Invoke-WtGit -WorkingDirectory $WorkingDirectory `
-        -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir') -AllowFailure
+        -Arguments @('rev-parse', '--path-format=absolute', '--git-common-dir') -AllowFailure -ReadOnly
     if (-not $result.Success -or -not $result.Text) {
         if ($Silent) { return $null }
         $orphan = Get-WtOrphanWorktreeInfo
@@ -70,7 +70,7 @@ function Get-WtCurrentRoot {
     #>
     param([string]$WorkingDirectory)
     $result = Invoke-WtGit -WorkingDirectory $WorkingDirectory `
-        -Arguments @('rev-parse', '--path-format=absolute', '--show-toplevel') -AllowFailure
+        -Arguments @('rev-parse', '--path-format=absolute', '--show-toplevel') -AllowFailure -ReadOnly
     if (-not $result.Success -or -not $result.Text) { return $null }
     return (ConvertTo-WtFullPath ([string]($result.StdOut | Select-Object -First 1)))
 }
@@ -81,7 +81,7 @@ function Get-WtBranchAt {
         Rama del checkout ubicado en $Path ('' si esta detached o no se puede leer).
     #>
     param([Parameter(Mandatory)][string]$Path)
-    $r = Invoke-WtGit -WorkingDirectory $Path -Arguments @('rev-parse', '--abbrev-ref', 'HEAD') -AllowFailure
+    $r = Invoke-WtGit -WorkingDirectory $Path -Arguments @('rev-parse', '--abbrev-ref', 'HEAD') -AllowFailure -ReadOnly
     if (-not $r.Success) { return '' }
     $branch = [string]($r.StdOut | Select-Object -First 1)
     $branch = $branch.Trim()
@@ -92,7 +92,7 @@ function Get-WtBranchAt {
 function Test-WtLocalBranch {
     param([Parameter(Mandatory)][string]$RepoRoot, [Parameter(Mandatory)][string]$Branch)
     $r = Invoke-WtGit -WorkingDirectory $RepoRoot `
-        -Arguments @('show-ref', '--verify', '--quiet', "refs/heads/$Branch") -AllowFailure
+        -Arguments @('show-ref', '--verify', '--quiet', "refs/heads/$Branch") -AllowFailure -ReadOnly
     return $r.Success
 }
 
@@ -187,10 +187,71 @@ function Get-WtWorktrees {
     if (-not $Refresh -and $script:WorktreesCache.ContainsKey($key)) {
         return $script:WorktreesCache[$key]
     }
-    $r = Invoke-WtGit -WorkingDirectory $RepoRoot -Arguments @('worktree', 'list', '--porcelain')
+    $r = Invoke-WtGit -WorkingDirectory $RepoRoot -Arguments @('worktree', 'list', '--porcelain') -ReadOnly
     $result = @(ConvertFrom-WtWorktreePorcelain -Text ($r.StdOut | Out-String))
     $script:WorktreesCache[$key] = $result
     return $result
+}
+
+function ConvertFrom-WtStatusPorcelainV2 {
+    <#
+    .SYNOPSIS
+        Parsea 'git status --porcelain=v2 --branch'. Funcion pura (sin git ni disco):
+        es el corazon de 'wt status' y se testea con salidas fijas.
+    .DESCRIPTION
+        --porcelain=v2 (formato estable, con las lineas '# branch.*') en vez de v1: da
+        ahead/behind respecto del upstream directamente ('# branch.ab +N -M') y
+        distingue staged (columna X) de modified (columna Y) sin ambiguedad.
+    .OUTPUTS
+        @{ Branch; Upstream; Ahead; Behind; Staged; Modified; Untracked } - Staged,
+        Modified y Untracked son arrays de rutas relativas.
+    #>
+    param([AllowEmptyString()][string]$Text)
+    $branch = ''
+    $upstream = ''
+    $ahead = 0
+    $behind = 0
+    $staged = @()
+    $modified = @()
+    $untracked = @()
+    foreach ($line in @($Text -split "`r?`n")) {
+        if (-not $line) { continue }
+        if ($line -match '^# branch\.head (.+)$') {
+            if ($Matches[1] -ne '(detached)') { $branch = $Matches[1] }
+            continue
+        }
+        if ($line -match '^# branch\.upstream (.+)$') { $upstream = $Matches[1]; continue }
+        if ($line -match '^# branch\.ab \+(\d+) -(\d+)') {
+            $ahead = [int]$Matches[1]; $behind = [int]$Matches[2]
+            continue
+        }
+        if ($line.StartsWith('#')) { continue }
+        $marker = $line.Substring(0, 1)
+        if ($marker -eq '?') { $untracked += $line.Substring(2); continue }
+        if ($marker -eq '!') { continue }
+        if ($marker -notin '1', '2', 'u') { continue }
+        # Campos fijos antes del path: 8 (tipo '1'), 9 (tipo '2', suma X<score>), 10
+        # (tipo 'u', unmerged). El path (puede tener espacios) queda en el ultimo
+        # elemento del split con limite; en 'u'/'2' se ignora el rename/orig path.
+        $fixedFields = 8
+        if ($marker -eq '2') { $fixedFields = 9 }
+        if ($marker -eq 'u') { $fixedFields = 10 }
+        $parts = $line -split ' ', ($fixedFields + 1)
+        if ($parts.Count -le $fixedFields) { continue }
+        $xy = $parts[1]
+        $path = ($parts[$fixedFields] -split "`t")[0]
+        if ($marker -eq 'u') {
+            if ($staged -notcontains $path) { $staged += $path }
+            if ($modified -notcontains $path) { $modified += $path }
+            continue
+        }
+        if ($xy.Length -ge 1 -and $xy[0] -ne '.') { $staged += $path }
+        if ($xy.Length -ge 2 -and $xy[1] -ne '.') { $modified += $path }
+    }
+    return @{
+        Branch = $branch; Upstream = $upstream; Ahead = $ahead; Behind = $behind
+        Staged = @($staged); Modified = @($modified); Untracked = @($untracked)
+    }
 }
 
 function Get-WtWorktreesCached {

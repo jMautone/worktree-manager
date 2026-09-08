@@ -238,6 +238,28 @@ try {
         Invoke-Wt -CmdArgs @('remove', 'hooks-hostile', '--delete-branch') -Cwd $repoDir | Out-Null
     }
 
+    Write-Host '== wt create --dry-run (item 4) ==' -ForegroundColor Cyan
+    $r = Invoke-Wt -CmdArgs @('create', 'dry-run-create', '--no-open', '--dry-run') -Cwd $repoDir
+    Assert-True 'create --dry-run exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'create --dry-run no crea el directorio' (-not (Test-Path (Join-Path $wtRoot 'dry-run-create'))) $r.Output
+    git -C $repoDir show-ref --verify --quiet refs/heads/dry-run-create
+    Assert-True 'create --dry-run no crea la rama' ($LASTEXITCODE -ne 0)
+    Assert-True 'create --dry-run muestra el git que hubiera corrido' ($r.Output -match [regex]::Escape('[dry-run] git')) $r.Output
+
+    Write-Host '== wt remove --dry-run (item 4) ==' -ForegroundColor Cyan
+    $r = Invoke-Wt -CmdArgs @('remove', 'feature-a', '--dry-run', '--delete-branch') -Cwd $repoDir
+    Assert-True 'remove --dry-run exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'remove --dry-run no borra el worktree' (Test-Path (Join-Path $wtRoot 'feature-a')) $r.Output
+    git -C $repoDir show-ref --verify --quiet refs/heads/feature-a
+    Assert-True 'remove --dry-run no borra la rama' ($LASTEXITCODE -eq 0)
+
+    Write-Host '== wt config set --dry-run no toca el archivo (item 4) ==' -ForegroundColor Cyan
+    $beforeDryRunHash = (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+    $r = Invoke-Wt -CmdArgs @('config', 'set', 'terminal', 'none', '--dry-run') -Cwd $repoDir
+    Assert-True 'config set --dry-run exit 0' ($r.ExitCode -eq 0) $r.Output
+    $afterDryRunHash = (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+    Assert-True 'config set --dry-run no modifica el archivo' ($beforeDryRunHash -eq $afterDryRunHash)
+
     Write-Host '== wt list ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('list') -Cwd $repoDir
     Assert-True 'list exit 0' ($r.ExitCode -eq 0) $r.Output
@@ -699,7 +721,126 @@ try {
     Write-Host '== wt version ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('version') -Cwd $env:TEMP
     Assert-True 'version exit 0' ($r.ExitCode -eq 0) $r.Output
-    Assert-True 'version imprime la version del manifiesto' ($r.Output -match 'wt 0\.2\.0') $r.Output
+    # No hardcodea el numero (cambia con cada item del plan de mejoras): lo lee del
+    # propio manifiesto, que es la fuente de verdad que 'wt version' tambien usa.
+    $manifestVersion = (Import-PowerShellDataFile -Path (Join-Path $PSScriptRoot '..\wt.psd1')).ModuleVersion
+    Assert-True 'version imprime la version del manifiesto' ($r.Output -match [regex]::Escape("wt $manifestVersion")) $r.Output
+
+    Write-Host '== wt status (item 5) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'status-limpio', '--no-open') -Cwd $repoDir | Out-Null
+    Invoke-Wt -CmdArgs @('create', 'status-sucio', '--no-open') -Cwd $repoDir | Out-Null
+    $statusSucioDir = Join-Path $wtRoot 'status-sucio'
+    Set-Content -Path (Join-Path $statusSucioDir 'nuevo-sin-trackear.txt') -Value 'x'
+    git -C $statusSucioDir add nuevo-sin-trackear.txt
+    Set-Content -Path (Join-Path $statusSucioDir 'README.md') -Value 'modificado sin agregar'
+    try {
+        $r = Invoke-Wt -CmdArgs @('status') -Cwd $repoDir
+        Assert-True 'status exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'status lista status-limpio' ($r.Output -match 'status-limpio') $r.Output
+        Assert-True 'status lista status-sucio' ($r.Output -match 'status-sucio') $r.Output
+        Assert-True 'status refleja el staged del worktree sucio' ($r.Output -match '1 staged') $r.Output
+        Assert-True 'status refleja el modified del worktree sucio' ($r.Output -match '1 modified') $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('status', 'status-limpio') -Cwd $repoDir
+        Assert-True 'status <nombre> exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'status <nombre> solo lista ese worktree' ($r.Output -match 'status-limpio' -and $r.Output -notmatch 'status-sucio') $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('status', '--json') -Cwd $repoDir
+        $statusJson = $null
+        try { $statusJson = ($r.Output | ConvertFrom-Json) } catch {}
+        Assert-True 'status --json parseable' ($null -ne $statusJson) $r.Output
+        $sucioEntry = @($statusJson | Where-Object { $_.Name -eq 'status-sucio' })[0]
+        Assert-True 'status --json cuenta 1 staged y 1 modified' ($sucioEntry.Staged -eq 1 -and $sucioEntry.Modified -eq 1) ($sucioEntry | ConvertTo-Json)
+        Assert-True 'status --json trae el ultimo commit' ((@($statusJson | Where-Object { $_.Name -eq 'status-limpio' })[0].LastCommitHash) -ne '') $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('st') -Cwd $repoDir
+        Assert-True "alias 'st' funciona" ($r.ExitCode -eq 0 -and $r.Output -match 'status-limpio') $r.Output
+
+        Write-Host '== wt exec (item 6) ==' -ForegroundColor Cyan
+        $r = Invoke-Wt -CmdArgs @('exec', 'status-limpio', '--', 'cmd', '/c', 'echo', 'hola-exec') -Cwd $repoDir
+        Assert-True 'exec exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'exec muestra la salida del comando' ($r.Output -match 'hola-exec') $r.Output
+        $r = Invoke-Wt -CmdArgs @('exec', 'status-limpio', '--', 'cmd', '/c', 'exit', '5') -Cwd $repoDir
+        Assert-True 'exec con comando que falla sale distinto de 0' ($r.ExitCode -eq 2) $r.Output
+        $r = Invoke-Wt -CmdArgs @('exec', 'status-limpio') -Cwd $repoDir
+        Assert-True 'exec sin -- ni comando falla con guia de uso' ($r.ExitCode -eq 1 -and $r.Output -match 'Uso:') $r.Output
+
+        Write-Host '== wt each (item 6) ==' -ForegroundColor Cyan
+        $r = Invoke-Wt -CmdArgs @('each', '--', 'cmd', '/c', 'echo', 'hola-each') -Cwd $repoDir
+        Assert-True 'each exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'each toca status-limpio' ($r.Output -match 'status-limpio') $r.Output
+        Assert-True 'each toca status-sucio' ($r.Output -match 'status-sucio') $r.Output
+        Assert-True 'each no toca el worktree principal' ($r.Output -notmatch '\(principal\)') $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('each', '--json', '--', 'cmd', '/c', 'echo', 'hola-json') -Cwd $repoDir
+        $eachJson = $null
+        try { $eachJson = ($r.Output | ConvertFrom-Json) } catch {}
+        Assert-True 'each --json parseable' ($null -ne $eachJson) $r.Output
+        Assert-True 'each --json trae los dos worktrees' (@($eachJson).Count -eq 2) $r.Output
+        Assert-True 'each --json marca exito' (@($eachJson | Where-Object { -not $_.Success }).Count -eq 0) $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('each', '--continue-on-error', '--', 'cmd', '/c', 'exit', '9') -Cwd $repoDir
+        Assert-True 'each con comando que falla en todos sale distinto de 0' ($r.ExitCode -eq 2) $r.Output
+        Assert-True 'each --continue-on-error resume los worktrees que fallaron' ($r.Output -match 'Fallaron') $r.Output
+        Assert-True 'each --continue-on-error visito status-limpio y status-sucio' `
+            ($r.Output -match 'status-limpio' -and $r.Output -match 'status-sucio') $r.Output
+    } finally {
+        Invoke-Wt -CmdArgs @('remove', 'status-limpio', '--delete-branch') -Cwd $repoDir | Out-Null
+        Invoke-Wt -CmdArgs @('remove', 'status-sucio', '--delete-branch', '--force') -Cwd $repoDir | Out-Null
+    }
+
+    Write-Host '== wt sync (item 7) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'sync-clean', '--base', 'develop', '--no-open') -Cwd $repoDir | Out-Null
+    Invoke-Wt -CmdArgs @('create', 'sync-dirty', '--base', 'develop', '--no-open') -Cwd $repoDir | Out-Null
+    $syncCleanDir = Join-Path $wtRoot 'sync-clean'
+    $syncDirtyDir = Join-Path $wtRoot 'sync-dirty'
+    # Avanza 'develop' con un commit que ningun worktree toco: sync limpio sin conflicto.
+    Set-Content -Path (Join-Path $repoDir 'nuevo-en-develop.txt') -Value 'contenido'
+    git -C $repoDir add nuevo-en-develop.txt
+    git -C $repoDir checkout -q develop
+    git -C $repoDir commit -q -m 'avanza develop'
+    git -C $repoDir checkout -q main
+    Set-Content -Path (Join-Path $syncDirtyDir 'sin-commitear.txt') -Value 'x'
+    try {
+        $r = Invoke-Wt -CmdArgs @('sync', '--base', 'develop') -Cwd $repoDir
+        Assert-True 'sync exit 0 (sin conflictos)' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'sync sincroniza el worktree limpio' ($r.Output -match 'sync-clean') $r.Output
+        Assert-True 'sync saltea el worktree sucio' ($r.Output -match 'sync-dirty' -and $r.Output -match 'sucios') $r.Output
+        Assert-True 'sync-clean recibio el commit de develop' (Test-Path (Join-Path $syncCleanDir 'nuevo-en-develop.txt')) $r.Output
+        Assert-True 'sync-dirty NO se toco (sigue con el archivo sin commitear)' (Test-Path (Join-Path $syncDirtyDir 'sin-commitear.txt')) $r.Output
+        Assert-True 'sync-dirty no recibio el commit de develop (se salteo)' (-not (Test-Path (Join-Path $syncDirtyDir 'nuevo-en-develop.txt'))) $r.Output
+
+        $r = Invoke-Wt -CmdArgs @('sync', '--base', 'develop', '--dry-run') -Cwd $repoDir
+        Assert-True 'sync --dry-run exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'sync --dry-run no modifica nada (sync-dirty sigue sucio)' (Test-Path (Join-Path $syncDirtyDir 'sin-commitear.txt')) $r.Output
+    } finally {
+        Remove-Item -LiteralPath (Join-Path $syncDirtyDir 'sin-commitear.txt') -ErrorAction SilentlyContinue
+        Invoke-Wt -CmdArgs @('remove', 'sync-clean', '--delete-branch') -Cwd $repoDir | Out-Null
+        Invoke-Wt -CmdArgs @('remove', 'sync-dirty', '--delete-branch') -Cwd $repoDir | Out-Null
+    }
+
+    Write-Host '== wt sync: conflicto no se resuelve ni se aborta solo (item 7) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'sync-conflict', '--base', 'develop', '--no-open') -Cwd $repoDir | Out-Null
+    $syncConflictDir = Join-Path $wtRoot 'sync-conflict'
+    Set-Content -Path (Join-Path $syncConflictDir 'README.md') -Value 'cambio local en el worktree'
+    git -C $syncConflictDir add README.md
+    git -C $syncConflictDir commit -q -m 'cambio local que va a chocar'
+    git -C $repoDir checkout -q develop
+    Set-Content -Path (Join-Path $repoDir 'README.md') -Value 'cambio en develop, mismo archivo'
+    git -C $repoDir add README.md
+    git -C $repoDir commit -q -m 'cambio en develop que choca'
+    git -C $repoDir checkout -q main
+    try {
+        $r = Invoke-Wt -CmdArgs @('sync', 'sync-conflict', '--base', 'develop') -Cwd $repoDir
+        Assert-True 'sync con conflicto sale distinto de 0' ($r.ExitCode -eq 2) $r.Output
+        Assert-True 'sync informa el conflicto' ($r.Output -match 'onflicto') $r.Output
+        $rebaseStatus = (git -C $syncConflictDir status) -join "`n"
+        Assert-True 'sync no aborta el rebase solo (el worktree queda con el rebase a medio resolver)' `
+            ($rebaseStatus -match 'rebase in progress' -or $rebaseStatus -match 'You are currently rebasing') $rebaseStatus
+    } finally {
+        git -C $syncConflictDir rebase --abort 2>&1 | Out-Null
+        Invoke-Wt -CmdArgs @('remove', 'sync-conflict', '--delete-branch', '--force') -Cwd $repoDir | Out-Null
+    }
 
     Write-Host '== wt doctor ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('doctor') -Cwd $env:TEMP
@@ -851,8 +992,29 @@ try {
     $r = Invoke-WtConsole -InputLines @('3', '2', 'q') -Cwd $repoDir
     Assert-True 'console open muestra comando equivalente' ($r.Output -match 'Ejecutando: wt open console-a') $r.Output
 
+    Write-Host '== wt console: abrir solo agente, terminal=none no rompe el menu (item 8) ==' -ForegroundColor Cyan
+    $r = Invoke-WtConsole -InputLines @('5', '2', 'q') -Cwd $repoDir
+    Assert-True 'console agente-solo exit 0 (avisa, no rompe)' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'console agente-solo muestra comando equivalente' ($r.Output -match 'Ejecutando: wt open console-a --agent') $r.Output
+
+    Write-Host '== wt console: abrir solo terminal (item 8) ==' -ForegroundColor Cyan
+    $r = Invoke-WtConsole -InputLines @('6', '2', 'q') -Cwd $repoDir
+    Assert-True 'console terminal-solo exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'console terminal-solo muestra comando equivalente' ($r.Output -match 'Ejecutando: wt open console-a --terminal') $r.Output
+
+    Write-Host '== wt console: status del repo (item 8) ==' -ForegroundColor Cyan
+    $r = Invoke-WtConsole -InputLines @('s', 'q') -Cwd $repoDir
+    Assert-True 'console status exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'console status muestra comando equivalente' ($r.Output -match 'Ejecutando: wt status') $r.Output
+    Assert-True 'console status imprime la tabla (nombra console-a)' ($r.Output -match 'console-a') $r.Output
+
+    Write-Host '== wt console: sync (item 8) ==' -ForegroundColor Cyan
+    $r = Invoke-WtConsole -InputLines @('y', '', 'n') -Cwd $repoDir
+    Assert-True 'console sync cancelado (n) exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'console sync cancelado no ejecuta nada' ($r.Output -match 'Cancelado') $r.Output
+
     Write-Host '== wt console: remove con confirmacion ==' -ForegroundColor Cyan
-    $r = Invoke-WtConsole -InputLines @('6', '1', 's', 'n', 's', 'q') -Cwd $repoDir
+    $r = Invoke-WtConsole -InputLines @('8', '1', 's', 'n', 's', 'q') -Cwd $repoDir
     Assert-True 'console remove exit 0' ($r.ExitCode -eq 0) $r.Output
     Assert-True 'console remove elimina el directorio' (-not (Test-Path (Join-Path $wtRoot 'console-a')))
     git -C $repoDir show-ref --verify --quiet refs/heads/console-a

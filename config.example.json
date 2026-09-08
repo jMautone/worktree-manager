@@ -10,5 +10,7 @@
   "warpTerminalColor": "blue",
   "fetchBeforeCreate": true,
   "agentCommand": "copilot",
-  "agentShell": "powershell"
+  "agentShell": "powershell",
+  "copyOnCreate": [],
+  "postCreate": []
 }

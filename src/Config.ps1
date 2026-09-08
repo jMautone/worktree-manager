@@ -372,7 +372,11 @@ function Save-WtConfigFile {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)]$Data)
     $dir = Split-Path -Parent $Path
     if ($dir -and -not (Test-WtPathExists $dir)) {
-        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        if (Test-WtDryRun) {
+            Write-WtDetail "[dry-run] crear directorio $dir"
+        } else {
+            New-Item -ItemType Directory -Path $dir -Force | Out-Null
+        }
     }
     $json = [pscustomobject]$Data | ConvertTo-Json -Depth 5
     Set-WtFileUtf8NoBom -Path $Path -Content $json
@@ -429,7 +433,7 @@ function Invoke-WtConfigCommand {
             }
             $editor = [string](Get-WtConfig).editor
             if (-not (Test-WtCommand $editor)) { $editor = 'notepad.exe' }
-            Start-Process -FilePath $editor -ArgumentList (Format-WtProcessArgument $file)
+            Start-WtProcess -FilePath $editor -ArgumentList (Format-WtProcessArgument $file)
             Write-WtSuccess "Editando $file"
         }
         default { throw "Accion de config desconocida: '$Action'. Usa: wt config [list|get|set|path|edit]" }

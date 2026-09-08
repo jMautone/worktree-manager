@@ -12,11 +12,22 @@ powershell -ExecutionPolicy Bypass -File C:\worktree-manager\install.ps1
 
 El instalador es **idempotente**: agrega/actualiza un bloque delimitado en
 `$PROFILE.CurrentUserAllHosts` que **importa el módulo una sola vez** (al abrir la
-terminal) y define la función `wt` (y alias `wtm`) como un wrapper liviano sobre
-`Invoke-Wt`, ya cargado; crea `%USERPROFILE%\.wt\config.json` a partir de
-`config.example.json` solo si no existe. Luego reiniciá la terminal o ejecutá
-`. $PROFILE`. Soporta `-WhatIf` (no modifica nada, solo informa qué haría) y
-`-Confirm` (pide confirmación antes de cada escritura: perfil, config).
+terminal), define la función `wt` (y alias `wtm`) como un wrapper liviano sobre
+`Invoke-Wt`, ya cargado, y registra el autocompletado (`Register-WtCompletion`); crea
+`%USERPROFILE%\.wt\config.json` a partir de `config.example.json` solo si no existe.
+Luego reiniciá la terminal o ejecutá `. $PROFILE`. Soporta `-WhatIf` (no modifica
+nada, solo informa qué haría) y `-Confirm` (pide confirmación antes de cada
+escritura: perfil, config).
+
+### Autocompletado
+
+Instalado el bloque del perfil, `wt <TAB>` completa comandos y alias, `wt open --<TAB>`
+completa flags, `wt config set terminal <TAB>` completa valores admitidos de esa
+clave, y la segunda posición de `open`/`path`/`remove`/`cd`/`lock`/`unlock` completa
+con los worktrees del repo actual (o, fuera de un repo, los repos de `reposRoot`). El
+completer nunca dispara `git`: usa la caché de worktrees de la invocación anterior de
+`wt` en la misma sesión (si no hay nada cacheado, no sugiere nombres) y un recorrido
+de filesystem para los repos, para no introducir latencia al escribir.
 
 ### Desinstalación
 
@@ -45,7 +56,7 @@ wt list                                      # tabla de worktrees (el principal 
 wt list --json                               # salida JSON para scripting
 wt open                                      # abre el checkout actual en VS Code (el worktree si estás dentro de uno)
 wt open logging                              # abre el worktree en VS Code
-wt open logging --agent                      # abre solo el agente Copilot CLI en el worktree
+wt open logging --agent                      # abre solo el agente en el worktree (tab de Warp o de Windows Terminal, segun 'terminal')
 wt open logging --code                       # abre solo el editor
 wt open logging --terminal                   # abre solo la terminal (tab de Warp)
 wt open logging --all                        # editor + agente (la terminal solo con --terminal)
@@ -60,6 +71,14 @@ wt lock logging --reason "revision en curso"  # bloquea el worktree (git worktre
 wt unlock logging                            # lo desbloquea
 wt prune                                     # depura metadatos de worktrees huérfanos
 wt clean                                     # depura tab configs de Warp huérfanos
+wt status                                    # estado de todos los worktrees del repo actual (alias: st)
+wt status logging --json                     # estado de uno solo, en JSON
+wt status --fetch                            # fetch --all --prune antes de calcular ahead/behind
+wt exec logging -- npm test                  # corre el comando en ese worktree
+wt each -- git fetch                         # corre el comando en todos los worktrees (menos el principal), en serie
+wt each --continue-on-error -- npm test      # sigue aunque falle alguno; resume al final que worktrees fallaron
+wt sync                                      # rebasa cada worktree contra su upstream (o defaultBase)
+wt sync logging --base develop --strategy merge
 wt console                                   # menú interactivo que arma los comandos sin escribirlos
 wt version                                   # versión del módulo (wt.psd1) y de PowerShell
 wt help
@@ -100,6 +119,19 @@ Warp), `--terminal` (terminal en tab de Warp) y `--all` = **editor + agente**.
 **Sin flags** abre solo el editor. **La terminal nunca se abre sola**: solo cuando
 se pide explícitamente con `--terminal` (así `--all` no duplica terminales: el agente
 ya es una terminal con Copilot corriendo).
+
+### Qué abre cada `terminal`
+
+| `terminal` | `--terminal` (terminal común) | `--agent` (agente) |
+|---|---|---|
+| `warp` (default) | Tab de Warp (`warpTerminalColor`) | Tab de Warp con `agentCommand` (`warpAgentColor`) |
+| `wt` | Pestaña de Windows Terminal | Pestaña de Windows Terminal que corre `agentCommand` (con `fnm use` primero si `agentShell` lo permite) |
+| `none` | No se abre nada (avisa) | No se abre nada (avisa) |
+
+El título de la pestaña es el mismo en los dos terminales (`repo > worktree (rama)`);
+solo Warp puede colorearla (`warpAgentColor`/`warpTerminalColor` no tienen equivalente
+en Windows Terminal). El agente **nunca** se abre como ventana suelta de PowerShell,
+solo como tab/pestaña de uno de los dos terminales.
 
 ### Hooks de creación: `copyOnCreate` y `postCreate`
 
@@ -201,6 +233,82 @@ un rechazo— si le falta `{repo}`/`{repoParent}`); `editor`, `defaultBase` y
 archivo** y explica los valores admitidos; un archivo de config con un valor inválido
 (editado a mano) descarta esa clave con un warning en vez de romper el CLI.
 
+## `--dry-run` global
+
+Válido para **cualquier** comando (`wt create x --dry-run`, `wt remove logging
+--dry-run --delete-branch`, `wt config set terminal none --dry-run`, ...). Con
+`--dry-run`, ningún comando externo se ejecuta y ningún archivo se escribe: cada
+operación que lo haría se imprime con el prefijo `[dry-run]` en su lugar. Las
+lecturas (`git rev-parse`, `git worktree list`, `git show-ref`, ...) se siguen
+ejecutando de verdad — son consultas, no cambian nada, y `wt` las necesita para
+decidir qué imprimiría. Un ensayo sin errores de uso sale con código `0`.
+
+```powershell
+wt create feature-x --dry-run          # muestra el plan completo sin crear nada
+wt remove logging --dry-run --delete-branch --force-branch
+wt config set terminal none --dry-run  # no toca el archivo de config
+```
+
+## `wt status`: estado de todos los worktrees
+
+Reemplaza el "entrar a cada worktree para ver qué pasó" cuando hay varios agentes
+trabajando en paralelo:
+
+```powershell
+wt status                    # todos los worktrees del repo actual
+wt status logging            # solo ese
+wt status --json             # el modelo completo, para scripting
+wt status --fetch            # git fetch --all --prune antes de calcular (nunca sin el flag)
+```
+
+Por worktree: rama, archivos staged/modified/sin trackear, ahead/behind respecto de
+su **upstream** (o de `defaultBase` si no tiene upstream) y el último commit (hash
+corto, asunto, antigüedad relativa). Un worktree que falle al consultarse (bloqueado,
+disco desconectado) se reporta con su error en la fila propia — el resto de la tabla
+sigue.
+
+## `wt exec` y `wt each`
+
+Corren un comando externo sin cambiar de directorio, complemento natural de `wt
+status` para supervisar trabajo en paralelo. El separador `--` es obligatorio: todo
+lo que sigue va **crudo** al comando, sin que `wt` interprete sus flags (así `wt each
+-- git log --oneline -1` no confunde `--oneline` con un flag de `wt`).
+
+```powershell
+wt exec logging -- npm test          # corre 'npm test' en el worktree 'logging'
+wt each -- git fetch                 # lo corre en TODOS los worktrees del repo (menos el principal), en serie
+wt each --continue-on-error -- npm test --json
+```
+
+`wt each` corta en el primer worktree que falla, salvo `--continue-on-error` (sigue y
+al final resume qué worktrees fallaron). Salida por worktree: encabezado con el
+nombre, la salida del comando tal cual, y el exit code si es distinto de 0.
+`--json` emite el resultado estructurado (nombre, exit code, salida) en vez de la
+salida legible. Exit code: `0` si todos salieron `0`, `2` si alguno falló.
+`--dry-run` (arriba) lista qué se correría y dónde, sin correr nada.
+
+## `wt sync`
+
+Con varios agentes, la divergencia contra `develop` (o la rama que corresponda) es el
+problema recurrente:
+
+```powershell
+wt sync                                 # todos los worktrees, rebase contra upstream/defaultBase
+wt sync logging --base origin/develop   # solo ese, contra una base explícita
+wt sync --strategy merge --continue-on-error
+wt sync --dry-run                       # el uso principal las primeras veces: ver el plan sin tocar nada
+```
+
+Default: `rebase` sobre `defaultBase`, o el upstream de la rama si lo tiene (`--base`
+explícito gana a los dos). **Antes de tocar nada se verifica que el worktree esté
+limpio**: uno sucio se saltea con un aviso — nunca se hace stash automático, mover el
+árbol de un agente corriendo adentro es inaceptable. Un conflicto **no se resuelve ni
+se aborta solo**: se reporta, el worktree queda como git lo dejó (para resolverlo a
+mano, o `git rebase --abort`), y se sigue con el próximo worktree (o se corta, según
+`--continue-on-error`). Hace un solo `git fetch --all --prune` al inicio, no uno por
+worktree. El resumen final lista: sincronizados, salteados por sucios, salteados sin
+base, y en conflicto.
+
 ## Códigos de salida
 
 | Código | Significado |
@@ -234,12 +342,15 @@ comando CLI equivalente, que **muestra antes de ejecutarlo** para ir aprendiendo
 CLI. Sale con `q`. No duplica lógica: es un wrapper fino sobre las mismas
 funciones del módulo, por lo que respeta la misma configuración y protecciones.
 
-Las opciones de worktrees (`1`–`7`) solo aparecen si estás dentro de un repo. Las de
-workspace siempre están: `r` lista los repos, `g` te deja elegir **un repo o un
-worktree de cualquiera de ellos** (B12) y hace `cd` ahí (si elegís un worktree, las
-opciones de worktrees se habilitan para el repo que lo contiene), `c` abre el
-submenú de configuración (ver / cambiar valores / abrir el archivo) y `d` corre el
-doctor.
+Las opciones de worktrees (`1`–`9`, más `s` y `y`) solo aparecen si estás dentro de un
+repo: listar, crear, abrir (editor · solo agente · solo terminal · editor + agente,
+las cuatro combinaciones que expone el CLI), ver la ruta, eliminar, prune, `s` corre
+`wt status` del repo y `y` corre `wt sync`. Las de workspace siempre están: `r` lista
+los repos, `g` te deja elegir **un repo o un worktree de cualquiera de ellos** (B12) y
+hace `cd` ahí (si elegís un worktree, las opciones de worktrees se habilitan para el
+repo que lo contiene), `c` abre el submenú de configuración (ver / cambiar valores /
+abrir el archivo) y `d` corre el doctor. Antes de ejecutar cualquier acción se muestra
+el comando CLI equivalente (`Write-WtConsoleCommand`).
 
 ## Configuración
 
@@ -378,6 +489,62 @@ global del usuario o en `WT_CONFIG`.
   `window` lo fuerzan. **Nunca abre ventanas sueltas de PowerShell**: el agente solo se
   lanza como tab de Warp; si `agentCommand` no existe en la sesión o `terminal` no es
   `warp`, avisa con un warning en vez de abrir otra cosa.
+- **`--dry-run` global sin flag por comando**: se reconoce en una sola línea de
+  `ConvertFrom-WtArgs` (no está en la spec de ningún comando individual) y setea una
+  bandera de módulo (`Set-WtDryRun`/`Test-WtDryRun`, en `Common.ps1`) que `Invoke-Wt`
+  resetea **siempre** en un `finally`, para que nunca quede encendida entre
+  invocaciones del modo instalado (el perfil importa el módulo una sola vez).
+  `Invoke-WtProcess`/`Invoke-WtGit` se vuelven no-ops bajo `--dry-run` (imprimen con
+  `[dry-run]` y devuelven un resultado sintético exitoso) **salvo** que el llamador
+  pase `-ReadOnly` — las lecturas (`rev-parse`, `worktree list`, `show-ref`, `remote`,
+  `check-ref-format`, `node --version`, `fnm list`) siguen corriendo de verdad,
+  porque `wt` las necesita para decidir qué imprimiría. Nuevo `Start-WtProcess` es el
+  único punto que invoca `Start-Process` para procesos "fire and forget" (editor,
+  terminales, agente) y aplica el mismo criterio. `Set-WtFileUtf8NoBom` (único punto
+  de escritura de archivos que `wt` genera) también consulta `Test-WtDryRun`, así que
+  cubre tab configs y `config.json` con un solo cambio.
+- **Agente sin dependencia dura de Warp**: `terminal = 'wt'` antes abría una terminal
+  común pero nunca el agente (`Open-WtAgent` exigía Warp). `Get-WtWindowsTerminalArgs`
+  (función pura) arma los argumentos de `wt.exe new-tab` reusando `Get-WtAgentCommands`
+  (la misma decisión de M8: `fnm use <major>` si `agentShell` lo permite, más
+  `agentCommand`) — `powershell -NoExit -Command "..."` o `bash -lc "..."` según
+  `agentShell`, o el comando desnudo con `agentShell = 'none'`. `Open-WtAgent`
+  despacha por `Config.terminal`: Warp sigue siendo el único camino con tab configs
+  persistentes; `wt` pasa por argumentos de línea de comandos, sin escribir archivos.
+- **Autocompletado sin costo de latencia**: `Get-WtCompletion` (función pura, en
+  `src/Completion.ps1`) decide los candidatos a partir de `Get-WtCommandSpecs` (la
+  misma fuente de verdad que el parser) y de un contexto (worktrees/repos) que le
+  pasa el llamador — nunca resuelve nada por su cuenta, así se testea sin git ni
+  disco. `Register-WtCompletion` (efecto) arma ese contexto con
+  `Get-WtWorktreesCached` (nuevo: como `Get-WtWorktrees`, pero solo si el repo ya
+  está en la caché de la invocación anterior de `wt` en la sesión — si no, vacío en
+  vez de disparar `git worktree list`) y un recorrido de filesystem para los repos.
+  Se registra desde el bloque del perfil de `install.ps1`, no al importar el módulo
+  (importar no debe tener efectos secundarios).
+- **`wt exec`/`wt each` y el `--` del parser**: `ConvertFrom-WtArgs` reconoce un `--`
+  suelto y corta ahí el parseo — todo lo que sigue va crudo a `Rest`, sin
+  interpretarse como flags de `wt` (necesario para que `wt each -- git log --oneline`
+  no confunda `--oneline` con un flag propio). `Get-WtEachPlan` (función pura) decide
+  sobre qué worktrees opera `each`: excluye los obsoletos siempre y el principal
+  salvo `-IncludeMain`. `Invoke-WtCommandLine` (compartida por `exec` y `each`) corre
+  la línea reconstruida vía `cmd.exe /c` con `Invoke-WtProcess`, así hereda gratis el
+  soporte de `--dry-run` y `-WorkingDirectory`.
+- **`wt sync`**: `Get-WtSyncPlan` (función pura, en `src/Commands.ps1`) decide, a
+  partir del modelo de estado del item 5 (`Get-WtStatusEntry`), la acción por
+  worktree (`sync` | `skip-dirty` | `skip-no-base`) y el `git rebase`/`git merge` a
+  correr — toda la decisión es testeable sin git. `Invoke-WtSync` ejecuta el plan: un
+  solo `fetch` al inicio, nunca stash automático (un worktree sucio se saltea), y un
+  conflicto se reporta y se deja tal cual lo dejó git — ni se resuelve ni se aborta
+  solo — para que el próximo worktree del plan igual se procese (o se corte, según
+  `--continue-on-error`).
+- **`wt status`**: `ConvertFrom-WtStatusPorcelainV2` (función pura, en `src/Repo.ps1`)
+  parsea `git status --porcelain=v2 --branch` — formato estable, con las líneas
+  `# branch.*` que ya traen ahead/behind del upstream — y distingue staged (columna
+  X) de modified (columna Y) sin ambigüedad. `Get-WtStatusEntry` (efecto) suma, por
+  worktree, el último commit (`git log -1`) y, cuando no hay upstream, ahead/behind
+  contra `defaultBase` vía `git rev-list --left-right --count` (best-effort: si
+  falla, queda en `0/0`); nunca lanza — un worktree que falle queda con su error en
+  la entrada, no rompe el resto. `Get-WtStatusRows` (pura) arma la tabla.
 - **Hooks de creación (`copyOnCreate`/`postCreate`)**: `Resolve-WtCopyOnCreatePlan`
   (función pura) decide, a partir de los patrones configurados y un listado de
   archivos del repo que le pasa el llamador, qué copiar y a dónde; rechaza patrones
@@ -419,6 +586,11 @@ global del usuario o en `WT_CONFIG`.
   (`Set-WtFileUtf8NoBom`, también usado para `config.json`): `Set-Content -Encoding
   UTF8` en PowerShell 5.1 antepone `EF BB BF`, que muchos parsers TOML rechazan o
   interpretan como parte del primer valor.
+- **Consola alineada con el CLI (item 8)**: el menú ofrecía «editor» y «editor +
+  agente» pero no «solo agente» ni «solo terminal», que sí existen en el CLI; ahora
+  `Invoke-WtConsoleOpen` cubre las cuatro combinaciones. El menú suma `s` (`wt
+  status` del repo) e `y` (`wt sync`, con una base opcional) — el wrapper cubre la
+  superficie que envuelve.
 - **Consola interactiva como wrapper**: `wt console` compone los mismos comandos del
   CLI en vez de duplicar lógica. Lee con `[Console]::In.ReadLine()`, así funciona igual
   en uso interactivo y con stdin pipeado (lo que la hace testeable E2E), y ante EOF
@@ -483,7 +655,8 @@ worktree-manager/
 │   ├── Launch.ps1               # Editor, terminal, agente y tab configs de Warp
 │   ├── Commands.ps1             # create/list/path/open/remove/prune/doctor
 │   ├── Console.ps1              # Consola interactiva (wrapper sobre Commands)
-│   └── Cli.ps1                  # Parser de argumentos, ayuda y dispatcher
+│   ├── Cli.ps1                  # Parser de argumentos, ayuda y dispatcher
+│   └── Completion.ps1           # Autocompletado (Register-ArgumentCompleter)
 ├── tests/
 │   ├── Invoke-WtTests.ps1       # Pruebas E2E contra un repo temporal
 │   └── Invoke-WtUnitTests.ps1   # Pruebas unitarias de la lógica pura
@@ -498,19 +671,26 @@ powershell -ExecutionPolicy Bypass -File C:\worktree-manager\tests\Invoke-WtTest
 ```
 
 Las **unitarias** corren en el mismo proceso, sin git ni disco, y cubren la lógica pura:
-parser de argumentos (alias, flags desconocidos, flags con valor faltante), parsing del
-porcelain de `git worktree list`, normalización y comparación de rutas, validación de
-nombres, merge de configuración, plan de apertura de `open` y generación del TOML de Warp.
+parser de argumentos (alias, flags desconocidos, flags con valor faltante, el `--`
+suelto de `exec`/`each`), parsing del porcelain de `git worktree list` y de `git status
+--porcelain=v2`, normalización y comparación de rutas, validación de nombres, merge de
+configuración, plan de apertura de `open`/`create`, generación del TOML de Warp y de
+los argumentos de Windows Terminal, autocompletado (`Get-WtCompletion`), el plan de
+`copyOnCreate` y el de `wt sync` (`Get-WtSyncPlan`), y el modo `--dry-run` de
+`Invoke-WtProcess`/`Invoke-WtGit`.
 
 Las **E2E** crean un repositorio temporal en `%TEMP%` y ejercen `create`/`list`/`open`/
-`path`/`remove`/`prune` (incluidos casos de error: duplicado, nombre inválido, worktree
-principal, cambios sin commit, uso desde dentro de un worktree, ejecución fuera de un
-repo, worktree obsoleto por directorio borrado a mano y worktree huérfano por repo
-principal movido), la validación de flags del CLI, la generación del tab config de Warp
-para el agente, los comandos de workspace (`repos`, `cd` con match por prefijo y
-ambigüedad, `config get/set` incluidos valores con espacios, `doctor`, `version`) y la
-consola interactiva vía stdin pipeado (menú, create, list, open, remove con
-confirmación, ir a un repo, EOF). Se limpia al terminar. Exit code `0` = todo OK,
+`path`/`remove`/`prune`/`clean`/`lock`/`unlock`/`status`/`exec`/`each`/`sync`
+(incluidos casos de error: duplicado, nombre inválido, worktree principal, cambios sin
+commit, uso desde dentro de un worktree, ejecución fuera de un repo, worktree obsoleto
+por directorio borrado a mano, worktree huérfano por repo principal movido, hooks de
+creación con patrón hostil en `.wt.json`, conflicto de `sync` sin auto-resolver), la
+validación de flags del CLI, `--dry-run` de punta a punta (`create`/`remove`/`config
+set`), la generación del tab config de Warp para el agente, los comandos de workspace
+(`repos`, `cd` con match por prefijo y ambigüedad, `config get/set` incluidos valores
+con espacios, `doctor`, `version`) y la consola interactiva vía stdin pipeado (menú,
+create, list, open en sus cuatro combinaciones, remove con confirmación, status, sync,
+ir a un repo, EOF). Se limpia al terminar. Exit code `0` = todo OK,
 `1` = hubo fallas.
 
 `.github/workflows/ci.yml` corre ambas suites y `Invoke-ScriptAnalyzer` (con

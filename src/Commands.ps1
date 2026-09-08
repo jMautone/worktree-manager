@@ -110,6 +110,10 @@ function Invoke-WtCreateHooks {
                 continue
             }
             foreach ($item in $entry.Items) {
+                if (Test-WtDryRun) {
+                    Write-WtDetail "[dry-run] copiar $($item.From) -> $WorktreePath\$($item.To)"
+                    continue
+                }
                 $from = Join-Path $RepoRoot $item.From
                 $to = Join-Path $WorktreePath $item.To
                 $toDir = Split-Path -Parent $to
@@ -199,14 +203,20 @@ function New-WtWorktree {
 
     $openPlan = Get-WtCreateOpenPlan -Config $config -Code:$Code -Terminal:$Terminal -Agent:$Agent -All:$All -NoOpen:$NoOpen
     if ($openPlan.Code -or $openPlan.Terminal -or $openPlan.Agent) {
-        Open-WtWorktree -Name $Name -Code:$openPlan.Code -Terminal:$openPlan.Terminal -Agent:$openPlan.Agent
+        if (Test-WtDryRun) {
+            # El path no existe de verdad (el 'git worktree add' fue un no-op):
+            # Open-WtWorktree fallaria al chequear el directorio. Solo se informa.
+            Write-WtDetail ("[dry-run] abrir (Code={0} Terminal={1} Agent={2})" -f $openPlan.Code, $openPlan.Terminal, $openPlan.Agent)
+        } else {
+            Open-WtWorktree -Name $Name -Code:$openPlan.Code -Terminal:$openPlan.Terminal -Agent:$openPlan.Agent
+        }
     }
     return $path
 }
 
 function Test-WtRemote {
     param([Parameter(Mandatory)][string]$RepoRoot, [Parameter(Mandatory)][string]$Remote)
-    $r = Invoke-WtGit -WorkingDirectory $RepoRoot -Arguments @('remote') -AllowFailure
+    $r = Invoke-WtGit -WorkingDirectory $RepoRoot -Arguments @('remote') -AllowFailure -ReadOnly
     if (-not $r.Success) { return $false }
     return (@($r.StdOut | ForEach-Object { $_.Trim() }) -contains $Remote)
 }
@@ -390,7 +400,7 @@ function Open-WtTerminal {
             Write-WtWarn 'Windows Terminal (wt.exe) no encontrado.'
             return $false
         }
-        Start-Process -FilePath 'wt.exe' -ArgumentList @('-d', (Format-WtProcessArgument $Path))
+        Start-WtProcess -FilePath 'wt.exe' -ArgumentList @('-d', (Format-WtProcessArgument $Path))
         Write-WtSuccess "Windows Terminal abierto en $Path"
         return $true
     }
@@ -400,7 +410,8 @@ function Open-WtTerminal {
 function Open-WtAgent {
     <#
     .NOTES
-        El agente se abre solo como tab de Warp; nunca en una ventana suelta de PowerShell.
+        El agente se lanza como tab de Warp o de Windows Terminal (segun 'terminal');
+        nunca como ventana suelta de PowerShell.
     #>
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -413,14 +424,28 @@ function Open-WtAgent {
         Write-WtWarn "No se encontro '$agentCommand' en la sesion actual; no se lanza el agente."
         return $false
     }
-    if ([string]$Config.terminal -ne 'warp' -or -not (Test-WtPathExists ([string]$Config.warpPath))) {
-        Write-WtWarn "El agente se abre solo en Warp; configura terminal = 'warp' y un warpPath valido."
-        return $false
+    $terminal = [string]$Config.terminal
+    if ($terminal -eq 'warp') {
+        if (-not (Test-WtPathExists ([string]$Config.warpPath))) {
+            Write-WtWarn "Warp no encontrado en '$($Config.warpPath)' (ajusta warpPath en la config)."
+            return $false
+        }
+        $sameWindow = Open-WtAgentInWarp -Name $Name -Path $Path -Config $Config -Target ([string]$Config.warpAgentTarget) `
+            -Title $Title -Color ([string]$Config.warpAgentColor)
+        Write-WtSuccess ("Agente '{0}' iniciado en {1} ({2})" -f $agentCommand, $Path, (Format-WtWarpTarget $sameWindow))
+        return $true
     }
-    $sameWindow = Open-WtAgentInWarp -Name $Name -Path $Path -Config $Config -Target ([string]$Config.warpAgentTarget) `
-        -Title $Title -Color ([string]$Config.warpAgentColor)
-    Write-WtSuccess ("Agente '{0}' iniciado en {1} ({2})" -f $agentCommand, $Path, (Format-WtWarpTarget $sameWindow))
-    return $true
+    if ($terminal -eq 'wt') {
+        if (-not (Test-WtCommand 'wt.exe')) {
+            Write-WtWarn 'Windows Terminal (wt.exe) no encontrado.'
+            return $false
+        }
+        Open-WtAgentInWindowsTerminal -Path $Path -Title $Title -Config $Config
+        Write-WtSuccess ("Agente '{0}' iniciado en {1} (pestana de Windows Terminal)" -f $agentCommand, $Path)
+        return $true
+    }
+    Write-WtWarn "El agente no se abre con terminal = '$terminal'; configura terminal = 'warp' o 'wt'."
+    return $false
 }
 
 # --- remove / prune ---------------------------------------------------------
@@ -565,8 +590,12 @@ function Invoke-WtClean {
         $content = Get-Content -Raw -LiteralPath $file.FullName -ErrorAction SilentlyContinue
         $directory = Get-WtTabConfigDirectory -Content $content
         if ($directory -and -not (Test-WtPathExists $directory)) {
-            Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
-            Write-WtDetail ("Eliminado: {0} (directory ya no existe: {1})" -f $file.Name, $directory)
+            if (Test-WtDryRun) {
+                Write-WtDetail ("[dry-run] borrar {0} (directory ya no existe: {1})" -f $file.Name, $directory)
+            } else {
+                Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+                Write-WtDetail ("Eliminado: {0} (directory ya no existe: {1})" -f $file.Name, $directory)
+            }
             $removed++
         }
     }
@@ -574,6 +603,328 @@ function Invoke-WtClean {
         Write-WtSuccess 'OK - no habia tab configs huerfanos.'
     } else {
         Write-WtSuccess ("OK - {0} tab config(s) huerfano(s) depurado(s)." -f $removed)
+    }
+}
+
+# --- status -------------------------------------------------------------
+
+function Get-WtStatusRows {
+    <#
+    .SYNOPSIS
+        Filas de presentacion de 'wt status'. Funcion pura sobre las entradas que
+        arma Get-WtStatusEntry (como Get-WtWorktreeRows con Get-WtWorktrees).
+    #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entries)
+    return @(foreach ($e in $Entries) {
+        if ($e.Error) {
+            [pscustomobject]@{
+                Worktree = $e.Name; Rama = $e.Branch; Cambios = 'ERROR'
+                'Ahead/Behind' = ''; 'Ultimo commit' = $e.Error
+            }
+            continue
+        }
+        $rama = $e.Branch
+        if (-not $rama) { $rama = '(detached)' }
+        $cambios = "{0} staged, {1} modified, {2} sin trackear" -f $e.Staged, $e.Modified, $e.Untracked
+        $ab = "+{0}/-{1}" -f $e.Ahead, $e.Behind
+        $ultimo = ''
+        if ($e.LastCommitHash) { $ultimo = "{0} {1} ({2})" -f $e.LastCommitHash, $e.LastCommitSubject, $e.LastCommitAge }
+        [pscustomobject]@{
+            Worktree = $e.Name; Rama = $rama; Cambios = $cambios
+            'Ahead/Behind' = $ab; 'Ultimo commit' = $ultimo
+        }
+    })
+}
+
+function Get-WtStatusEntry {
+    <#
+    .SYNOPSIS
+        Estado de UN worktree: status porcelain v2 + ahead/behind + ultimo commit.
+    .DESCRIPTION
+        Nunca lanza: un worktree que falle (bloqueado, disco desconectado, etc.)
+        devuelve 'Error' con el motivo en vez de romper el resto del listado de 'wt
+        status'. Ahead/behind sale del upstream si lo tiene; si no, y hay
+        'defaultBase' configurado, se calcula contra esa rama con 'rev-list
+        --left-right --count' (best-effort: si falla, queda en 0/0).
+    #>
+    param([Parameter(Mandatory)]$Worktree, [Parameter(Mandatory)]$Config)
+    $name = Split-Path -Leaf $Worktree.Path
+    try {
+        $statusResult = Invoke-WtGit -WorkingDirectory $Worktree.Path -Arguments @('status', '--porcelain=v2', '--branch') -ReadOnly
+        $model = ConvertFrom-WtStatusPorcelainV2 -Text ($statusResult.StdOut | Out-String)
+        $ahead = $model.Ahead
+        $behind = $model.Behind
+        if (-not $model.Upstream -and [string]$Config.defaultBase) {
+            $range = "$([string]$Config.defaultBase)...HEAD"
+            $revResult = Invoke-WtGit -WorkingDirectory $Worktree.Path -Arguments @('rev-list', '--left-right', '--count', $range) -AllowFailure -ReadOnly
+            if ($revResult.Success -and $revResult.Text -match '^(\d+)\s+(\d+)$') {
+                $behind = [int]$Matches[1]
+                $ahead = [int]$Matches[2]
+            }
+        }
+        $logResult = Invoke-WtGit -WorkingDirectory $Worktree.Path -Arguments @('log', '-1', '--format=%h%x09%s%x09%cr') -AllowFailure -ReadOnly
+        $hash = ''; $subject = ''; $age = ''
+        if ($logResult.Success -and $logResult.Text) {
+            $logParts = $logResult.Text -split "`t"
+            if ($logParts.Count -ge 3) { $hash = $logParts[0]; $subject = $logParts[1]; $age = $logParts[2] }
+        }
+        return [pscustomobject]@{
+            Name = $name; Path = $Worktree.Path; Branch = $model.Branch; Upstream = $model.Upstream
+            Ahead = $ahead; Behind = $behind
+            Staged = @($model.Staged).Count; Modified = @($model.Modified).Count; Untracked = @($model.Untracked).Count
+            LastCommitHash = $hash; LastCommitSubject = $subject; LastCommitAge = $age
+            Error = ''
+        }
+    } catch {
+        return [pscustomobject]@{
+            Name = $name; Path = $Worktree.Path; Branch = ''; Upstream = ''; Ahead = 0; Behind = 0
+            Staged = 0; Modified = 0; Untracked = 0; LastCommitHash = ''; LastCommitSubject = ''; LastCommitAge = ''
+            Error = $_.Exception.Message
+        }
+    }
+}
+
+function Invoke-WtStatus {
+    <#
+    .SYNOPSIS
+        'wt status [<nombre>] [--json] [--fetch]': estado de uno o todos los
+        worktrees del repo actual. --fetch hace 'git fetch --all --prune' antes de
+        calcular; sin el flag, nunca toca la red (es un comando de consulta que se va
+        a correr seguido).
+    #>
+    param([AllowEmptyString()][string]$Name, [switch]$Json, [switch]$Fetch)
+    $repoRoot = Find-WtMainRoot
+    $config = Get-WtConfig -RepoRoot $repoRoot
+    if ($Fetch) {
+        Write-WtDetail 'Actualizando (git fetch --all --prune)...'
+        Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('fetch', '--all', '--prune') -AllowFailure | Out-Null
+    }
+    $worktrees = @(Get-WtWorktrees -RepoRoot $repoRoot | Where-Object { -not $_.IsPrunable })
+    if ($Name) {
+        $worktrees = @(Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name)
+    }
+    $entries = @($worktrees | ForEach-Object { Get-WtStatusEntry -Worktree $_ -Config $config })
+    if ($Json) {
+        ConvertTo-WtJson -InputObject $entries
+        return
+    }
+    Write-WtDetail ("Repositorio: {0}" -f $repoRoot)
+    Write-WtTable -Rows (Get-WtStatusRows -Entries $entries)
+}
+
+# --- exec / each ---------------------------------------------------------
+
+function Get-WtEachPlan {
+    <#
+    .SYNOPSIS
+        Sobre que worktrees opera 'wt each'. Funcion pura: excluye los obsoletos
+        siempre, y el principal salvo -IncludeMain.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Worktrees, [switch]$IncludeMain)
+    return @($Worktrees | Where-Object { -not $_.IsPrunable -and (-not $_.IsMain -or $IncludeMain) })
+}
+
+function Invoke-WtCommandLine {
+    <#
+    .SYNOPSIS
+        Corre una linea de comando (ya reconstruida desde 'Rest') en un worktree.
+        Efecto compartido por Invoke-WtExec e Invoke-WtEach.
+    #>
+    param([Parameter(Mandatory)][string]$CommandLine, [Parameter(Mandatory)][string]$WorkingDirectory)
+    return (Invoke-WtProcess -FilePath 'cmd.exe' -Arguments @('/c', $CommandLine) -WorkingDirectory $WorkingDirectory -AllowFailure)
+}
+
+function Invoke-WtExec {
+    <#
+    .SYNOPSIS
+        'wt exec <nombre> -- <comando...>': corre el comando en ese worktree.
+    #>
+    param([Parameter(Mandatory)][string]$Name, [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$CommandArgs)
+    $repoRoot = Find-WtMainRoot
+    $wt = Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name
+    $commandLine = ($CommandArgs -join ' ')
+    if (Test-WtDryRun) {
+        Write-WtDetail "[dry-run] en $($wt.Path): $commandLine"
+        return
+    }
+    $result = Invoke-WtCommandLine -CommandLine $commandLine -WorkingDirectory $wt.Path
+    if ($result.Text) { Write-WtLine $result.Text }
+    if ($result.ErrorText) { Write-WtLine $result.ErrorText }
+    if (-not $result.Success) {
+        throw "'$commandLine' fallo en '$Name' (exit $($result.ExitCode))."
+    }
+}
+
+function Invoke-WtEach {
+    <#
+    .SYNOPSIS
+        'wt each [--continue-on-error] [--json] -- <comando...>': corre el comando en
+        todos los worktrees del repo actual (excepto el principal y los obsoletos),
+        en serie.
+    .DESCRIPTION
+        Sin --continue-on-error, corta en el primer worktree que falle; con el flag,
+        sigue y al final resume que worktrees fallaron. Exit code (B6): 0 si todos
+        salieron 0, 2 si alguno fallo (via throw, que Invoke-Wt traduce).
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]]$CommandArgs,
+        [switch]$ContinueOnError,
+        [switch]$Json
+    )
+    $repoRoot = Find-WtMainRoot
+    $worktrees = @(Get-WtEachPlan -Worktrees (Get-WtWorktrees -RepoRoot $repoRoot))
+    $commandLine = ($CommandArgs -join ' ')
+    $results = @()
+    $failed = @()
+    foreach ($wt in $worktrees) {
+        $name = Split-Path -Leaf $wt.Path
+        if (Test-WtDryRun) {
+            Write-WtDetail "[dry-run] en $name ($($wt.Path)): $commandLine"
+            continue
+        }
+        if (-not $Json) { Write-WtInfo $name }
+        $result = Invoke-WtCommandLine -CommandLine $commandLine -WorkingDirectory $wt.Path
+        if (-not $Json) {
+            if ($result.Text) { Write-WtLine $result.Text }
+            if ($result.ErrorText) { Write-WtLine $result.ErrorText }
+            if (-not $result.Success) { Write-WtDetail "exit $($result.ExitCode)" }
+        }
+        $results += [pscustomobject]@{
+            Name = $name; ExitCode = $result.ExitCode; Success = $result.Success
+            Output = $result.Text; ErrorOutput = $result.ErrorText
+        }
+        if (-not $result.Success) {
+            $failed += $name
+            if (-not $ContinueOnError) { break }
+        }
+    }
+    if ($Json) {
+        ConvertTo-WtJson -InputObject $results
+    } elseif (-not (Test-WtDryRun)) {
+        if ($failed.Count -eq 0) {
+            Write-WtSuccess ("OK - {0} worktree(s), todos exitosos." -f $results.Count)
+        } else {
+            Write-WtNotice ("Fallaron: {0}" -f ($failed -join ', '))
+        }
+    }
+    if ($failed.Count -gt 0) {
+        throw "wt each: fallo en $($failed.Count) worktree(s): $($failed -join ', ')."
+    }
+}
+
+# --- sync -----------------------------------------------------------------
+
+function Get-WtSyncPlan {
+    <#
+    .SYNOPSIS
+        Decide, por worktree, la accion de 'wt sync'. Funcion pura: recibe el modelo
+        de estado del item 5 (Get-WtStatusEntry) y config, sin tocar git.
+    .DESCRIPTION
+        Un worktree sucio (staged/modified/untracked > 0) se saltea SIEMPRE, nunca se
+        hace stash automatico. La base es: --base explicito > upstream de la rama >
+        defaultBase. Sin ninguna de las tres, tambien se saltea.
+    .OUTPUTS
+        Array de @{ Name; Action ('sync'|'skip-dirty'|'skip-no-base'); Base; Strategy;
+        GitArgs (array listo para Invoke-WtGit cuando Action es 'sync') }.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]]$Entries,
+        [AllowEmptyString()][string]$ExplicitBase,
+        [string]$Strategy = 'rebase',
+        [AllowEmptyString()][string]$DefaultBase
+    )
+    $plan = @()
+    foreach ($e in $Entries) {
+        $dirty = ($e.Staged -gt 0 -or $e.Modified -gt 0 -or $e.Untracked -gt 0)
+        if ($dirty) {
+            $plan += [pscustomobject]@{ Name = $e.Name; Action = 'skip-dirty'; Base = ''; Strategy = $Strategy; GitArgs = @() }
+            continue
+        }
+        $base = $ExplicitBase
+        if (-not $base) { $base = $e.Upstream }
+        if (-not $base) { $base = $DefaultBase }
+        if (-not $base) {
+            $plan += [pscustomobject]@{ Name = $e.Name; Action = 'skip-no-base'; Base = ''; Strategy = $Strategy; GitArgs = @() }
+            continue
+        }
+        $verb = 'rebase'
+        if ($Strategy -eq 'merge') { $verb = 'merge' }
+        $plan += [pscustomobject]@{ Name = $e.Name; Action = 'sync'; Base = $base; Strategy = $Strategy; GitArgs = @($verb, $base) }
+    }
+    return $plan
+}
+
+function Invoke-WtSync {
+    <#
+    .SYNOPSIS
+        'wt sync [<nombre>] [--base <rama>] [--strategy rebase|merge]
+        [--continue-on-error]': rebasa (o mergea) cada worktree contra su base.
+    .DESCRIPTION
+        Un solo 'git fetch' al inicio, no uno por worktree. Un conflicto no se
+        resuelve ni se aborta solo: se reporta, el worktree queda como git lo dejo, y
+        se sigue con el proximo (o se corta, segun el flag). El resumen final lista
+        sincronizados, salteados por sucios, salteados sin base, y en conflicto.
+    #>
+    param(
+        [AllowEmptyString()][string]$Name,
+        [AllowEmptyString()][string]$Base,
+        [string]$Strategy = 'rebase',
+        [switch]$ContinueOnError
+    )
+    if ($Strategy -notin 'rebase', 'merge') {
+        throw "Uso: wt sync [<nombre>] [--base <rama>] [--strategy rebase|merge] [--continue-on-error]. --strategy debe ser 'rebase' o 'merge'."
+    }
+    $repoRoot = Find-WtMainRoot
+    $config = Get-WtConfig -RepoRoot $repoRoot
+    Write-WtDetail 'Actualizando (git fetch --all --prune)...'
+    Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('fetch', '--all', '--prune') -AllowFailure | Out-Null
+
+    $worktrees = @(Get-WtWorktrees -RepoRoot $repoRoot | Where-Object { -not $_.IsPrunable -and -not $_.IsMain })
+    if ($Name) { $worktrees = @(Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name) }
+    $entries = @($worktrees | ForEach-Object { Get-WtStatusEntry -Worktree $_ -Config $config })
+    $plan = @(Get-WtSyncPlan -Entries $entries -ExplicitBase $Base -Strategy $Strategy -DefaultBase ([string]$config.defaultBase))
+
+    $synced = @(); $skippedDirty = @(); $skippedNoBase = @(); $conflicted = @()
+    foreach ($item in $plan) {
+        $wt = @($worktrees | Where-Object { (Split-Path -Leaf $_.Path) -eq $item.Name })[0]
+        switch ($item.Action) {
+            'skip-dirty' {
+                Write-WtNotice "Saltea '$($item.Name)': tiene cambios sin commitear."
+                $skippedDirty += $item.Name
+            }
+            'skip-no-base' {
+                Write-WtNotice "Saltea '$($item.Name)': sin upstream ni defaultBase configurado."
+                $skippedNoBase += $item.Name
+            }
+            'sync' {
+                if (Test-WtDryRun) {
+                    Write-WtDetail "[dry-run] en $($item.Name): git $($item.GitArgs -join ' ')"
+                    continue
+                }
+                Write-WtInfo "Sincronizando '$($item.Name)' ($($item.Strategy) sobre $($item.Base))..."
+                $result = Invoke-WtGit -WorkingDirectory $wt.Path -Arguments $item.GitArgs -AllowFailure
+                if ($result.Success) {
+                    $synced += $item.Name
+                    Write-WtSuccess "OK - '$($item.Name)' sincronizado."
+                } else {
+                    $conflicted += $item.Name
+                    $detail = $result.ErrorText
+                    if (-not $detail) { $detail = $result.Text }
+                    Write-WtNotice "Conflicto en '$($item.Name)': $detail El worktree queda como git lo dejo; resolvelo a mano (o git $($item.Strategy) --abort)."
+                    if (-not $ContinueOnError) { break }
+                }
+            }
+        }
+    }
+    if (Test-WtDryRun) { return }
+    Write-WtLine ''
+    Write-WtInfo 'Resumen:'
+    Write-WtDetail ("Sincronizados: {0}" -f $(if ($synced.Count -gt 0) { $synced -join ', ' } else { 'ninguno' }))
+    Write-WtDetail ("Salteados (sucios): {0}" -f $(if ($skippedDirty.Count -gt 0) { $skippedDirty -join ', ' } else { 'ninguno' }))
+    Write-WtDetail ("Salteados (sin base): {0}" -f $(if ($skippedNoBase.Count -gt 0) { $skippedNoBase -join ', ' } else { 'ninguno' }))
+    if ($conflicted.Count -gt 0) {
+        Write-WtNotice ("En conflicto: {0}" -f ($conflicted -join ', '))
+        throw "wt sync: conflicto en $($conflicted.Count) worktree(s): $($conflicted -join ', ')."
     }
 }
 
