@@ -13,6 +13,7 @@ function Get-WtCommandSpecs {
         'path'    = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'remove'  = @{ Aliases = @('rm');                Flags = @('delete-branch', 'force', 'force-branch');                 Values = @() }
         'prune'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
+        'clean'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'repos'   = @{ Aliases = @('repos-list');        Flags = @('json');                                                   Values = @() }
         'cd'      = @{ Aliases = @('go');                Flags = @('open');                                                   Values = @() }
         'config'  = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
@@ -118,6 +119,7 @@ WORKTREES:
   wt path [<nombre>]
   wt remove <nombre> [--delete-branch] [--force] [--force-branch]   (alias: rm)
   wt prune
+  wt clean                                    # borra tab configs de Warp huerfanos
 
   'create' usa el nombre tambien como rama (mas branchPrefix); --branch la cambia.
   Que abre al terminar lo decide 'openOnCreate' ('all' = editor + agente, el
@@ -228,6 +230,7 @@ function Invoke-Wt {
                 -ForceBranch:(Test-WtFlag -Parsed $parsed -Key 'force-branch')
         }
         'prune' { Invoke-WtPrune }
+        'clean' { Invoke-WtClean }
         'repos' { Get-WtRepoList -Json:(Test-WtFlag -Parsed $parsed -Key 'json') }
         'cd' {
             Invoke-WtCd -Name (Get-WtPositional -Parsed $parsed -Index 0) `

@@ -21,7 +21,7 @@ Export-ModuleMember -Function @(
     # Comandos
     'New-WtWorktree', 'Get-WtWorktreeList', 'Open-WtWorktree', 'Remove-WtWorktree',
     'Invoke-WtPrune', 'Invoke-WtPathCommand', 'Invoke-WtDoctor', 'Start-WtConsole',
-    'Invoke-WtVersion',
+    'Invoke-WtVersion', 'Invoke-WtClean',
     # Workspace
     'Get-WtRepoList', 'Get-WtRepoDirs', 'Invoke-WtCd', 'Resolve-WtRepoDir',
     'Resolve-WtRepoContext', 'Open-WtFolder',
@@ -36,9 +36,11 @@ Export-ModuleMember -Function @(
     # Warp / apertura
     'Write-WtAgentTabConfig', 'New-WtWarpTabConfigContent', 'Open-WtAgentInWarp',
     'Open-WtTerminalInWarp', 'Test-WtWarpSameWindow', 'Test-WtWarpRunning', 'Open-WtEditor',
+    'Get-WtTabConfigDir', 'Get-WtTabConfigFileName', 'Get-WtTabConfigDirectory',
+    'Remove-WtWorktreeTabConfigs',
     # Utilidades reutilizables / testeables
     'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtCreateOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
-    'Invoke-WtProcess',
+    'Invoke-WtProcess', 'Get-WtPathHash',
     'ConvertTo-WtFullPath', 'Test-WtPathEquals', 'Test-WtPathIsUnder', 'Test-WtWorktreeName',
     'ConvertTo-WtSafeFileName', 'ConvertTo-WtJson'
 )

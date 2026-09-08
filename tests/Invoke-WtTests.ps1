@@ -308,12 +308,60 @@ try {
     $env:WT_WARP_TAB_CONFIG = $tabDir
     $termFile = Write-WtAgentTabConfig -Name 'demo' -Path 'C:\repo\wt-demo' -Title 'MiRepo > demo' -Color 'blue' -Kind 'term'
     Assert-True 'tab config de terminal creado' (Test-Path $termFile)
-    Assert-True 'tab config de terminal usa prefijo wt-term' ((Split-Path -Leaf $termFile) -eq 'wt-term-demo.toml') $termFile
+    Assert-True 'tab config de terminal usa prefijo wt-term y hash de ruta (M2)' ((Split-Path -Leaf $termFile) -match '^wt-term-demo-[0-9a-f]{8}\.toml$') $termFile
     $termToml = Get-Content -Raw -Path $termFile
     Assert-True 'tab config de terminal apunta al directorio' ($termToml.Contains("directory = 'C:\repo\wt-demo'")) $termToml
     Assert-True 'tab config de terminal sin comandos' (-not $termToml.Contains('commands =')) $termToml
     Assert-True 'tab config de terminal con color' ($termToml.Contains('color = "blue"')) $termToml
     Remove-Item Env:\WT_WARP_TAB_CONFIG -ErrorAction SilentlyContinue
+
+    Write-Host '== ciclo de vida de los tab configs de Warp (M2) ==' -ForegroundColor Cyan
+    $tabDirM2 = Join-Path $tempRoot 'tab_configs_m2'
+    $env:WT_WARP_TAB_CONFIG = $tabDirM2
+    try {
+        # Segundo repo real: dos worktrees homonimos ('compartido') en repos distintos
+        # deben producir dos tab configs distintos (M2), no uno que se pisa al otro.
+        $repo2Dir = Join-Path $tempRoot 'MiRepo2'
+        New-Item -ItemType Directory -Path $repo2Dir -Force | Out-Null
+        git -C $repo2Dir init -b main --quiet
+        git -C $repo2Dir config user.email 'wt-tests@local'
+        git -C $repo2Dir config user.name 'wt-tests'
+        git -C $repo2Dir config commit.gpgsign false
+        Set-Content -Path (Join-Path $repo2Dir 'README.md') -Value 'test2'
+        git -C $repo2Dir add README.md
+        git -C $repo2Dir commit -m 'init' --quiet
+
+        Invoke-Wt -CmdArgs @('create', 'compartido', '--no-open') -Cwd $repoDir | Out-Null
+        Invoke-Wt -CmdArgs @('create', 'compartido', '--no-open') -Cwd $repo2Dir | Out-Null
+        $wt1Path = Join-Path $wtRoot 'compartido'
+        $wt2Path = Join-Path $tempRoot 'MiRepo2.worktrees\compartido'
+
+        $file1 = Write-WtAgentTabConfig -Name 'compartido' -Path $wt1Path -Commands @('copilot')
+        $file2 = Write-WtAgentTabConfig -Name 'compartido' -Path $wt2Path -Commands @('copilot')
+        Assert-True 'dos worktrees homonimos en repos distintos producen dos archivos' ($file1 -ne $file2) ("{0} vs {1}" -f $file1, $file2)
+        Assert-True 'ambos tab configs existen' ((Test-Path $file1) -and (Test-Path $file2))
+
+        Invoke-Wt -CmdArgs @('remove', 'compartido', '--delete-branch') -Cwd $repoDir | Out-Null
+        Assert-True 'wt remove borra el tab config del worktree eliminado' (-not (Test-Path $file1))
+        Assert-True 'wt remove no toca el tab config del otro repo' (Test-Path $file2)
+
+        # Huerfano: el directorio desaparece sin pasar por 'wt remove' (ej. borrado a
+        # mano); 'wt clean' es quien lo detecta y depura.
+        Remove-Item -Recurse -Force $wt2Path
+        $file3 = Write-WtAgentTabConfig -Name 'valido' -Path $repoDir -Commands @('copilot')
+        $r = Invoke-Wt -CmdArgs @('clean') -Cwd $repoDir
+        Assert-True 'wt clean exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'wt clean borra el huerfano' (-not (Test-Path $file2)) $r.Output
+        Assert-True 'wt clean no toca un tab config valido' (Test-Path $file3) $r.Output
+    } finally {
+        Remove-Item Env:\WT_WARP_TAB_CONFIG -ErrorAction SilentlyContinue
+        # MiRepo2 es exclusivo de esta prueba: se borra entero para no aparecer en los
+        # conteos de 'wt repos' de las pruebas siguientes.
+        if (Test-Path $repo2Dir) {
+            git -C $repo2Dir worktree prune 2>&1 | Out-Null
+            Remove-Item -Recurse -Force $repo2Dir -ErrorAction SilentlyContinue
+        }
+    }
 
     Write-Host '== destino de los tabs en Warp (auto/tab/window) ==' -ForegroundColor Cyan
     $origTermProgram = $env:TERM_PROGRAM

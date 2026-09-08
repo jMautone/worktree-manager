@@ -71,10 +71,44 @@ function Get-WtAgentCommands {
 
 # --- Warp: tab configs ------------------------------------------------------
 
+function Remove-WtWorktreeTabConfigs {
+    <#
+    .SYNOPSIS
+        Borra los tab configs de Warp (agente y terminal) de un worktree, si existen.
+    .DESCRIPTION
+        Se llama antes de eliminar el worktree: el nombre de archivo depende del hash
+        de la ruta (Get-WtPathHash), asi que hay que resolverlo mientras la ruta
+        todavia identifica a ese worktree.
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Efecto interno de Remove-WtWorktree, que ya confirma la operacion con ShouldProcess.')]
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Path
+    )
+    $dir = Get-WtTabConfigDir
+    foreach ($kind in @('agent', 'term')) {
+        $file = Join-Path $dir (Get-WtTabConfigFileName -Name $Name -Path $Path -Kind $kind)
+        if (Test-WtPathExists $file) { Remove-Item -LiteralPath $file -Force -ErrorAction SilentlyContinue }
+    }
+}
+
 function Get-WtTabConfigDir {
     # Warp Stable en Windows; WT_WARP_TAB_CONFIG lo sobreescribe (pruebas)
     if ($env:WT_WARP_TAB_CONFIG) { return $env:WT_WARP_TAB_CONFIG }
     return (Join-Path $env:APPDATA 'warp\Warp\data\tab_configs')
+}
+
+function Get-WtTabConfigDirectory {
+    <#
+    .SYNOPSIS
+        Extrae el valor de 'directory' del contenido de un tab config TOML generado
+        por wt. Funcion pura (sin disco). '' si no matchea el formato esperado
+        (literal string TOML, sin escapes: ver ConvertTo-WtTomlLiteralString).
+    #>
+    param([AllowEmptyString()][string]$Content)
+    if ($Content -match "(?m)^directory\s*=\s*'([^']*)'") { return $Matches[1] }
+    return ''
 }
 
 function ConvertTo-WtTomlBasicString {
@@ -143,6 +177,24 @@ function New-WtWarpTabConfigContent {
     return ($lines -join "`n")
 }
 
+function Get-WtTabConfigFileName {
+    <#
+    .SYNOPSIS
+        Nombre de archivo del tab config: wt-<kind>-<nombre-saneado>-<hash de la ruta>.toml.
+    .DESCRIPTION
+        Funcion pura. El nombre solo no alcanza para identificar el archivo: dos repos
+        con un worktree homonimo (ej. 'feature-a') generarian el mismo nombre saneado y
+        se pisarian entre si. El hash de la ruta completa (Get-WtPathHash) lo desambigua;
+        el 'name' legible adentro del TOML no necesita ese sufijo.
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [Parameter(Mandatory)][string]$Path,
+        [ValidateSet('agent', 'term')][string]$Kind = 'agent'
+    )
+    return ("wt-{0}-{1}-{2}.toml" -f $Kind, (ConvertTo-WtSafeFileName $Name), (Get-WtPathHash $Path))
+}
+
 function Write-WtAgentTabConfig {
     <#
     .SYNOPSIS
@@ -163,7 +215,7 @@ function Write-WtAgentTabConfig {
         -Title $Title -Color $Color -Kind $Kind
     $dir = Get-WtTabConfigDir
     if (-not (Test-WtPathExists $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
-    $file = Join-Path $dir ("wt-{0}-{1}.toml" -f $Kind, (ConvertTo-WtSafeFileName $Name))
+    $file = Join-Path $dir (Get-WtTabConfigFileName -Name $Name -Path $Path -Kind $Kind)
     Set-Content -LiteralPath $file -Value $content -Encoding UTF8
     return $file
 }

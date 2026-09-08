@@ -39,6 +39,7 @@ wt remove logging --delete-branch            # elimina worktree y rama (borrado 
 wt remove logging --delete-branch --force-branch  # fuerza el borrado de rama aunque tenga commits sin mergear
 wt remove logging --force                    # fuerza aunque haya cambios sin commit
 wt prune                                     # depura metadatos de worktrees huérfanos
+wt clean                                     # depura tab configs de Warp huérfanos
 wt console                                   # menú interactivo que arma los comandos sin escribirlos
 wt version                                   # versión del módulo (wt.psd1) y de PowerShell
 wt help
@@ -252,10 +253,14 @@ hacer que `wt open` lance el binario que ese archivo elija.
   máquina, no del repo: no entra en la lista blanca de claves de `.wt.json`.
 - **`open` desacoplado**: editor y terminal son comandos configurables. Con
   `terminal = 'warp'`, tanto la terminal común como `--agent` generan un **Tab Config
-  de Warp** (`%APPDATA%\warp\Warp\data\tab_configs\wt-term-<nombre>.toml` y
-  `wt-agent-<nombre>.toml`) con el worktree como `directory`, y lo abren con
-  `warp://tab_config/...`. El del agente suma `commands` = `fnm use <major>` (versión
-  de la sesión si es ≥ 18, si no la mayor instalada) + chequeo de Node + `copilot`.
+  de Warp** (`%APPDATA%\warp\Warp\data\tab_configs\wt-term-<nombre>-<hash>.toml` y
+  `wt-agent-<nombre>-<hash>.toml`, con `<hash>` = 8 hex de `Get-WtPathHash` sobre la
+  ruta del worktree) con el worktree como `directory`, y lo abren con
+  `warp://tab_config/...`. El sufijo de hash evita que dos worktrees homónimos de
+  repos distintos (mismo `<nombre>` saneado) se pisen el tab config entre sí; el
+  `name` legible adentro del TOML no lo necesita. El del agente suma `commands` =
+  `fnm use <major>` (versión de la sesión si es ≥ 18, si no la mayor instalada) +
+  chequeo de Node + `copilot`.
   Los tabs se titulan `repo > worktree (rama)` y se colorean con `warpTerminalColor`
   (terminal, default azul) o `warpAgentColor` (agente, default verde) — los tab groups
   de Warp no son scriptables; título + color es la aproximación visual. El destino lo
@@ -265,6 +270,13 @@ hacer que `wt open` lance el binario que ese archivo elija.
   `window` lo fuerzan. **Nunca abre ventanas sueltas de PowerShell**: el agente solo se
   lanza como tab de Warp; si `copilot` no existe en la sesión o `terminal` no es
   `warp`, avisa con un warning en vez de abrir otra cosa.
+- **Ciclo de vida de los tab configs**: `wt remove` borra los del worktree que
+  elimina (agente y terminal) antes de borrarlo — el nombre de archivo depende del
+  hash de la ruta, así que hay que resolverlo mientras esta todavía lo identifica.
+  `wt clean` depura los que quedaron huérfanos por otras vías (borrado manual del
+  directorio, worktrees creados con una versión anterior): lee el `directory` de
+  cada `wt-*.toml` en la carpeta de tab configs y borra el archivo si esa ruta ya
+  no existe.
 - **TOML generado con escapes explícitos**: `directory` y `commands` se escriben como
   *literal strings* de TOML (`'...'`, sin escapes) y por eso se rechaza una comilla
   simple con un mensaje claro; `name`, `title` y `color` van como *basic strings*

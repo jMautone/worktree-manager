@@ -221,6 +221,21 @@ try {
     Remove-Item -LiteralPath $onlyConfigPath -ErrorAction SilentlyContinue
 }
 
+Write-Host '== Get-WtPathHash / Get-WtTabConfigFileName (M2) ==' -ForegroundColor Cyan
+Assert-True 'misma ruta produce siempre el mismo hash' ((Get-WtPathHash 'C:\Repos\A.worktrees\feature-a') -eq (Get-WtPathHash 'C:\Repos\A.worktrees\feature-a'))
+Assert-True 'hash ignora mayusculas y / vs \' ((Get-WtPathHash 'C:\Repos\A\feature-a') -eq (Get-WtPathHash 'c:/repos/a/feature-a'))
+Assert-True 'rutas distintas producen hashes distintos' ((Get-WtPathHash 'C:\Repos\A.worktrees\feature-a') -ne (Get-WtPathHash 'C:\Repos\B.worktrees\feature-a'))
+$fileA = Get-WtTabConfigFileName -Name 'feature-a' -Path 'C:\Repos\A.worktrees\feature-a' -Kind 'agent'
+$fileB = Get-WtTabConfigFileName -Name 'feature-a' -Path 'C:\Repos\B.worktrees\feature-a' -Kind 'agent'
+Assert-True 'dos repos con worktree homonimo producen archivos distintos' ($fileA -ne $fileB) ("{0} vs {1}" -f $fileA, $fileB)
+$fileARepeat = Get-WtTabConfigFileName -Name 'feature-a' -Path 'C:\Repos\A.worktrees\feature-a' -Kind 'agent'
+Assert-True 'la misma ruta produce siempre el mismo archivo' ($fileA -eq $fileARepeat)
+
+Write-Host '== Get-WtTabConfigDirectory (M2) ==' -ForegroundColor Cyan
+$tabContent = New-WtWarpTabConfigContent -Name 'demo' -Path 'C:\repo\wt-demo' -Title 'MiRepo > demo'
+Assert-True 'extrae directory de un tab config generado' ((Get-WtTabConfigDirectory -Content $tabContent) -eq 'C:\repo\wt-demo')
+Assert-True 'contenido sin directory devuelve vacio' ((Get-WtTabConfigDirectory -Content "name = ""x""") -eq '')
+
 Write-Host '== Plan de apertura (flags de open) ==' -ForegroundColor Cyan
 $plan = Get-WtOpenPlan
 Assert-True 'sin flags: solo editor' ($plan.Code -and -not $plan.Terminal -and -not $plan.Agent)

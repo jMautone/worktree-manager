@@ -57,3 +57,10 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   escribir, sin tocar el archivo) y por `Read-WtConfigFile` (descarta claves
   invalidas de cualquier archivo con un warning, nunca lanza). Nueva fila
   `config valida` en `wt doctor`.
+- **M2**: los tab configs de Warp se llamaban `wt-<kind>-<nombre>.toml`, sin
+  referencia al repo; dos worktrees homonimos (`feature-a`) de repos distintos
+  escribian el mismo archivo, y nada los borraba nunca. Nuevo
+  `Get-WtPathHash` (SHA1 de 8 hex sobre la ruta normalizada) desambigua el
+  nombre de archivo (`wt-<kind>-<nombre>-<hash>.toml`); `wt remove` borra los
+  tab configs del worktree que elimina (agente y terminal) antes de borrarlo;
+  nuevo comando `wt clean` depura los que quedaron huerfanos por otras vias.

@@ -200,6 +200,29 @@ function ConvertTo-WtFullPath {
     return $p
 }
 
+function Get-WtPathHash {
+    <#
+    .SYNOPSIS
+        8 hex deterministicos derivados de una ruta (SHA1 de la forma normalizada y en
+        minusculas). Pura: misma ruta, mismo hash, sin importar mayusculas ni '/' vs '\'.
+    .DESCRIPTION
+        Se usa para desambiguar identificadores derivados de una ruta (ej. nombres de
+        archivo de tab configs) cuando dos rutas distintas podrian producir el mismo
+        nombre legible (ej. worktrees homonimos de repos distintos).
+    #>
+    param([AllowEmptyString()][string]$Path)
+    $normalized = (ConvertTo-WtFullPath $Path).ToLowerInvariant()
+    $bytes = [Text.Encoding]::UTF8.GetBytes($normalized)
+    $sha1 = [Security.Cryptography.SHA1]::Create()
+    try {
+        $hashBytes = $sha1.ComputeHash($bytes)
+    } finally {
+        $sha1.Dispose()
+    }
+    $hex = -join ($hashBytes | ForEach-Object { $_.ToString('x2') })
+    return $hex.Substring(0, 8)
+}
+
 function Test-WtPathEquals {
     param([AllowEmptyString()][string]$Left, [AllowEmptyString()][string]$Right)
     if (-not $Left -or -not $Right) { return $false }

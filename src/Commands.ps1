@@ -328,6 +328,10 @@ function Remove-WtWorktree {
 
     if (-not $PSCmdlet.ShouldProcess($wt.Path, 'git worktree remove')) { return }
 
+    # Antes de borrar: el nombre de archivo del tab config depende de la ruta (hash),
+    # asi que hay que resolverlo mientras esta todavia identifica a este worktree.
+    Remove-WtWorktreeTabConfigs -Name (Split-Path -Leaf $wt.Path) -Path $wt.Path
+
     # Si estamos parados dentro del worktree a eliminar, git no puede borrarlo.
     if (Test-WtPathIsUnder -Path (Get-Location).Path -Root $wt.Path) {
         Set-WtLocation -Path $repoRoot
@@ -366,6 +370,38 @@ function Invoke-WtPrune {
     $repoRoot = Find-WtMainRoot
     Invoke-WtGit -WorkingDirectory $repoRoot -Arguments @('worktree', 'prune', '-v') | Out-Null
     Write-WtSuccess 'OK - metadatos de worktrees obsoletos depurados.'
+}
+
+function Invoke-WtClean {
+    <#
+    .SYNOPSIS
+        Borra los tab configs de Warp (wt-*.toml) cuyo 'directory' ya no existe.
+    .DESCRIPTION
+        Nadie los borra automaticamente salvo 'wt remove' (para el worktree que borra);
+        este comando depura los que quedaron huerfanos por otras vias (borrado manual
+        del directorio, worktrees creados antes de esta version, etc.).
+    #>
+    $dir = Get-WtTabConfigDir
+    if (-not (Test-WtPathExists $dir)) {
+        Write-WtSuccess 'OK - no hay tab configs para depurar.'
+        return
+    }
+    $files = @(Get-ChildItem -LiteralPath $dir -Filter 'wt-*.toml' -File -ErrorAction SilentlyContinue)
+    $removed = 0
+    foreach ($file in $files) {
+        $content = Get-Content -Raw -LiteralPath $file.FullName -ErrorAction SilentlyContinue
+        $directory = Get-WtTabConfigDirectory -Content $content
+        if ($directory -and -not (Test-WtPathExists $directory)) {
+            Remove-Item -LiteralPath $file.FullName -Force -ErrorAction SilentlyContinue
+            Write-WtDetail ("Eliminado: {0} (directory ya no existe: {1})" -f $file.Name, $directory)
+            $removed++
+        }
+    }
+    if ($removed -eq 0) {
+        Write-WtSuccess 'OK - no habia tab configs huerfanos.'
+    } else {
+        Write-WtSuccess ("OK - {0} tab config(s) huerfano(s) depurado(s)." -f $removed)
+    }
 }
 
 # --- version ------------------------------------------------------------
