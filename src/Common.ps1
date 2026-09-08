@@ -32,6 +32,17 @@ function Write-WtWarn {
     Write-Warning $Message
 }
 
+function Write-WtError {
+    <#
+    .SYNOPSIS
+        Mensaje de error en rojo. Para los 'catch' de la consola (Start-WtConsole,
+        Invoke-WtConsoleConfig), que no pueden dejar que la excepcion se propague sin
+        romper el loop del menu.
+    #>
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Message)
+    Write-Host $Message -ForegroundColor Red
+}
+
 function Write-WtLine {
     param([AllowEmptyString()][string]$Message = '')
     Write-Host $Message

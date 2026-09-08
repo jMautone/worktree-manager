@@ -189,7 +189,7 @@ function Invoke-WtConsoleConfig {
                 default { Write-WtNotice "Opcion invalida: '$choice'." }
             }
         } catch {
-            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+            Write-WtError "Error: $($_.Exception.Message)"
         }
     }
 }
@@ -285,7 +285,7 @@ function Start-WtConsole {
         try {
             & $item.Action $repoRoot
         } catch {
-            Write-Host "Error: $($_.Exception.Message)" -ForegroundColor Red
+            Write-WtError "Error: $($_.Exception.Message)"
         }
     }
     Write-WtDetail 'Fin de la consola (stdin cerrado).'

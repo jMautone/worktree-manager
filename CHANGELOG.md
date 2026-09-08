@@ -95,3 +95,10 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   defecto, tambien `bash` y `none`); el chequeo de version de Node salio del
   tab (vive solo en `wt doctor`, que ya lo hacia). Ninguna de las dos entra
   en la lista blanca de `.wt.json` (A1).
+
+### Fase 3 — Deuda de mantenimiento
+
+- **B2**: `Common.ps1` declara ser el unico punto que escribe a consola pero
+  no exponia un helper de error; los dos `catch` de la consola resolvian con
+  `Write-Host ... -ForegroundColor Red` duplicado. Nuevo `Write-WtError`
+  junto a los demas helpers de presentacion, usado en ambos `catch`.
