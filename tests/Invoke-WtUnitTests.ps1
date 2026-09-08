@@ -146,6 +146,35 @@ Assert-True 'rechaza nombres reservados con extension' ((Test-WtWorktreeName -Na
 Assert-True 'rechaza final en punto' ((Test-WtWorktreeName -Name 'feature.') -ne '')
 Assert-True 'saneo de nombre de archivo' ((ConvertTo-WtSafeFileName 'a b/c:d') -eq 'a-b-c-d')
 
+Write-Host '== Test-WtConfigValue: validacion por clave (M5) ==' -ForegroundColor Cyan
+Assert-True 'worktreeRootTemplate valido' ((Test-WtConfigValue -Key 'worktreeRootTemplate' -Value '{repoParent}\{repo}.worktrees\{name}') -eq '')
+Assert-True 'worktreeRootTemplate vacio invalido' ((Test-WtConfigValue -Key 'worktreeRootTemplate' -Value '') -ne '')
+Assert-True 'worktreeRootTemplate sin {name} invalido' ((Test-WtConfigValue -Key 'worktreeRootTemplate' -Value 'C:\w\{repo}') -match '\{name\}')
+Assert-True 'terminal valido (warp)' ((Test-WtConfigValue -Key 'terminal' -Value 'warp') -eq '')
+Assert-True 'terminal invalido lista los admitidos' ((Test-WtConfigValue -Key 'terminal' -Value 'foo') -match 'warp, wt, none')
+Assert-True 'warpAgentTarget valido (tab)' ((Test-WtConfigValue -Key 'warpAgentTarget' -Value 'tab') -eq '')
+Assert-True 'warpAgentTarget invalido' ((Test-WtConfigValue -Key 'warpAgentTarget' -Value 'xyz') -match 'auto, tab, window')
+Assert-True 'warpAgentColor vacio es valido' ((Test-WtConfigValue -Key 'warpAgentColor' -Value '') -eq '')
+Assert-True 'warpAgentColor conocido es valido' ((Test-WtConfigValue -Key 'warpAgentColor' -Value 'cyan') -eq '')
+Assert-True 'warpAgentColor desconocido invalido' ((Test-WtConfigValue -Key 'warpAgentColor' -Value 'rosa') -ne '')
+Assert-True 'warpTerminalColor desconocido invalido' ((Test-WtConfigValue -Key 'warpTerminalColor' -Value 'rosa') -ne '')
+Assert-True "openOnCreate valido ('editor')" ((Test-WtConfigValue -Key 'openOnCreate' -Value 'editor') -eq '')
+Assert-True 'openOnCreate invalido' ((Test-WtConfigValue -Key 'openOnCreate' -Value 'todo') -match 'all, editor, none')
+Assert-True 'fetchBeforeCreate booleano real es valido' ((Test-WtConfigValue -Key 'fetchBeforeCreate' -Value $true) -eq '')
+Assert-True "fetchBeforeCreate 'true'/'false' string es valido" ((Test-WtConfigValue -Key 'fetchBeforeCreate' -Value 'false') -eq '')
+Assert-True 'fetchBeforeCreate invalido' ((Test-WtConfigValue -Key 'fetchBeforeCreate' -Value 'si') -ne '')
+Assert-True 'reposRoot vacio es valido' ((Test-WtConfigValue -Key 'reposRoot' -Value '') -eq '')
+Assert-True 'reposRoot ruta absoluta es valido' ((Test-WtConfigValue -Key 'reposRoot' -Value 'C:\Repos') -eq '')
+Assert-True 'reposRoot ruta relativa es invalido' ((Test-WtConfigValue -Key 'reposRoot' -Value 'Repos') -ne '')
+Assert-True 'warpPath ruta relativa es invalido' ((Test-WtConfigValue -Key 'warpPath' -Value 'warp.exe') -ne '')
+Assert-True 'editor es libre' ((Test-WtConfigValue -Key 'editor' -Value 'cualquier-cosa') -eq '')
+Assert-True 'defaultBase es libre' ((Test-WtConfigValue -Key 'defaultBase' -Value 'origin/lo-que-sea') -eq '')
+Assert-True 'branchPrefix es libre' ((Test-WtConfigValue -Key 'branchPrefix' -Value 'agent/') -eq '')
+Assert-True 'clave desconocida es libre (la restriccion de claves vive en otro lado)' ((Test-WtConfigValue -Key 'noExiste' -Value 'x') -eq '')
+Assert-Throws 'Assert-WtConfigValue lanza con el motivo' { Assert-WtConfigValue -Key 'terminal' -Value 'foo' } 'terminal'
+Assert-True "worktreeRootTemplate sin {repo}/{repoParent}: advierte, no rechaza" (Test-WtWorktreeRootTemplateNeedsRepoToken -Value 'C:\w\{name}')
+Assert-True "worktreeRootTemplate con {repo}: no advierte" (-not (Test-WtWorktreeRootTemplateNeedsRepoToken -Value '{repoParent}\{repo}.worktrees\{name}'))
+
 Write-Host '== Merge de configuracion ==' -ForegroundColor Cyan
 $base = [ordered]@{ editor = 'code'; terminal = 'warp'; reposRoot = '' }
 $merged = Merge-WtConfig -Base $base -Override ([ordered]@{ editor = ''; reposRoot = 'C:\Repos' })

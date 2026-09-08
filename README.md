@@ -113,12 +113,23 @@ booleanos y escribe en `%USERPROFILE%\.wt\config.json` (o en el archivo de
 `WT_CONFIG` si está definido). Así, lo que cambia entre PCs (rutas, editor, terminal)
 queda configurable sin tocar el código.
 
+Además del nombre de la clave, el **valor** se valida contra las reglas de cada una
+(`terminal` ∈ `warp`/`wt`/`none`, colores contra los conocidos de Warp, rutas como
+`reposRoot`/`warpPath` absolutas o vacías, `fetchBeforeCreate`/`openOnCreate` contra
+sus valores admitidos, `worktreeRootTemplate` con `{name}` obligatorio y un aviso —no
+un rechazo— si le falta `{repo}`/`{repoParent}`); `editor`, `defaultBase` y
+`branchPrefix` son libres. `wt config set` con un valor inválido falla **sin tocar el
+archivo** y explica los valores admitidos; un archivo de config con un valor inválido
+(editado a mano) descarta esa clave con un warning en vez de romper el CLI.
+
 ## Doctor: chequeo del setup
 
 `wt doctor` verifica todo lo necesario para armar el workspace — con **Copilot CLI +
 Warp + VS Code**, o solo **Warp + Copilot** — y te dice qué falta y cómo instalarlo o
 configurarlo: git, Node ≥ 18, fnm (opcional), `copilot`, el editor configurado,
-Warp/`wt.exe`, el archivo de config y `reposRoot`. Sale con código `0` siempre: es
+Warp/`wt.exe`, el archivo de config, `reposRoot` y que la config efectiva tenga
+valores válidos (lista las claves inválidas, si las hay, y avisa si
+`worktreeRootTemplate` no distingue repos entre sí). Sale con código `0` siempre: es
 informativo.
 
 ## Consola interactiva

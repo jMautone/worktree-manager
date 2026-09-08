@@ -19,6 +19,7 @@
         'Get-WtConfig', 'Get-WtConfigFilePath', 'Set-WtConfigValue', 'Invoke-WtConfigCommand',
         'Get-WtDefaultConfig', 'Merge-WtConfig', 'Clear-WtConfigCache',
         'Get-WtRepoConfigAllowedKeys', 'Select-WtRepoConfigKeys',
+        'Test-WtConfigValue', 'Assert-WtConfigValue', 'Test-WtWorktreeRootTemplateNeedsRepoToken', 'Get-WtKnownWarpColors',
         # Repo / worktrees
         'Find-WtMainRoot', 'Get-WtCurrentRoot', 'Get-WtWorktrees', 'Resolve-WtWorktree',
         'ConvertFrom-WtWorktreePorcelain', 'Get-WtWorktreePath',

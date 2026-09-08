@@ -49,3 +49,11 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   `Get-WtBranchAt`, `Get-WtWorktrees`, `Get-WtNodeVersion`, `Get-WtNodeMajor` y
   `Test-WtRemote` pasan a leer `StdOut`; los mensajes de error de
   `Invoke-WtGit` y de `remove --force-branch` prefieren `ErrorText`.
+- **M5**: `Set-WtConfigValue` solo verificaba que la clave existiera; `terminal
+  foo`, `warpAgentTarget xyz` o un `worktreeRootTemplate` sin `{name}` se
+  guardaban sin protesta y fallaban despues, lejos de la causa. Nueva
+  `Test-WtConfigValue`/`Assert-WtConfigValue` (funcion pura, tabla de
+  validadores por clave) reutilizada por `Set-WtConfigValue` (rechaza antes de
+  escribir, sin tocar el archivo) y por `Read-WtConfigFile` (descarta claves
+  invalidas de cualquier archivo con un warning, nunca lanza). Nueva fila
+  `config valida` en `wt doctor`.

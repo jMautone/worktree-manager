@@ -404,6 +404,20 @@ function Get-WtDoctorRows {
     $config = Get-WtConfig
     $rows = @()
 
+    $invalidKeys = @(foreach ($k in $config.Keys) {
+        $reason = Test-WtConfigValue -Key $k -Value $config[$k]
+        if ($reason) { "$k`: $reason" }
+    })
+    if ($invalidKeys.Count -gt 0) {
+        $rows += New-WtDoctorRow -Check 'config valida' -Ok $false -FailDetail ($invalidKeys -join '; ') -FailState 'AVISO'
+    } elseif (Test-WtWorktreeRootTemplateNeedsRepoToken -Value ([string]$config.worktreeRootTemplate)) {
+        $rows += New-WtDoctorRow -Check 'config valida' -Ok $false `
+            -FailDetail 'worktreeRootTemplate no tiene {repo} ni {repoParent}: worktrees homonimos de repos distintos podrian colisionar.' `
+            -FailState 'AVISO'
+    } else {
+        $rows += New-WtDoctorRow -Check 'config valida' -Ok $true -OkDetail 'todas las claves tienen valores validos'
+    }
+
     $git = Get-Command git -ErrorAction SilentlyContinue
     $rows += New-WtDoctorRow -Check 'git' -Ok ($null -ne $git) -OkDetail ([string]$git.Source) `
         -FailDetail 'Instala Git: https://git-scm.com/download/win'

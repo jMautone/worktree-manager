@@ -395,6 +395,14 @@ try {
     Assert-True 'config set clave invalida falla' ($r.ExitCode -ne 0)
     Assert-True 'config set lista claves validas' ($r.Output -match 'Clave desconocida' -and $r.Output -match 'reposRoot') $r.Output
 
+    Write-Host '== wt config set con valor invalido (debe fallar sin tocar el archivo) (M5) ==' -ForegroundColor Cyan
+    $beforeHash = (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+    $r = Invoke-Wt -CmdArgs @('config', 'set', 'terminal', 'foo') -Cwd $repoDir
+    Assert-True 'config set valor invalido falla' ($r.ExitCode -ne 0)
+    Assert-True 'config set valor invalido explica los valores admitidos' ($r.Output -match 'warp, wt, none') $r.Output
+    $afterHash = (Get-FileHash -LiteralPath $configPath -Algorithm SHA256).Hash
+    Assert-True 'config set valor invalido no modifica el archivo' ($beforeHash -eq $afterHash)
+
     Write-Host '== wt create sin --no-open respeta openOnCreate (A3) ==' -ForegroundColor Cyan
     Invoke-Wt -CmdArgs @('config', 'set', 'openOnCreate', 'all') -Cwd $repoDir | Out-Null
     try {

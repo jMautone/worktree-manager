@@ -32,6 +32,87 @@ function Get-WtConfigKeys {
     return @((Get-WtDefaultConfig).Keys)
 }
 
+function Get-WtKnownWarpColors {
+    return @('black', 'red', 'green', 'yellow', 'blue', 'magenta', 'cyan', 'white')
+}
+
+function Test-WtConfigValue {
+    <#
+    .SYNOPSIS
+        Devuelve '' si $Value es valido para $Key, o el motivo del rechazo.
+    .DESCRIPTION
+        Funcion pura reutilizada por Set-WtConfigValue (antes de escribir) y por
+        Read-WtConfigFile (al leer cualquier archivo de config). Claves sin regla
+        especifica (editor, defaultBase, branchPrefix) y claves desconocidas son
+        libres: la restriccion de QUE claves se admiten vive en otro lado
+        (Get-WtConfigKeys para el archivo editable, Get-WtRepoConfigAllowedKeys para
+        el .wt.json del repo).
+    #>
+    param([Parameter(Mandatory)][string]$Key, $Value)
+    switch ($Key) {
+        'worktreeRootTemplate' {
+            $v = [string]$Value
+            if (-not $v) { return 'no puede estar vacio' }
+            if ($v -notmatch '\{name\}') { return 'debe contener el token {name}' }
+            return ''
+        }
+        'terminal' {
+            $allowed = @('warp', 'wt', 'none')
+            if ($allowed -notcontains [string]$Value) { return "debe ser uno de: $($allowed -join ', ')" }
+            return ''
+        }
+        'warpAgentTarget' {
+            $allowed = @('auto', 'tab', 'window')
+            if ($allowed -notcontains [string]$Value) { return "debe ser uno de: $($allowed -join ', ')" }
+            return ''
+        }
+        { $_ -in 'warpAgentColor', 'warpTerminalColor' } {
+            $v = [string]$Value
+            if (-not $v) { return '' }
+            $allowed = Get-WtKnownWarpColors
+            if ($allowed -notcontains $v) { return "debe ser vacio o uno de: $($allowed -join ', ')" }
+            return ''
+        }
+        'openOnCreate' {
+            $allowed = @('all', 'editor', 'none')
+            if ($allowed -notcontains [string]$Value) { return "debe ser uno de: $($allowed -join ', ')" }
+            return ''
+        }
+        'fetchBeforeCreate' {
+            if ($Value -is [bool]) { return '' }
+            if (@('true', 'false') -contains [string]$Value) { return '' }
+            return 'debe ser true o false'
+        }
+        { $_ -in 'reposRoot', 'warpPath' } {
+            $v = [string]$Value
+            if (-not $v) { return '' }
+            if (-not [IO.Path]::IsPathRooted($v)) { return 'debe ser una ruta absoluta (o vacio)' }
+            return ''
+        }
+        default { return '' }
+    }
+}
+
+function Assert-WtConfigValue {
+    param([Parameter(Mandatory)][string]$Key, $Value)
+    $reason = Test-WtConfigValue -Key $Key -Value $Value
+    if ($reason) { throw "Valor invalido para '$Key': $reason." }
+}
+
+function Test-WtWorktreeRootTemplateNeedsRepoToken {
+    <#
+    .SYNOPSIS
+        $true si la plantilla no distingue repos entre si (sin {repo} ni {repoParent}):
+        dos worktrees homonimos de repos distintos escribirian la misma ruta.
+    .DESCRIPTION
+        Advertencia, no rechazo: una plantilla asi es valida (tiene {name}) pero
+        peligrosa apenas se maneja mas de un repo desde la misma raiz.
+    #>
+    param([AllowEmptyString()][string]$Value)
+    if (-not $Value) { return $false }
+    return (-not ($Value -match '\{repo\}' -or $Value -match '\{repoParent\}'))
+}
+
 function Get-WtGlobalConfigPath {
     return (Join-Path $HOME '.wt\config.json')
 }
@@ -46,6 +127,11 @@ function Read-WtConfigFile {
     <#
     .SYNOPSIS
         Lee un JSON de config como ordered hashtable. $null si no existe o es ilegible.
+    .DESCRIPTION
+        Cada clave se valida con Test-WtConfigValue; las invalidas se descartan con un
+        warning que nombra el archivo, la clave y el motivo. Nunca lanza: un archivo de
+        config roto (sintacticamente valido pero con un valor invalido) no puede dejar
+        el CLI inutilizable.
     #>
     param([Parameter(Mandatory)][AllowEmptyString()][string]$Path)
     if (-not (Test-WtPathExists $Path)) { return $null }
@@ -57,7 +143,14 @@ function Read-WtConfigFile {
     }
     $data = [ordered]@{}
     if ($null -ne $json) {
-        foreach ($prop in $json.PSObject.Properties) { $data[$prop.Name] = $prop.Value }
+        foreach ($prop in $json.PSObject.Properties) {
+            $reason = Test-WtConfigValue -Key $prop.Name -Value $prop.Value
+            if ($reason) {
+                Write-WtWarn "'$Path' define '$($prop.Name)' con un valor invalido ($reason); se ignora."
+                continue
+            }
+            $data[$prop.Name] = $prop.Value
+        }
     }
     return $data
 }
@@ -212,6 +305,10 @@ function Set-WtConfigValue {
         }
     }
     $effective = ConvertTo-WtConfigValue -Value $Value
+    Assert-WtConfigValue -Key $Key -Value $effective
+    if ($Key -eq 'worktreeRootTemplate' -and (Test-WtWorktreeRootTemplateNeedsRepoToken -Value ([string]$effective))) {
+        Write-WtWarn "worktreeRootTemplate no contiene {repo} ni {repoParent}: worktrees homonimos de repos distintos escribirian la misma ruta."
+    }
     $data[$Key] = $effective
     Save-WtConfigFile -Path $path -Data $data
     Clear-WtConfigCache
