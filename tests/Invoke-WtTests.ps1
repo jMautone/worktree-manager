@@ -44,6 +44,33 @@ function Invoke-Wt {
     return @{ Output = ($out | Out-String); ExitCode = $exit }
 }
 
+function Invoke-WtAndLocation {
+    <#
+    .SYNOPSIS
+        Como Invoke-Wt, pero ademas devuelve el directorio final del proceso (mismo
+        -Command, asi que refleja si el comando hizo cd de verdad). Usado por M3 para
+        distinguir 'wt path' (nunca relocaliza) de 'wt open' (si, cuando corresponde).
+    #>
+    param([string[]]$CmdArgs, [string]$Cwd)
+    $module = (Join-Path $PSScriptRoot '..\wt.psm1') -replace "'", "''"
+    $cwdEscaped = $Cwd -replace "'", "''"
+    $argLiterals = ($CmdArgs | ForEach-Object { "'{0}'" -f ($_ -replace "'", "''") }) -join ', '
+    $cmd = "Set-Location -LiteralPath '$cwdEscaped'; Import-Module '$module' -Force; " +
+        "Invoke-Wt -Arguments @($argLiterals); Write-Output ('WT_FINAL_LOCATION:' + (Get-Location).Path)"
+    $prevEAP = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -Command $cmd 2>&1
+        $exit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $prevEAP
+    }
+    $text = ($out | Out-String)
+    $finalLocation = ''
+    if ($text -match 'WT_FINAL_LOCATION:(.*)') { $finalLocation = $Matches[1].Trim() }
+    return @{ Output = $text; ExitCode = $exit; FinalLocation = $finalLocation }
+}
+
 function Invoke-WtConsole {
     # Ejecuta 'wt console' con las lineas de entrada pipeadas por stdin
     param([string[]]$InputLines, [string]$Cwd)
@@ -518,6 +545,17 @@ try {
     Assert-True 'open worktree identifica el repo dueno' ($r.Output -match "del repo 'MiRepo'") $r.Output
     Assert-True 'open worktree imprime la ruta del worktree' ($r.Output -match [regex]::Escape('MiRepo.worktrees\buscable')) $r.Output
     Invoke-Wt -CmdArgs @('remove', 'buscable', '--delete-branch') -Cwd $repoDir | Out-Null
+
+    Write-Host '== wt path no cambia el directorio actual; wt open si (M3) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('create', 'feature-m3', '--no-open') -Cwd $repoDir | Out-Null
+    $r = Invoke-WtAndLocation -CmdArgs @('path', 'feature-m3') -Cwd $env:TEMP
+    Assert-True 'path fuera de repo exit 0' ($r.ExitCode -eq 0) $r.Output
+    Assert-True 'path fuera de repo imprime la ruta del worktree' ($r.Output -match [regex]::Escape('MiRepo.worktrees\feature-m3')) $r.Output
+    Assert-True 'path NO cambia el directorio del proceso' ($r.FinalLocation.TrimEnd('\') -ieq $env:TEMP.TrimEnd('\')) $r.FinalLocation
+    $r2 = Invoke-WtAndLocation -CmdArgs @('open', 'feature-m3') -Cwd $env:TEMP
+    Assert-True 'open fuera de repo exit 0' ($r2.ExitCode -eq 0) $r2.Output
+    Assert-True 'open SI cambia el directorio del proceso (al repo)' ($r2.FinalLocation.TrimEnd('\') -ieq $repoDir.TrimEnd('\')) $r2.FinalLocation
+    Invoke-Wt -CmdArgs @('remove', 'feature-m3', '--delete-branch') -Cwd $repoDir | Out-Null
 
     Write-Host '== wt open inexistente desde fuera (debe fallar con guia) ==' -ForegroundColor Cyan
     $r = Invoke-Wt -CmdArgs @('open', 'NoExiste') -Cwd $env:TEMP

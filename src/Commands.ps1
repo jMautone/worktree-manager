@@ -139,14 +139,16 @@ function Get-WtWorktreeList {
 function Resolve-WtTarget {
     <#
     .SYNOPSIS
-        Worktree sobre el que operan 'open' y 'path'.
+        Worktree sobre el que operan 'open' y 'path'. Funcion pura: no cambia el
+        directorio actual (ver Resolve-WtRepoContext); eso lo decide cada llamador
+        segun si le importa relocalizarse (Open-WtWorktree si, Invoke-WtPathCommand no).
     .DESCRIPTION
         - Sin nombre: el checkout actual (el worktree si estas parado en uno).
         - Con nombre estando en un repo: se busca por carpeta o rama.
         - Fuera de un repo: el nombre puede ser un repo de reposRoot (se opera sobre su
           checkout principal) o un worktree de alguno de ellos.
     .OUTPUTS
-        @{ RepoRoot; Worktree; Name }
+        @{ RepoRoot; Worktree; Name; Source; ShouldRelocate }
     #>
     param([AllowEmptyString()][string]$Name)
     $context = Resolve-WtRepoContext -Name $Name
@@ -163,13 +165,20 @@ function Resolve-WtTarget {
         $worktree = Resolve-WtWorktree -RepoRoot $repoRoot -Name $Name
     }
     return @{
-        RepoRoot = $repoRoot
-        Worktree = $worktree
-        Name     = (Split-Path -Leaf $worktree.Path)
+        RepoRoot       = $repoRoot
+        Worktree       = $worktree
+        Name           = (Split-Path -Leaf $worktree.Path)
+        Source         = $context.Source
+        ShouldRelocate = $context.ShouldRelocate
     }
 }
 
 function Invoke-WtPathCommand {
+    <#
+    .NOTES
+        Nunca relocaliza (a diferencia de Open-WtWorktree): 'wt path' fuera de un repo
+        imprime la ruta sin mover el directorio actual del proceso.
+    #>
     param([AllowEmptyString()][string]$Name)
     $target = Resolve-WtTarget -Name $Name
     Write-Output $target.Worktree.Path
@@ -226,6 +235,14 @@ function Open-WtWorktree {
     )
     $plan = Get-WtOpenPlan -Code:$Code -Terminal:$Terminal -Agent:$Agent -All:$All -NoCode:$NoCode
     $target = Resolve-WtTarget -Name $Name
+    if ($target.ShouldRelocate) {
+        Set-WtLocation -Path $target.RepoRoot
+        if ($target.Source -eq 'repo') {
+            Write-WtDetail "Ahora en el repo: $($target.RepoRoot)"
+        } else {
+            Write-WtDetail "El worktree '$Name' es del repo '$(Split-Path -Leaf $target.RepoRoot)'; ahora en $($target.RepoRoot)"
+        }
+    }
     $config = Get-WtConfig
     $path = $target.Worktree.Path
     if (-not (Test-WtPathExists $path)) {

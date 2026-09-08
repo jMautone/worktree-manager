@@ -64,3 +64,8 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   nombre de archivo (`wt-<kind>-<nombre>-<hash>.toml`); `wt remove` borra los
   tab configs del worktree que elimina (agente y terminal) antes de borrarlo;
   nuevo comando `wt clean` depura los que quedaron huerfanos por otras vias.
+- **M3**: `Resolve-WtRepoContext` hacia `Set-WtLocation` como parte de
+  resolver el nombre; fuera de un repo, `wt path logging` te movia ademas de
+  imprimir. Ahora es pura (devuelve `ShouldRelocate`) y el efecto queda en el
+  llamador: `Open-WtWorktree` relocaliza cuando corresponde, `Invoke-WtPathCommand`
+  nunca lo hace.

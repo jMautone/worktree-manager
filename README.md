@@ -58,9 +58,11 @@ esperaba, en vez de ignorarse en silencio.
 - **Sin nombre** (dentro de un repo): operan sobre el **checkout actual** — si estás
   dentro de un worktree, abren ese worktree; si no, la raíz principal del repo.
 - **Fuera de un repo**: el nombre se busca en `reposRoot` — primero como repo (exacto
-  o prefijo único), después como worktree de cualquier repo de la raíz. `wt` entra al
-  repo encontrado (el `cd` queda efectivo en tu terminal) y abre ahí. Si el nombre
-  identificó un **repo**, se opera sobre su checkout principal.
+  o prefijo único), después como worktree de cualquier repo de la raíz. Si el nombre
+  identificó un **repo**, se opera sobre su checkout principal. `wt open` entra al
+  repo encontrado (el `cd` queda efectivo en tu terminal) y abre ahí; `wt path` **nunca**
+  cambia el directorio actual, solo imprime la ruta — resuelve igual, pero sin el
+  efecto secundario, para que sea seguro de usar en scripts o en `cd (wt path ...)`.
 - **Worktrees obsoletos**: si el directorio de un worktree se borró a mano, `wt list`
   y la consola lo marcan como `(obsoleto)`, `open`/`path`/`remove` fallan con un
   mensaje que sugiere `wt prune`, y `wt doctor` lo avisa. Si el directorio actual es
@@ -293,6 +295,12 @@ hacer que `wt open` lance el binario que ese archivo elija.
   `Find-WtMainRoot`, así funcionan desde cualquier directorio. `wt cd` resuelve por
   nombre exacto o prefijo único (case-insensitive) entre los subdirectorios de
   `reposRoot` que contienen `.git`; `open`/`path` reutilizan ese mismo criterio.
+- **Resolución sin efectos secundarios**: `Resolve-WtRepoContext` (y `Resolve-WtTarget`,
+  que la usa) solo *resuelven* — nunca hacen `cd` ni imprimen nada; devuelven
+  `ShouldRelocate` para que decida el llamador. `Open-WtWorktree` lo aplica (por eso
+  `wt open <repo o worktree de reposRoot>` deja tu terminal posicionada ahí);
+  `Invoke-WtPathCommand` nunca lo aplica, así `wt path` es seguro de llamar desde un
+  script sin mover el directorio actual del proceso.
 - **Config editable por comandos**: `wt config set` escribe solo el archivo global
   (o `WT_CONFIG`), nunca los defaults embebidos ni el `.wt.json` del repo, y valida
   las claves contra los defaults para evitar typos. La config efectiva se cachea por

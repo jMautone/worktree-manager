@@ -78,32 +78,34 @@ function Resolve-WtRepoContext {
     <#
     .SYNOPSIS
         Repo sobre el que operar: el actual si estamos dentro de uno; si no, se busca
-        el nombre en reposRoot (primero como repo, despues como worktree de algun repo)
-        y se hace cd ahi.
+        el nombre en reposRoot (primero como repo, despues como worktree de algun repo).
+    .DESCRIPTION
+        Funcion pura: resuelve pero NO cambia el directorio actual ni imprime nada.
+        Un verbo 'Resolve-' con efectos secundarios rompe la convencion del modulo
+        (decision separada de efecto) y sorprende a cualquier llamador que solo quiera
+        saber el repo sin moverse (ej. 'wt path' fuera de un repo). ShouldRelocate le
+        dice al llamador si tendria sentido hacer el cd (encontrado via reposRoot) o no
+        (ya estabamos en un repo).
     .OUTPUTS
-        @{ RepoRoot; Source = 'current' | 'repo' | 'worktree' }
+        @{ RepoRoot; Source = 'current' | 'repo' | 'worktree'; ShouldRelocate }
     #>
     param([AllowEmptyString()][string]$Name)
     $repoRoot = Find-WtMainRoot -Silent
-    if ($repoRoot) { return @{ RepoRoot = $repoRoot; Source = 'current' } }
+    if ($repoRoot) { return @{ RepoRoot = $repoRoot; Source = 'current'; ShouldRelocate = $false } }
     # Sin nombre no hay nada que resolver: se relanza sin -Silent para dar el error
     # detallado (worktree huerfano o "no estas en un repo").
-    if (-not $Name) { return @{ RepoRoot = (Find-WtMainRoot); Source = 'current' } }
+    if (-not $Name) { return @{ RepoRoot = (Find-WtMainRoot); Source = 'current'; ShouldRelocate = $false } }
 
     $root = Get-WtReposRoot -Config (Get-WtConfig)
 
     $repo = Resolve-WtRepoDir -Root $root -Name $Name -AllowMissing
     if ($repo) {
-        Set-WtLocation -Path $repo.FullName
-        Write-WtDetail "Ahora en el repo: $($repo.FullName)"
-        return @{ RepoRoot = $repo.FullName; Source = 'repo' }
+        return @{ RepoRoot = $repo.FullName; Source = 'repo'; ShouldRelocate = $true }
     }
 
     $owner = Find-WtRepoOwningWorktree -Root $root -Name $Name
     if ($owner) {
-        Set-WtLocation -Path $owner.FullName
-        Write-WtDetail "El worktree '$Name' es del repo '$($owner.Name)'; ahora en $($owner.FullName)"
-        return @{ RepoRoot = $owner.FullName; Source = 'worktree' }
+        return @{ RepoRoot = $owner.FullName; Source = 'worktree'; ShouldRelocate = $true }
     }
 
     throw "No hay un repo ni worktree '$Name' bajo '$root'. Usa 'wt repos' para ver los disponibles."
