@@ -263,8 +263,6 @@ $plan = Get-WtOpenPlan -Terminal
 Assert-True '--terminal: solo terminal' (-not $plan.Code -and $plan.Terminal -and -not $plan.Agent)
 $plan = Get-WtOpenPlan -Code -Terminal
 Assert-True 'flags combinables' ($plan.Code -and $plan.Terminal)
-$plan = Get-WtOpenPlan -NoCode
-Assert-True '--no-code (legacy) desactiva el editor' (-not $plan.Code)
 
 Write-Host '== Plan de apertura de create (openOnCreate + flags) ==' -ForegroundColor Cyan
 $cfgNone = [pscustomobject]@{ openOnCreate = 'none' }

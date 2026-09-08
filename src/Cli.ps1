@@ -9,7 +9,7 @@ function Get-WtCommandSpecs {
     return [ordered]@{
         'create'  = @{ Aliases = @();                    Flags = @('no-open', 'all', 'code', 'agent', 'terminal');           Values = @('base', 'branch') }
         'list'    = @{ Aliases = @('ls');                Flags = @('json');                                                   Values = @() }
-        'open'    = @{ Aliases = @();                    Flags = @('code', 'terminal', 'agent', 'all', 'no-code', 'no-terminal'); Values = @() }
+        'open'    = @{ Aliases = @();                    Flags = @('code', 'terminal', 'agent', 'all');                       Values = @() }
         'path'    = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
         'remove'  = @{ Aliases = @('rm');                Flags = @('delete-branch', 'force', 'force-branch');                 Values = @() }
         'prune'   = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
@@ -216,9 +216,7 @@ function Invoke-Wt {
                 -Code:(Test-WtFlag -Parsed $parsed -Key 'code') `
                 -Terminal:(Test-WtFlag -Parsed $parsed -Key 'terminal') `
                 -Agent:(Test-WtFlag -Parsed $parsed -Key 'agent') `
-                -All:(Test-WtFlag -Parsed $parsed -Key 'all') `
-                -NoCode:(Test-WtFlag -Parsed $parsed -Key 'no-code') `
-                -NoTerminal:(Test-WtFlag -Parsed $parsed -Key 'no-terminal')
+                -All:(Test-WtFlag -Parsed $parsed -Key 'all')
         }
         'path' {
             Invoke-WtPathCommand -Name (Get-WtPositional -Parsed $parsed -Index 0)

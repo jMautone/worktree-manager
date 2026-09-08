@@ -199,13 +199,11 @@ function Get-WtOpenPlan {
         [switch]$Code,
         [switch]$Terminal,
         [switch]$Agent,
-        [switch]$All,
-        [switch]$NoCode
+        [switch]$All
     )
-    $wantCode = [bool]$Code -or [bool]$All
-    $wantAgent = [bool]$Agent -or [bool]$All
     $explicit = [bool]$Code -or [bool]$Terminal -or [bool]$Agent -or [bool]$All
-    if (-not $explicit) { $wantCode = -not $NoCode }
+    $wantCode = ([bool]$Code -or [bool]$All) -or (-not $explicit)
+    $wantAgent = [bool]$Agent -or [bool]$All
     return [pscustomobject]@{
         Code     = $wantCode
         Terminal = [bool]$Terminal
@@ -217,23 +215,15 @@ function Open-WtWorktree {
     <#
     .SYNOPSIS
         Abre un worktree (o el checkout actual si no se pasa nombre).
-    .NOTES
-        -NoCode y -NoTerminal se aceptan por compatibilidad con invocaciones antiguas;
-        -NoTerminal es un no-op porque la terminal ya no se abre por defecto.
-        Pendiente: B1 elimina -NoTerminal (y -NoCode si A3 lo deja sin llamadores).
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'NoTerminal',
-        Justification = 'Compatibilidad hacia atras; B1 la elimina junto con sus llamadores.')]
     param(
         [AllowEmptyString()][string]$Name,
         [switch]$Code,
         [switch]$Terminal,
         [switch]$Agent,
-        [switch]$All,
-        [switch]$NoCode,
-        [switch]$NoTerminal
+        [switch]$All
     )
-    $plan = Get-WtOpenPlan -Code:$Code -Terminal:$Terminal -Agent:$Agent -All:$All -NoCode:$NoCode
+    $plan = Get-WtOpenPlan -Code:$Code -Terminal:$Terminal -Agent:$Agent -All:$All
     $target = Resolve-WtTarget -Name $Name
     if ($target.ShouldRelocate) {
         Set-WtLocation -Path $target.RepoRoot

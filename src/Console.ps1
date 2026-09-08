@@ -94,10 +94,6 @@ function Write-WtConsoleCommand {
 # --- Acciones ---------------------------------------------------------------
 
 function Invoke-WtConsoleCreate {
-    # Pendiente: B1 elimina -RepoRoot (sin uso; New-WtWorktree resuelve el repo solo).
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', 'RepoRoot',
-        Justification = 'B1 la elimina junto con su unico llamador.')]
-    param([Parameter(Mandatory)][string]$RepoRoot)
     $name = Read-WtConsoleLine -Prompt 'Nombre del worktree: '
     if ($null -eq $name -or -not $name.Trim()) { Write-WtDetail 'Cancelado.'; return }
     $name = $name.Trim()
@@ -224,7 +220,7 @@ function Get-WtConsoleMenu {
     #>
     return @(
         [pscustomobject]@{ Key = '1'; Label = 'Listar worktrees';                       RequiresRepo = $true;  Action = { Get-WtWorktreeList } }
-        [pscustomobject]@{ Key = '2'; Label = 'Crear worktree';                         RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleCreate -RepoRoot $repoRoot } }
+        [pscustomobject]@{ Key = '2'; Label = 'Crear worktree';                         RequiresRepo = $true;  Action = { Invoke-WtConsoleCreate } }
         [pscustomobject]@{ Key = '3'; Label = 'Abrir worktree (editor)';                RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot } }
         [pscustomobject]@{ Key = '4'; Label = 'Abrir worktree completo (editor + agente)'; RequiresRepo = $true; Action = { param($repoRoot) Invoke-WtConsoleOpen -RepoRoot $repoRoot -All } }
         [pscustomobject]@{ Key = '5'; Label = 'Ver la ruta de un worktree';             RequiresRepo = $true;  Action = { param($repoRoot) Invoke-WtConsolePath -RepoRoot $repoRoot } }

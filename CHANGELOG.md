@@ -102,3 +102,8 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   no exponia un helper de error; los dos `catch` de la consola resolvian con
   `Write-Host ... -ForegroundColor Red` duplicado. Nuevo `Write-WtError`
   junto a los demas helpers de presentacion, usado en ambos `catch`.
+- **B1**: superficie muerta eliminada: `--no-code`/`--no-terminal` de `open`
+  (aceptados por el parser pero sin documentar ni usarse), el parametro
+  `-NoTerminal` de `Open-WtWorktree` (ninguna linea lo leia; era un no-op),
+  `-NoCode` de `Get-WtOpenPlan` (sin llamadores tras A3) y `-RepoRoot` de
+  `Invoke-WtConsoleCreate` (sin uso; `New-WtWorktree` resuelve el repo solo).
