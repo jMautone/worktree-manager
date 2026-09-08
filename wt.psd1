@@ -26,7 +26,7 @@
         'Write-WtAgentTabConfig', 'New-WtWarpTabConfigContent', 'Open-WtAgentInWarp',
         'Open-WtTerminalInWarp', 'Test-WtWarpSameWindow', 'Test-WtWarpRunning', 'Open-WtEditor',
         # Utilidades reutilizables / testeables
-        'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
+        'ConvertFrom-WtArgs', 'Get-WtOpenPlan', 'Get-WtCreateOpenPlan', 'Get-WtWorktreeRows', 'Invoke-WtGit',
         'ConvertTo-WtFullPath', 'Test-WtPathEquals', 'Test-WtPathIsUnder', 'Test-WtWorktreeName',
         'ConvertTo-WtSafeFileName', 'ConvertTo-WtJson'
     )

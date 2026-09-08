@@ -7,7 +7,7 @@
 # valor. Es la unica fuente de verdad del parser y de la validacion de flags.
 function Get-WtCommandSpecs {
     return [ordered]@{
-        'create'  = @{ Aliases = @();                    Flags = @('no-open');                                                Values = @('base', 'branch') }
+        'create'  = @{ Aliases = @();                    Flags = @('no-open', 'all', 'code', 'agent', 'terminal');           Values = @('base', 'branch') }
         'list'    = @{ Aliases = @('ls');                Flags = @('json');                                                   Values = @() }
         'open'    = @{ Aliases = @();                    Flags = @('code', 'terminal', 'agent', 'all', 'no-code', 'no-terminal'); Values = @() }
         'path'    = @{ Aliases = @();                    Flags = @();                                                         Values = @() }
@@ -111,18 +111,23 @@ function Show-WtHelp {
 Worktree Manager (wt) - gestiona Git Worktrees para agentes en paralelo
 
 WORKTREES:
-  wt create <nombre> [--base <rama>] [--branch <rama>] [--no-open]
+  wt create <nombre> [--base <rama>] [--branch <rama>]
+             [--all|--code|--agent|--terminal] [--no-open]
   wt list [--json]                           (alias: ls)
   wt open [<nombre>] [--code] [--terminal] [--agent] [--all]
   wt path [<nombre>]
   wt remove <nombre> [--delete-branch] [--force] [--force-branch]   (alias: rm)
   wt prune
 
-  'create' usa el nombre tambien como rama (mas branchPrefix); --branch la cambia y
-  --no-open crea sin abrir nada. 'open' sin nombre abre el checkout actual (el worktree
-  si estas dentro de uno). Sin flags abre solo el editor; --all = editor + agente. La
-  terminal solo se abre con --terminal. Fuera de un repo, el nombre puede ser un repo de
-  reposRoot o un worktree de alguno de ellos: wt entra al repo y abre ahi.
+  'create' usa el nombre tambien como rama (mas branchPrefix); --branch la cambia.
+  Que abre al terminar lo decide 'openOnCreate' ('all' = editor + agente, el
+  default; 'editor'; 'none'); --all/--code/--agent/--terminal fuerzan un plan
+  especifico (ganan a la config) y --no-open gana a todo (crea sin abrir nada).
+
+  'open' sin nombre abre el checkout actual (el worktree si estas dentro de uno).
+  Sin flags abre solo el editor; --all = editor + agente. La terminal solo se abre
+  con --terminal. Fuera de un repo, el nombre puede ser un repo de reposRoot o un
+  worktree de alguno de ellos: wt entra al repo y abre ahi.
 
   'remove --delete-branch' borra la rama con 'git branch -d' (seguro): si tiene commits
   sin mergear, aborta sin borrarla (el worktree si se elimina) y sugiere --force-branch
@@ -164,6 +169,7 @@ CONFIG (editable con 'wt config set', 'wt config edit', o a mano en
   reposRoot             Raiz de los repos git (ej. C:\Repos) para 'repos' y 'cd'
   defaultBase           Base por defecto para 'create' (ej. origin/develop)
   branchPrefix          Prefijo para ramas nuevas (ej. agent/)
+  openOnCreate          Que abre 'create' sin flags: 'all' (editor + agente) | 'editor' | 'none'
   editor                Comando del editor ('code', '' para desactivar)
   terminal              'warp' | 'wt' | 'none'
   warpAgentTarget       'auto' | 'tab' (misma ventana) | 'window' (ventana nueva)
@@ -192,6 +198,10 @@ function Invoke-Wt {
             New-WtWorktree -Name $name `
                 -Base (Get-WtValue -Parsed $parsed -Key 'base') `
                 -Branch (Get-WtValue -Parsed $parsed -Key 'branch') `
+                -Code:(Test-WtFlag -Parsed $parsed -Key 'code') `
+                -Terminal:(Test-WtFlag -Parsed $parsed -Key 'terminal') `
+                -Agent:(Test-WtFlag -Parsed $parsed -Key 'agent') `
+                -All:(Test-WtFlag -Parsed $parsed -Key 'all') `
                 -NoOpen:(Test-WtFlag -Parsed $parsed -Key 'no-open')
         }
         'list' {

@@ -131,7 +131,7 @@ Assert-True 'las claves no pisadas se conservan' ($merged.terminal -eq 'warp')
 Assert-True 'override nulo no rompe' ((Merge-WtConfig -Base $base -Override $null).editor -eq 'code')
 Assert-True 'no muta la base' ($base.editor -eq 'code')
 $defaults = Get-WtDefaultConfig
-Assert-True 'los defaults traen las 11 claves documentadas' (@($defaults.Keys).Count -eq 11) (@($defaults.Keys) -join ',')
+Assert-True 'los defaults traen las 12 claves documentadas' (@($defaults.Keys).Count -eq 12) (@($defaults.Keys) -join ',')
 
 Write-Host '== Select-WtRepoConfigKeys: lista blanca del .wt.json del repo ==' -ForegroundColor Cyan
 $selected = Select-WtRepoConfigKeys -Data ([ordered]@{ editor = 'mal.exe'; defaultBase = 'develop' })
@@ -182,6 +182,23 @@ $plan = Get-WtOpenPlan -Code -Terminal
 Assert-True 'flags combinables' ($plan.Code -and $plan.Terminal)
 $plan = Get-WtOpenPlan -NoCode
 Assert-True '--no-code (legacy) desactiva el editor' (-not $plan.Code)
+
+Write-Host '== Plan de apertura de create (openOnCreate + flags) ==' -ForegroundColor Cyan
+$cfgNone = [pscustomobject]@{ openOnCreate = 'none' }
+$cfgAll = [pscustomobject]@{ openOnCreate = 'all' }
+$cfgEditor = [pscustomobject]@{ openOnCreate = 'editor' }
+$plan = Get-WtCreateOpenPlan -Config $cfgNone
+Assert-True "openOnCreate 'none' sin flags: nada" (-not $plan.Code -and -not $plan.Terminal -and -not $plan.Agent)
+$plan = Get-WtCreateOpenPlan -Config $cfgAll
+Assert-True "openOnCreate 'all' sin flags: editor + agente" ($plan.Code -and $plan.Agent -and -not $plan.Terminal)
+$plan = Get-WtCreateOpenPlan -Config $cfgEditor -Agent
+Assert-True "openOnCreate 'editor' + --agent: el flag explicito gana (solo agente)" (-not $plan.Code -and $plan.Agent)
+$plan = Get-WtCreateOpenPlan -Config $cfgAll -NoOpen
+Assert-True '--no-open gana a cualquier config (all)' (-not $plan.Code -and -not $plan.Terminal -and -not $plan.Agent)
+$plan = Get-WtCreateOpenPlan -Config $cfgNone -NoOpen
+Assert-True '--no-open gana a cualquier config (none)' (-not $plan.Code -and -not $plan.Terminal -and -not $plan.Agent)
+$plan = Get-WtCreateOpenPlan -Config $cfgNone -All
+Assert-True '--all gana a openOnCreate none (editor + agente)' ($plan.Code -and $plan.Agent)
 
 Write-Host '== TOML de Warp ==' -ForegroundColor Cyan
 $toml = New-WtWarpTabConfigContent -Name 'demo' -Path 'C:\repo\wt demo' -Commands @('copilot') -Title 'MiRepo > demo' -Color 'green'

@@ -24,6 +24,7 @@ function Get-WtDefaultConfig {
         warpTerminalColor    = 'blue'      # color del tab de terminal comun ('' para no colorear)
         warpPath             = (Join-Path $localAppData 'Programs\Warp\warp.exe')
         fetchBeforeCreate    = $true
+        openOnCreate         = 'all'        # 'all' (editor + agente) | 'editor' | 'none'
     }
 }
 

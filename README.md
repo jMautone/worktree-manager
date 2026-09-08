@@ -18,10 +18,11 @@ Luego reiniciá la terminal o ejecutá `. $PROFILE`.
 ## Uso
 
 ```powershell
-wt create exceptions --base develop          # worktree + rama 'exceptions' desde develop
+wt create exceptions --base develop          # worktree + rama 'exceptions'; abre editor + agente (openOnCreate)
 wt create logging --base origin/develop      # hace fetch del remoto y crea desde origin/develop
 wt create hotfix --branch fix/urgente        # nombre de carpeta y de rama distintos
-wt create tmp --no-open                      # crea sin abrir editor ni agente
+wt create tmp --code                         # crea y abre solo el editor (el flag gana a openOnCreate)
+wt create tmp2 --no-open                     # crea sin abrir nada (gana a todo)
 wt list                                      # tabla de worktrees (el principal va marcado)
 wt list --json                               # salida JSON para scripting
 wt open                                      # abre el checkout actual en VS Code (el worktree si estás dentro de uno)
@@ -169,6 +170,7 @@ hacer que `wt open` lance el binario que ese archivo elija.
 | `reposRoot` | `''` | Raíz de los repos git (ej. `C:\Repos`) para `wt repos` y `wt cd` |
 | `defaultBase` | `''` | Base por defecto de `create` (ej. `origin/develop`) |
 | `branchPrefix` | `''` | Prefijo para ramas nuevas (ej. `agent/`) |
+| `openOnCreate` | `all` | Que abre `create` sin flags de apertura: `all` (editor + agente) \| `editor` \| `none` |
 | `editor` | `code` | Comando del editor (`''` para desactivar) |
 | `terminal` | `warp` | `warp` \| `wt` \| `none` |
 | `warpAgentTarget` | `auto` | Dónde abrir los tabs: `auto` (misma ventana si `wt` corre dentro de Warp o hay un Warp activo), `tab`, `window` |
@@ -232,6 +234,11 @@ hacer que `wt open` lance el binario que ese archivo elija.
   fuerza `git worktree remove --force` (árbol de trabajo sucio) y nunca implica
   `--force-branch`. `Remove-WtWorktree` declara `SupportsShouldProcess` y confirma el
   worktree y la rama por separado.
+- **`create` cumple lo que promete abrir**: `Get-WtCreateOpenPlan` (función pura)
+  resuelve `openOnCreate` (`all` por defecto = editor + agente) contra los flags
+  explícitos de apertura (`--all`/`--code`/`--agent`/`--terminal`, que ganan a la
+  config) y `--no-open` (que gana a todo). `openOnCreate` es una decisión de la
+  máquina, no del repo: no entra en la lista blanca de claves de `.wt.json`.
 - **`open` desacoplado**: editor y terminal son comandos configurables. Con
   `terminal = 'warp'`, tanto la terminal común como `--agent` generan un **Tab Config
   de Warp** (`%APPDATA%\warp\Warp\data\tab_configs\wt-term-<nombre>.toml` y

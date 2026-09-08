@@ -6,6 +6,38 @@
 
 # --- create -----------------------------------------------------------------
 
+function Get-WtCreateOpenPlan {
+    <#
+    .SYNOPSIS
+        Que abrir al terminar 'wt create'. Funcion pura.
+    .DESCRIPTION
+        --no-open gana sobre todo (equivale a 'none'). Si se paso algun otro flag de
+        apertura explicito (--all/--code/--agent/--terminal), esos flags ganan sobre la
+        config. Sin flags, decide 'openOnCreate': 'all' (editor + agente, el default:
+        es lo que el README promete), 'editor' (solo editor) o 'none' (nada).
+    #>
+    param(
+        [Parameter(Mandatory)]$Config,
+        [switch]$Code,
+        [switch]$Terminal,
+        [switch]$Agent,
+        [switch]$All,
+        [switch]$NoOpen
+    )
+    if ($NoOpen) {
+        return [pscustomobject]@{ Code = $false; Terminal = $false; Agent = $false }
+    }
+    $explicit = [bool]$Code -or [bool]$Terminal -or [bool]$Agent -or [bool]$All
+    if ($explicit) {
+        return (Get-WtOpenPlan -Code:$Code -Terminal:$Terminal -Agent:$Agent -All:$All)
+    }
+    switch ([string]$Config.openOnCreate) {
+        'all'    { return [pscustomobject]@{ Code = $true; Terminal = $false; Agent = $true } }
+        'editor' { return [pscustomobject]@{ Code = $true; Terminal = $false; Agent = $false } }
+        default  { return [pscustomobject]@{ Code = $false; Terminal = $false; Agent = $false } }
+    }
+}
+
 function New-WtWorktree {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
         Justification = 'Comando principal del CLI: pedir confirmacion en cada create rompe el flujo. No es un cmdlet generico.')]
@@ -13,6 +45,10 @@ function New-WtWorktree {
         [Parameter(Mandatory)][string]$Name,
         [AllowEmptyString()][string]$Base,
         [AllowEmptyString()][string]$Branch,
+        [switch]$Code,
+        [switch]$Terminal,
+        [switch]$Agent,
+        [switch]$All,
         [switch]$NoOpen
     )
     # Se valida antes de tocar git o la config: el error debe hablar del nombre.
@@ -52,7 +88,10 @@ function New-WtWorktree {
     Invoke-WtGit -WorkingDirectory $repoRoot -Arguments $gitArgs | Out-Null
     Write-WtSuccess "OK - worktree listo: $path (rama: $Branch)"
 
-    if (-not $NoOpen) { Open-WtWorktree -Name $Name }
+    $openPlan = Get-WtCreateOpenPlan -Config $config -Code:$Code -Terminal:$Terminal -Agent:$Agent -All:$All -NoOpen:$NoOpen
+    if ($openPlan.Code -or $openPlan.Terminal -or $openPlan.Agent) {
+        Open-WtWorktree -Name $Name -Code:$openPlan.Code -Terminal:$openPlan.Terminal -Agent:$openPlan.Agent
+    }
     return $path
 }
 

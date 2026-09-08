@@ -96,6 +96,7 @@ try {
         warpTerminalColor    = ''
         warpPath             = 'C:\no-existe\warp.exe'
         fetchBeforeCreate    = $false
+        openOnCreate         = 'none'
     }
     ([pscustomobject]$testConfig | ConvertTo-Json) | Set-Content -Path $configPath
     $env:WT_CONFIG = $configPath
@@ -393,6 +394,21 @@ try {
     $r = Invoke-Wt -CmdArgs @('config', 'set', 'noExiste', 'x') -Cwd $repoDir
     Assert-True 'config set clave invalida falla' ($r.ExitCode -ne 0)
     Assert-True 'config set lista claves validas' ($r.Output -match 'Clave desconocida' -and $r.Output -match 'reposRoot') $r.Output
+
+    Write-Host '== wt create sin --no-open respeta openOnCreate (A3) ==' -ForegroundColor Cyan
+    Invoke-Wt -CmdArgs @('config', 'set', 'openOnCreate', 'all') -Cwd $repoDir | Out-Null
+    try {
+        $r = Invoke-Wt -CmdArgs @('create', 'auto-open') -Cwd $repoDir
+        Assert-True 'create sin --no-open exit 0' ($r.ExitCode -eq 0) $r.Output
+        Assert-True 'create sin --no-open intenta abrir (editor vacio y terminal none: avisa del agente)' ($r.Output -match '(?i)agente') $r.Output
+        $r2 = Invoke-Wt -CmdArgs @('create', 'no-auto-open', '--no-open') -Cwd $repoDir
+        Assert-True 'create --no-open exit 0' ($r2.ExitCode -eq 0) $r2.Output
+        Assert-True 'create --no-open no intenta abrir nada' ($r2.Output -notmatch '(?i)agente') $r2.Output
+    } finally {
+        Invoke-Wt -CmdArgs @('config', 'set', 'openOnCreate', 'none') -Cwd $repoDir | Out-Null
+        Invoke-Wt -CmdArgs @('remove', 'auto-open', '--delete-branch') -Cwd $repoDir | Out-Null
+        Invoke-Wt -CmdArgs @('remove', 'no-auto-open', '--delete-branch') -Cwd $repoDir | Out-Null
+    }
 
     Write-Host '== .wt.json del repo: lista blanca de claves (A1) ==' -ForegroundColor Cyan
     # Requiere que .wt.json del repo sea un candidato real: se desactiva WT_CONFIG_ONLY

@@ -32,3 +32,8 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   para `git worktree remove --force` (arbol de trabajo sucio) y nunca implica
   `--force-branch`. `Remove-WtWorktree` declara `SupportsShouldProcess` y
   confirma worktree y rama por separado.
+- **A3**: `wt create` ahora cumple la promesa del README ("VS Code y Warp con
+  un solo comando"). Nueva clave `openOnCreate` (default `all` = editor +
+  agente; tambien `editor` y `none`) y flags `--all`/`--code`/`--agent`/
+  `--terminal` en `create` (ganan a la config); `--no-open` sigue ganando a
+  todo. `Get-WtCreateOpenPlan` (funcion pura) resuelve la combinacion.
