@@ -53,6 +53,22 @@ function Write-WtTable {
     $Rows | Format-Table -AutoSize | Out-String | Write-Host
 }
 
+function Set-WtFileUtf8NoBom {
+    <#
+    .SYNOPSIS
+        Escribe un archivo como UTF-8 sin BOM.
+    .DESCRIPTION
+        'Set-Content -Encoding UTF8' en PowerShell 5.1 antepone EF BB BF (BOM), que
+        muchos parsers (TOML incluido) rechazan o interpretan como parte del primer
+        valor. Unico punto de escritura para los archivos que wt genera (config.json,
+        tab configs de Warp).
+    #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Efecto directo de escritura de archivo, invocado por comandos que ya decidieron escribir.')]
+    param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][AllowEmptyString()][string]$Content)
+    [IO.File]::WriteAllText($Path, $Content, (New-Object Text.UTF8Encoding $false))
+}
+
 # --- Procesos externos ------------------------------------------------------
 
 function Invoke-WtProcess {

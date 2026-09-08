@@ -230,7 +230,7 @@ function Write-WtAgentTabConfig {
     $dir = Get-WtTabConfigDir
     if (-not (Test-WtPathExists $dir)) { New-Item -ItemType Directory -Path $dir -Force | Out-Null }
     $file = Join-Path $dir (Get-WtTabConfigFileName -Name $Name -Path $Path -Kind $Kind)
-    Set-Content -LiteralPath $file -Value $content -Encoding UTF8
+    Set-WtFileUtf8NoBom -Path $file -Content $content
     return $file
 }
 

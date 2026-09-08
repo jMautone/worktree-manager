@@ -107,3 +107,7 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   `-NoTerminal` de `Open-WtWorktree` (ninguna linea lo leia; era un no-op),
   `-NoCode` de `Get-WtOpenPlan` (sin llamadores tras A3) y `-RepoRoot` de
   `Invoke-WtConsoleCreate` (sin uso; `New-WtWorktree` resuelve el repo solo).
+- **B3**: `Set-Content -Encoding UTF8` en PowerShell 5.1 antepone BOM
+  (`EF BB BF`), que muchos parsers TOML rechazan. Nuevo
+  `Set-WtFileUtf8NoBom` (`[IO.File]::WriteAllText` con `UTF8Encoding($false)`)
+  usado tanto para los tab configs de Warp como para `config.json`.

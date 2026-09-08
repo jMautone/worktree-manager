@@ -328,7 +328,8 @@ function Save-WtConfigFile {
     if ($dir -and -not (Test-WtPathExists $dir)) {
         New-Item -ItemType Directory -Path $dir -Force | Out-Null
     }
-    ([pscustomobject]$Data | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $Path -Encoding UTF8
+    $json = [pscustomobject]$Data | ConvertTo-Json -Depth 5
+    Set-WtFileUtf8NoBom -Path $Path -Content $json
 }
 
 function Invoke-WtConfigCommand {

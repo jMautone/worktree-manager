@@ -318,7 +318,10 @@ hacer que `wt open` lance el binario que ese archivo elija.
   *literal strings* de TOML (`'...'`, sin escapes) y por eso se rechaza una comilla
   simple con un mensaje claro; `name`, `title` y `color` van como *basic strings*
   (`"..."`) con `\` y `"` escapados. El nombre del archivo se sanea y el URI
-  `warp://tab_config/...` se URL-encodea.
+  `warp://tab_config/...` se URL-encodea. Se escriben como **UTF-8 sin BOM**
+  (`Set-WtFileUtf8NoBom`, también usado para `config.json`): `Set-Content -Encoding
+  UTF8` en PowerShell 5.1 antepone `EF BB BF`, que muchos parsers TOML rechazan o
+  interpretan como parte del primer valor.
 - **Consola interactiva como wrapper**: `wt console` compone los mismos comandos del
   CLI en vez de duplicar lógica. Lee con `[Console]::In.ReadLine()`, así funciona igual
   en uso interactivo y con stdin pipeado (lo que la hace testeable E2E), y ante EOF

@@ -236,6 +236,20 @@ $tabContent = New-WtWarpTabConfigContent -Name 'demo' -Path 'C:\repo\wt-demo' -T
 Assert-True 'extrae directory de un tab config generado' ((Get-WtTabConfigDirectory -Content $tabContent) -eq 'C:\repo\wt-demo')
 Assert-True 'contenido sin directory devuelve vacio' ((Get-WtTabConfigDirectory -Content "name = ""x""") -eq '')
 
+Write-Host '== Tab config escrito como UTF-8 sin BOM (B3) ==' -ForegroundColor Cyan
+$bomTabDir = Join-Path $env:TEMP ("wt-bom-test-" + [guid]::NewGuid().ToString('N'))
+$prevTabConfigEnv = $env:WT_WARP_TAB_CONFIG
+try {
+    $env:WT_WARP_TAB_CONFIG = $bomTabDir
+    $bomTabFile = Write-WtAgentTabConfig -Name 'bomcheck' -Path 'C:\repo\bomcheck' -Commands @('copilot')
+    $bytes = [IO.File]::ReadAllBytes($bomTabFile)
+    $hasBom = ($bytes.Length -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF)
+    Assert-True 'el tab config no tiene BOM (EF BB BF)' (-not $hasBom)
+} finally {
+    if ($null -eq $prevTabConfigEnv) { Remove-Item Env:\WT_WARP_TAB_CONFIG -ErrorAction SilentlyContinue } else { $env:WT_WARP_TAB_CONFIG = $prevTabConfigEnv }
+    Remove-Item -Recurse -Force $bomTabDir -ErrorAction SilentlyContinue
+}
+
 Write-Host '== Get-WtAgentCommands: agentShell y agentCommand (M8) ==' -ForegroundColor Cyan
 $cfgNoneAgent = [pscustomobject]@{ agentShell = 'none'; agentCommand = 'copilot' }
 $cmdsNone = @(Get-WtAgentCommands -Config $cfgNoneAgent)
