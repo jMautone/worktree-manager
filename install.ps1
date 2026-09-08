@@ -33,15 +33,23 @@ $markerEnd
 $profilePath = $PROFILE.CurrentUserAllHosts
 $profileDir = Split-Path -Parent $profilePath
 if ($profileDir -and -not (Test-Path -LiteralPath $profileDir)) {
-    New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    if ($PSCmdlet.ShouldProcess($profileDir, 'Crear directorio del perfil')) {
+        New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
+    }
 }
 if (-not (Test-Path -LiteralPath $profilePath)) {
-    New-Item -ItemType File -Path $profilePath -Force | Out-Null
+    if ($PSCmdlet.ShouldProcess($profilePath, 'Crear archivo de perfil')) {
+        New-Item -ItemType File -Path $profilePath -Force | Out-Null
+    }
 }
 
-# Get-Content -Raw devuelve $null en un archivo vacio.
-$current = Get-Content -Raw -LiteralPath $profilePath
-if ($null -eq $current) { $current = '' }
+# Get-Content -Raw devuelve $null en un archivo vacio; bajo -WhatIf el archivo puede
+# no existir todavia (la creacion de arriba se salteo), asi que se trata igual que vacio.
+$current = ''
+if (Test-Path -LiteralPath $profilePath) {
+    $current = Get-Content -Raw -LiteralPath $profilePath
+    if ($null -eq $current) { $current = '' }
+}
 $pattern = '(?s)' + [regex]::Escape($markerStart) + '.*?' + [regex]::Escape($markerEnd)
 
 if ($current -match $pattern) {
@@ -49,18 +57,30 @@ if ($current -match $pattern) {
     # Sin 'param' explicito: el Match que pasa el delegado no se usa (el reemplazo sale
     # del closure $block), asi que no hay parametro declarado que quede sin uso.
     $updated = [regex]::Replace($current, $pattern, { $block })
-    Set-Content -LiteralPath $profilePath -Value $updated -NoNewline
-    Write-Host "Bloque 'wt' actualizado en $profilePath" -ForegroundColor Green
+    if ($PSCmdlet.ShouldProcess($profilePath, "Actualizar el bloque 'wt'")) {
+        Set-Content -LiteralPath $profilePath -Value $updated -NoNewline
+        Write-Host "Bloque 'wt' actualizado en $profilePath" -ForegroundColor Green
+    }
 } else {
-    Add-Content -LiteralPath $profilePath -Value ("`r`n" + $block)
-    Write-Host "Bloque 'wt' agregado a $profilePath" -ForegroundColor Green
+    if ($PSCmdlet.ShouldProcess($profilePath, "Agregar el bloque 'wt'")) {
+        # -NoNewline: Add-Content agrega un salto de linea propio ademas del contenido:
+        # sin esto, uninstall.ps1 no puede dejar el resto del perfil byte a byte igual
+        # (le quedaria un \r\n colgando donde estuvo el bloque).
+        Add-Content -LiteralPath $profilePath -Value ("`r`n" + $block) -NoNewline
+        Write-Host "Bloque 'wt' agregado a $profilePath" -ForegroundColor Green
+    }
 }
 
 $configPath = Join-Path $HOME '.wt\config.json'
 if (-not (Test-Path -LiteralPath $configPath)) {
-    New-Item -ItemType Directory -Path (Split-Path -Parent $configPath) -Force | Out-Null
-    Copy-Item -LiteralPath (Join-Path $moduleDir 'config.example.json') -Destination $configPath
-    Write-Host "Config de ejemplo creada en $configPath" -ForegroundColor Green
+    $configDir = Split-Path -Parent $configPath
+    if (-not (Test-Path -LiteralPath $configDir) -and $PSCmdlet.ShouldProcess($configDir, 'Crear directorio de config')) {
+        New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+    }
+    if ($PSCmdlet.ShouldProcess($configPath, 'Copiar config.example.json')) {
+        Copy-Item -LiteralPath (Join-Path $moduleDir 'config.example.json') -Destination $configPath
+        Write-Host "Config de ejemplo creada en $configPath" -ForegroundColor Green
+    }
 }
 
 Write-Host ''

@@ -77,3 +77,13 @@ Este archivo se actualiza por fase, siguiendo la ejecucion de
   `Find-WtReposOwningWorktree` devuelve **todas** las coincidencias;
   `Resolve-WtRepoContext` falla y las lista (mismo tono que
   `Resolve-WtRepoDir`) cuando hay mas de una.
+- **M7**: `install.ps1` declaraba `SupportsShouldProcess` pero nunca llamaba a
+  `$PSCmdlet.ShouldProcess`: `-WhatIf` se aceptaba y el perfil se modificaba
+  igual. Las tres escrituras (bloque del perfil, directorio de config, copia
+  de `config.example.json`) quedan detras de `ShouldProcess`. Se agrega
+  tambien un bug real de reversibilidad encontrado al verificar esto a mano:
+  `Add-Content` sumaba un salto de linea propio ademas del bloque, y
+  `uninstall.ps1` (nuevo, tambien con `SupportsShouldProcess`) no podia dejar
+  el resto del perfil byte a byte igual por ese sobrante; ahora usa
+  `-NoNewline`. `uninstall.ps1` no toca `~\.wt\config.json` salvo
+  `-RemoveConfig`.

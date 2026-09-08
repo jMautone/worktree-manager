@@ -13,7 +13,23 @@ powershell -ExecutionPolicy Bypass -File C:\worktree-manager\install.ps1
 El instalador es **idempotente**: agrega/actualiza un bloque delimitado en
 `$PROFILE.CurrentUserAllHosts` que define la función `wt` (y alias `wtm`), y crea
 `%USERPROFILE%\.wt\config.json` a partir de `config.example.json` solo si no existe.
-Luego reiniciá la terminal o ejecutá `. $PROFILE`.
+Luego reiniciá la terminal o ejecutá `. $PROFILE`. Soporta `-WhatIf` (no modifica nada,
+solo informa qué haría) y `-Confirm` (pide confirmación antes de cada escritura:
+perfil, config).
+
+### Desinstalación
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\worktree-manager\uninstall.ps1
+```
+
+Quita únicamente el bloque delimitado del perfil (el resto queda intacto) y **no**
+toca `%USERPROFILE%\.wt\config.json` salvo que se pase `-RemoveConfig`. También
+soporta `-WhatIf`/`-Confirm`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File C:\worktree-manager\uninstall.ps1 -RemoveConfig
+```
 
 ## Uso
 
@@ -279,6 +295,13 @@ hacer que `wt open` lance el binario que ese archivo elija.
   directorio, worktrees creados con una versión anterior): lee el `directory` de
   cada `wt-*.toml` en la carpeta de tab configs y borra el archivo si esa ruta ya
   no existe.
+- **Instalador reversible y con `-WhatIf` real**: `install.ps1` declaraba
+  `SupportsShouldProcess` pero nunca llamaba a `$PSCmdlet.ShouldProcess`, así que
+  `-WhatIf` no evitaba ninguna escritura. Las tres escrituras (bloque del perfil,
+  directorio de config, copia de `config.example.json`) están detrás de
+  `ShouldProcess`; `uninstall.ps1` revierte el bloque del perfil con el mismo par de
+  marcadores, deja el resto **byte a byte igual** y no toca la config salvo
+  `-RemoveConfig`.
 - **TOML generado con escapes explícitos**: `directory` y `commands` se escriben como
   *literal strings* de TOML (`'...'`, sin escapes) y por eso se rechaza una comilla
   simple con un mensaje claro; `name`, `title` y `color` van como *basic strings*
@@ -315,6 +338,7 @@ worktree-manager/
 ├── wt.psd1                      # Manifiesto del módulo (versión, PowerShellVersion, contrato de export)
 ├── wt.ps1                       # Entrypoint para invocación por -File
 ├── install.ps1                  # Instalador idempotente (perfil + config global)
+├── uninstall.ps1                # Revierte install.ps1 (bloque del perfil; -RemoveConfig)
 ├── config.example.json          # Config de referencia
 ├── PSScriptAnalyzerSettings.psd1 # Reglas de lint (CI)
 ├── CHANGELOG.md                 # Historial por fase (Keep a Changelog)
@@ -365,4 +389,21 @@ confirmación, ir a un repo, EOF). Se limpia al terminar. Exit code `0` = todo O
 ```powershell
 Install-Module PSScriptAnalyzer -Scope CurrentUser
 Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1
+```
+
+### Verificación manual de `install.ps1` / `uninstall.ps1`
+
+No van en las suites automáticas porque tocan el perfil real de PowerShell del
+usuario. Verificar a mano tras tocar cualquiera de los dos:
+
+```powershell
+# .\install.ps1 -WhatIf no debe modificar el perfil (comparar hash antes/después)
+(Get-FileHash $PROFILE.CurrentUserAllHosts).Hash
+.\install.ps1 -WhatIf
+(Get-FileHash $PROFILE.CurrentUserAllHosts).Hash   # debe ser igual al anterior
+
+# .\uninstall.ps1 debe dejar el resto del perfil byte a byte igual, salvo el bloque
+.\install.ps1
+.\uninstall.ps1
+# diff manual contra una copia del perfil de antes de instalar
 ```
