@@ -1,7 +1,19 @@
-# Artefactos temporales de PowerShell / pruebas
-TestResults/
+# Build output
+/git-wt
+/git-wt.exe
+/dist/
+/bin/
+
+# Go
+*.test
+*.out
+coverage.*
+
+# Local config that should not be committed
+.wt.local.toml
+.wt.local.json
+
+# Editors / OS
+.DS_Store
 *.user
 *.log
-
-# Config local que no deberia commitearse
-.wt.local.json

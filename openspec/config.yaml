@@ -1,32 +1,100 @@
 schema: spec-driven
 
-# Project context (optional)
-# This is shown to AI when creating artifacts.
-# Add your tech stack, conventions, style guides, domain knowledge, etc.
-# Example:
-#   context: |
-#     Tech stack: TypeScript, React, Node.js
-#     We use conventional commits
-#     Domain: e-commerce platform
+context: |
+  # Producto
 
-# Per-artifact rules (optional)
-# Add custom rules for specific artifacts.
-# Example:
-#   rules:
-#     proposal:
-#       - Keep proposals under 500 words
-#       - Always include a "Non-goals" section
-#     tasks:
-#       - Break tasks into chunks of max 2 hours
+  `wt` administra git worktrees sobre un *workspace multi-repo*, desde la
+  terminal. Su diferencial frente a herramientas similares (worktrunk) es que no
+  asume que ya estas dentro de un repo: descubre repos bajo varias raices
+  configurables, resuelve nombres entre repos detectando ambiguedad, y opera en
+  lote sobre muchos worktrees.
 
-# Per-operation guidance (optional)
-# Add advisory guidance for how apply and archive work should be conducted.
-# This is separate from artifact rules above.
-# Example:
-#   operations:
-#     apply:
-#       guidance:
-#         - Keep test summaries concise
-#     archive:
-#       guidance:
-#         - Summarize the archive outcome before finishing
+  v1 es una reescritura en Go desde cero. La linea anterior (PowerShell 5.1,
+  solo Windows) esta congelada en el tag `v0.9.0` y la rama `v0.9.x`; no se
+  porta codigo. Ver `docs/decisions/0001-de-cero-en-go.md` y el diseno completo
+  del producto en `docs/design/product.md`, que es la fuente de verdad del
+  alcance y del orden de ejecucion (M1..M6).
+
+  # Principios de producto (no negociables)
+
+  - **Terminal-first.** El resultado de un comando es dejarte parado en el
+    worktree, en la misma terminal. Ningun comando abre una aplicacion externa
+    (editor, tab nuevo, IDE) por defecto: eso es siempre opt-in explicito.
+  - **Los agentes corren en foreground.** `-x <cmd>` ejecuta el comando dentro
+    del worktree, en la terminal actual, y propaga su exit code. Un tab nuevo es
+    un launcher opcional, nunca el default.
+  - **Nada hardcodeado a una herramienta.** Ni editor, ni terminal, ni agente,
+    ni runtime. Todo eso son launchers configurables con presets por OS.
+  - **El repo no ejecuta codigo sin permiso.** La config del repo esta limitada
+    por lista blanca; los hooks del repo requieren aprobacion explicita por hash
+    del comando.
+
+  # Plataformas
+
+  macOS y Windows son **ambas de primera clase**: el desarrollo diario ocurre en
+  macOS (Apple Silicon) y el uso laboral en Windows. Linux es best-effort. Toda
+  decision de comportamiento que difiera entre OS debe ser explicita, nunca
+  emergente: separadores de ruta, sensibilidad a mayusculas del filesystem
+  (APFS es case-insensitive, ext4 no), nombres reservados (CON, NUL solo en
+  Windows), shell para hooks (`sh -c` en unix, `cmd.exe /c` en Windows).
+
+  # Stack y convenciones
+
+  - Go 1.27. `cobra` para el contrato de CLI, `bubbletea` para TUI (picker,
+    tablero). git se invoca como subproceso con `--porcelain`; no se usa libgit2.
+  - Binario `git-wt` (en `cmd/git-wt/`), lo que ademas expone `git wt <x>` por
+    el mecanismo de subcomandos de git. El `wt` que el usuario tipea es **siempre
+    una funcion de shell** instalada por `wt shell init`, porque un binario no
+    puede cambiar el directorio de su shell padre. Esa funcion tambien resuelve
+    la colision con `wt.exe` (Windows Terminal), porque una funcion de shell gana
+    sobre el PATH.
+  - **Decision separada del efecto.** La logica que decide vive en funciones
+    puras testeables sin filesystem ni git (`Plan` structs); los efectos pasan
+    por interfaces chicas en el borde. Esto es lo que hace que `--dry-run` sea
+    correcto por construccion y no un conjunto de `if`.
+  - `--dry-run` es global y hace **lecturas reales**: muestra el plan que
+    ejecutaria con el estado verdadero del repo, sin escribir.
+  - `--json` con esquema versionado, en todos los comandos.
+  - Exit codes documentados y estables; son parte del contrato publico.
+  - Validacion estricta de flags: un flag desconocido es un error, no un aviso.
+  - **Idioma**: codigo, comentarios, salida al usuario, help y docs en INGLES
+    (el repo es publico y apunta a distribucion por brew/scoop/winget). Los
+    documentos de decision y diseno en `docs/decisions/` y `docs/design/` estan
+    en espanol, que es el idioma de trabajo del autor.
+
+  # Tests
+
+  Integracion contra repos git reales creados en directorios temporales, no
+  mocks de git. La matrix de CI corre en macos-latest, windows-latest y
+  ubuntu-latest. La shell integration se testea por shell real (zsh, bash, fish,
+  pwsh). Un cambio no esta listo si sus tests corren solo en un OS.
+
+rules:
+  proposal:
+    - 'Planteá el problema en términos del flujo de trabajo del usuario, no de la implementación.'
+    - 'Enumerá explícitamente los comandos, flags y claves de config que el cambio AGREGA, MODIFICA y QUITA. Si no cambia ninguno, decilo.'
+    - 'Incluí una sección "Non-goals" y una sección "Milestone" que ubique el cambio en el mapa M1..M6 de docs/design/product.md.'
+    - 'Declará si el cambio afecta el comportamiento en un OS y no en otro.'
+  design:
+    - 'Acá sí se nombran Go, librerías, tipos y estructura de paquetes: es el lugar para hacerlo.'
+    - 'Identificá qué parte es decisión pura (testeable sin git ni filesystem) y qué parte es efecto, y dónde va el borde.'
+    - 'Si el diseño difiere entre macOS y Windows, mostrá las dos formas, no solo la de macOS.'
+    - 'Registrá las alternativas descartadas con el motivo, en una línea cada una.'
+  specs:
+    - 'AGNÓSTICAS DE LENGUAJE. Una spec no menciona Go, ni un tipo, ni una firma de función, ni una librería. Si no se puede implementar en otro lenguaje leyéndola, está mal escrita.'
+    - 'Todo requirement es observable desde la CLI: entrada (comando, flags, estado del repo) hacia salida (stdout, stderr, exit code, efecto en el filesystem).'
+    - 'Los escenarios que difieren por OS se escriben por separado y nombran el OS.'
+    - 'Especificá el caso de error y el exit code, no solo el camino feliz.'
+  tasks:
+    - 'Cada tarea incluye su test. Una tarea sin test no está terminada.'
+    - 'Ninguna tarea deja main sin compilar ni con tests rojos.'
+    - 'Marcá las tareas que requieren verificación manual en Windows y no se pueden cerrar solo desde macOS.'
+
+operations:
+  apply:
+    guidance:
+      - 'Corré los tests en macOS antes de cerrar una tarea, y dejá anotado lo que quedó pendiente de verificar en Windows.'
+      - 'No agregues dependencias nuevas sin registrarlo en el design del cambio.'
+  archive:
+    guidance:
+      - 'Confirmá que la spec sincronizada describe lo que el código hace hoy, no lo que se pensaba hacer.'
