@@ -67,6 +67,7 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 | `wt list [--full] [--all-repos] [--json]` | Una sola tabla con todo el estado. Reemplaza al `status` de v0.9. |
 | `wt remove <name> [--delete-branch] [--force]` | Borra el worktree, corre `pre-remove`/`post-remove`. |
 | `wt merge [<target>] [--squash] [--no-rebase] [--no-remove]` | Cierra el ciclo: commit pendiente → rebase → `pre-merge` → fast-forward → remove. |
+| `wt step commit\|squash\|rebase\|push [<target>]` | Corre un paso suelto del pipeline de `merge`, con sus mismos hooks. Para cuando querés el rebase sin mergear, o el squash sin borrar. |
 | `wt sync [<name>...] [--all]` | Rebase de uno o varios worktrees sobre su base. Nunca stashea; el conflicto se reporta y se sigue. |
 | `wt path <name>` | Imprime la ruta. Para scripts. |
 | `wt lock <name> [reason]` / `wt unlock <name>` / `wt prune` | Mantenimiento. |
@@ -88,6 +89,8 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 | `wt hook list` / `wt hook approve` | Aprobación de hooks declarados por el repo. |
 | `wt config get\|set\|list\|path` | Config. |
 | `wt shell init <zsh\|bash\|fish\|pwsh>` / `wt shell install` | Shell integration y completions. |
+| `wt statusline [--format <plantilla>]` | Una sola línea con el estado del worktree actual (rama, sucio, ahead/behind, marker), rápida y sin red, para el prompt de la shell o la statusline de Claude Code. |
+| `wt agent install <claude\|codex\|copilot\|gemini\|opencode>` | Instala la integración con el agente: sus hooks llaman a `wt mark` para poner 🤖 mientras trabaja y 💬 cuando espera input, y así `list` y `dash` muestran qué agente está en qué worktree. |
 | `wt doctor` | Diagnóstico derivado de la config. No chequea nada que no esté configurado. |
 | `wt dash` | Tablero de worktrees y agentes (TUI). |
 | `wt <alias>` / `wt-<x>` en el PATH | Aliases de config y subcomandos externos, patrón git. |
@@ -188,7 +191,7 @@ Es el único mecanismo portable para que un binario cambie el directorio de su s
 
 ## 6. Capabilities
 
-Veinte capabilities. Cada una responde una pregunta, y ese es el criterio para saber si una spec está completa.
+Veintitrés capabilities. Cada una responde una pregunta, y ese es el criterio para saber si una spec está completa.
 
 | Capability | La pregunta que responde |
 |---|---|
@@ -202,6 +205,7 @@ Veinte capabilities. Cada una responde una pregunta, y ese es el criterio para s
 | `list-worktrees` | ¿Qué está pasando en todos mis worktrees, en una tabla? |
 | `remove-worktree` | ¿Cómo se borra un worktree sin perder trabajo? |
 | `merge-worktree` | ¿Cómo se cierra un worktree completo, de una? |
+| `merge-steps` | ¿Cómo corro un solo paso del cierre (commit, squash, rebase, push) sin el resto? |
 | `sync-worktrees` | ¿Cómo pongo N worktrees al día sin stashear nada? |
 | `workspace-discovery` | ¿Qué repos existen bajo mis raíces? |
 | `cross-repo-resolution` | Este nombre, ¿a qué repo pertenece? ¿Y si es ambiguo? |
@@ -211,6 +215,8 @@ Veinte capabilities. Cada una responde una pregunta, y ese es el criterio para s
 | `launchers` | ¿Cómo abro una app externa, cuando lo pido explícitamente? |
 | `branch-state` | ¿En qué rama está trabajando quién/qué? |
 | `aliases-plugins` | ¿Cómo extiendo `wt` sin tocar su código? |
+| `statusline` | ¿Cómo veo el estado del worktree actual en una línea, sin salir del prompt? |
+| `agent-integrations` | ¿Cómo sabe `wt`, sin que yo haga nada, si un agente está trabajando o esperándome? |
 | `dashboard` | ¿Cómo veo N worktrees con agentes, en vivo? |
 
 Más dos que no son de producto pero sí de contrato: `distribution` (brew/scoop/winget, binarios firmados) y `docs-generation` (docs por comando derivadas de `cli-contract`).
@@ -234,13 +240,15 @@ El orden es **vertical**, no por capas. La tentación en greenfield es construir
        hooks, sync-worktrees, merge-worktree
          |
   M4  RIQUEZA               objetivo: una sola vista dice todo
-       list-worktrees (completo), branch-state, picker
+       list-worktrees (completo), branch-state, picker,
+       statusline, merge-steps
          |
   M5  EXTENSION             objetivo: adaptable sin tocar el codigo
        launchers, aliases-plugins, project-hooks-approval, doctor
          |
   M6  PRODUCTO              objetivo: que lo instale alguien mas
-       dashboard, distribution, docs-generation, forge, llm-commits
+       dashboard, agent-integrations, distribution,
+       docs-generation, forge, llm-commits
 ```
 
 ### M1, desglosado en changes

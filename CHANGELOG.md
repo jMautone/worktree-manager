@@ -11,7 +11,7 @@ platforms. No code is ported from v0.9. See
 - Project bootstrap: Go module, package layout, CI matrix on macOS, Windows and
   Linux, plus cross-compilation checks for all release targets.
 - [`docs/design/product.md`](docs/design/product.md) — the full product design:
-  CLI contract, config schema, the 20 capabilities and the M1–M6 execution order.
+  CLI contract, config schema, the 23 capabilities and the M1–M6 execution order.
 - OpenSpec project context and per-artifact rules, including the rule that specs
   stay language-agnostic.
 

@@ -59,9 +59,9 @@ so it never describes a product that does not exist.
   M1  usable skeleton    list, cd, create, remove + shell integration
   M2  the differentiator multi-repo workspace, cross-repo resolution, batch
   M3  closing the loop   hooks, sync, merge
-  M4  richness           one rich list view, branch state, picker
+  M4  richness           one rich list view, branch state, picker, statusline, merge steps
   M5  extension          launchers, aliases, project hooks, doctor
-  M6  product            dashboard, distribution, generated docs
+  M6  product            dashboard, agent integrations, distribution, generated docs
 ```
 
 ## Building
