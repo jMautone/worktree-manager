@@ -2,51 +2,78 @@ name: CI
 
 on:
   push:
-    branches: ['**']
+    branches: [main, "v1/**"]
   pull_request:
-    branches: ['**']
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
 
 jobs:
+  # macOS and Windows are both first-class targets (see docs/design/product.md).
+  # A change is not done if its tests only run on one OS.
   test:
-    runs-on: windows-latest
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        shell: [powershell, pwsh]
+        os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configurar git para las pruebas E2E
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: gofmt
         shell: bash
         run: |
-          git config --global user.email 'ci@worktree-manager.local'
-          git config --global user.name 'worktree-manager-ci'
-          git config --global commit.gpgsign false
-          git config --global init.defaultBranch main
-
-      - name: Suite unitaria
-        shell: ${{ matrix.shell }}
-        run: |
-          ${{ matrix.shell }} -NoProfile -File tests/Invoke-WtUnitTests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Suite E2E
-        shell: ${{ matrix.shell }}
-        run: |
-          ${{ matrix.shell }} -NoProfile -File tests/Invoke-WtTests.ps1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-      - name: Instalar PSScriptAnalyzer
-        shell: ${{ matrix.shell }}
-        run: |
-          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser | Out-Null
-          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -AllowClobber -Confirm:$false
-
-      - name: PSScriptAnalyzer
-        shell: ${{ matrix.shell }}
-        run: |
-          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Settings PSScriptAnalyzerSettings.psd1
-          if ($results) {
-            $results | Format-Table -AutoSize | Out-String | Write-Host
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
             exit 1
-          }
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: build
+        run: go build ./...
+
+      # The race detector needs a C toolchain on Windows; skip it there.
+      - name: test
+        if: matrix.os == 'windows-latest'
+        run: go test ./...
+
+      - name: test (race)
+        if: matrix.os != 'windows-latest'
+        run: go test -race ./...
+
+  # Cross-compilation is a product requirement, not an afterthought: the daily
+  # development machine is macOS and the daily use machine is Windows.
+  cross-build:
+    name: cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: build all targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          for target in darwin/arm64 darwin/amd64 windows/amd64 linux/amd64 linux/arm64; do
+            GOOS="${target%/*}" GOARCH="${target#*/}" \
+              go build -o /dev/null ./cmd/git-wt
+            echo "ok  $target"
+          done

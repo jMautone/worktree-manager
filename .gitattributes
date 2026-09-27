@@ -1,0 +1,8 @@
+# LF en el repo y en el checkout, en todas las plataformas.
+# Sin esto, git en Windows (core.autocrlf=true) convierte a CRLF y gofmt
+# marca todos los .go como mal formateados.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.exe binary
