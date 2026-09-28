@@ -145,7 +145,7 @@ Sin esto, la config global de git y de wt de quien corre los tests se filtra y l
 
 ## Risks / Trade-offs
 
-- **[Riesgo] Nombres cortos 8.3 en Windows** (`C:\Users\RUNNER~1\...`): el temp de los runners de GitHub puede venir abreviado y git reportar la forma larga. → `EvalSymlinks` en Windows normaliza a la forma larga; si no alcanza, el CI lo muestra en la primera corrida y se agrega una normalización con `GetLongPathName` en un archivo solo-Windows. Tarea marcada para verificar en Windows.
+- **[Riesgo] Nombres cortos 8.3 en Windows** (`C:\Users\RUNNER~1\...`): el temp de los runners de GitHub puede venir abreviado y git reportar la forma larga. → `EvalSymlinks` en Windows normaliza a la forma larga; si no alcanza, el CI lo muestra en la primera corrida y se agrega una normalización con `GetLongPathName` en un archivo solo-Windows. Tarea marcada para verificar en Windows. *Verificado en el CI de `windows-latest` (run 36366373000): el temp del runner es `C:\Users\RUNNER~1\...` y los tests de worktree actual, rutas nativas y mayúsculas pasan solo con `EvalSymlinks`; `GetLongPathName` no hizo falta.*
 - **[Riesgo] `git wt --help` no llega a `git-wt`**: git intercepta `--help` en subcomandos externos y busca una página de manual. → Limitación conocida de git; `git wt -h` y `git-wt --help` funcionan. Se documenta en el help.
 - **[Trade-off] git ≥ 2.36 por `--porcelain -z`**: sin `-z`, una ruta con salto de línea rompe el parseo. Git for Windows y Homebrew traen versiones muy superiores; `wt doctor` (M5) lo va a verificar.
 - **[Trade-off] Dos claves de config sin consumidor** (`default_base`, `worktree_path`) hasta `create-worktree`. Se aceptan porque sin al menos una clave el mecanismo de capas no es observable ni testeable.

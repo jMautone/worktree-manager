@@ -45,4 +45,4 @@
 - [x] 6.1 Tests E2E que compilan el binario en `TestMain` y verifican exit codes reales del proceso (`version` → 0, `lsit` → 2, `list` fuera de repo → 3) y `git wt version` con `git-wt` en el PATH; verificar que pasan en macOS
 - [x] 6.2 Documentar en el help de la raíz que `git wt --help` lo intercepta git y que se use `git wt -h`; verificar leyendo `wt --help`
 - [x] 6.3 Correr `gofmt -l`, `go vet ./...` y `go test -race ./...` en macOS y cross-compilar los 5 targets; verificar sin salida de gofmt ni fallos
-- [ ] 6.4 **[Windows]** Verificar en el CI de `windows-latest` que pasan los tests de rutas nativas, current worktree con mayúsculas distintas y nombres cortos 8.3 del temp; si falla por 8.3, agregar la normalización con `GetLongPathName` descrita en el design
+- [x] 6.4 **[Windows]** Verificar en el CI de `windows-latest` que pasan los tests de rutas nativas, current worktree con mayúsculas distintas y nombres cortos 8.3 del temp; si falla por 8.3, agregar la normalización con `GetLongPathName` descrita en el design
