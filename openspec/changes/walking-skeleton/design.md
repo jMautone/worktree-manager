@@ -30,9 +30,11 @@ type Env struct {
     Stdin  io.Reader
     Stdout, Stderr io.Writer
     Getenv func(string) string
+    Environ []string         // entorno de los procesos hijos (git)
     Getwd  func() (string, error)
     GOOS   string            // runtime.GOOS en producción; fijable en tests
-    IsTTY  bool              // si stdout es terminal
+    IsTTY  bool              // si stdout es terminal que acepta ANSI
+    Version string           // el de -ldflags, que vive en main
 }
 func Run(ctx context.Context, env Env) int   // devuelve el exit code
 ```
@@ -72,11 +74,13 @@ Todo error que sale de un comando es un `*cli.Error` o se envuelve como exit 1. 
 
 Los códigos 4-8 se declaran como constantes ahora aunque no se usen: son contrato.
 
-### D4. Cobra, con dos ajustes
+### D4. Cobra y sus ajustes
 
 - `CompletionOptions.DisableDefaultCmd = true`: las completions son de `shell-integration`.
 - `wt help <desconocido>`: cobra devuelve exit 0 con "Unknown help topic"; se reemplaza el comando `help` para devolver exit 2, coherente con la validación estricta.
 - Sugerencias "did you mean": las de cobra (`SuggestionsMinimumDistance = 2`).
+- `-C` no tiene forma larga, como en git. pflag no admite flags solo-shorthand, así que se registra con nombre largo vacío y el template de uso reemplaza la línea `-C, -- dir` por `-C dir` conservando el ancho. Agregar `--directory` habría sumado superficie pública que la spec no pide.
+- cobra trae dos dependencias transitivas: `spf13/pflag` y `inconshreveable/mousetrap` (solo Windows).
 
 *Alternativa descartada:* parser propio (como `ConvertFrom-WtArgs` en v0.9). Cobra da help, sugerencias y, en `shell-integration`, completions para 4 shells desde la misma definición: es exactamente la "fuente única" que pide `cli-contract`.
 
@@ -99,7 +103,7 @@ El registro es un parámetro de `Resolve`, no una variable global: los tests iny
 
 ### D6. Rutas del archivo de usuario: función pura de `GOOS`
 
-`config.Paths(goos, getenv, homeDir)` devuelve la ruta sin tocar el filesystem. En macOS se usa `~/.config/wt/config.toml`, **no** `~/Library/Application Support`: es la convención de las herramientas de desarrollo de terminal (git, gh, starship) y la que un usuario de macOS espera encontrar. `os.UserConfigDir()` de Go devolvería `Application Support`, por eso no se usa.
+`config.UserFile(goos, getenv, homeDir)` devuelve la ruta sin tocar el filesystem. En macOS se usa `~/.config/wt/config.toml`, **no** `~/Library/Application Support`: es la convención de las herramientas de desarrollo de terminal (git, gh, starship) y la que un usuario de macOS espera encontrar. `os.UserConfigDir()` de Go devolvería `Application Support`, por eso no se usa.
 
 ### D7. Worktree actual: comparar contra el porcelain, no preguntarle a git
 

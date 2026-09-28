@@ -1,0 +1,134 @@
+package testutil
+
+import (
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func TestSandboxCreatesEveryWorktreeKind(t *testing.T) {
+	sb := New(t)
+
+	repo := sb.Path("repo")
+	sb.InitRepo(repo)
+	linked := sb.Path("linked")
+	sb.AddWorktree(repo, linked, "feature/abc1")
+	detached := sb.Path("detached")
+	sb.AddDetachedWorktree(repo, detached)
+	locked := sb.Path("locked")
+	sb.AddWorktree(repo, locked, "locked-branch")
+	sb.LockWorktree(repo, locked, "on usb drive")
+	prunable := sb.Path("prunable")
+	sb.AddWorktree(repo, prunable, "prunable-branch")
+	sb.MakePrunable(prunable)
+
+	out := sb.Git(repo, "worktree", "list", "--porcelain") + "\n"
+	for _, want := range []string{
+		"worktree " + filepath.ToSlash(Comparable(t, repo)) + "\n",
+		"worktree " + filepath.ToSlash(Comparable(t, linked)) + "\n",
+		"branch refs/heads/feature/abc1\n",
+		"worktree " + filepath.ToSlash(Comparable(t, detached)) + "\n",
+		"detached\n",
+		"worktree " + filepath.ToSlash(Comparable(t, locked)) + "\n",
+		"locked on usb drive\n",
+		"worktree " + filepath.ToSlash(Comparable(t, prunable)) + "\n",
+		"prunable ",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("git worktree list does not contain %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSandboxCreatesBareRepositoryWithLinkedWorktree(t *testing.T) {
+	sb := New(t)
+
+	bare := sb.Path("bare.git")
+	sb.InitBare(bare)
+	linked := sb.Path("bare-linked")
+	sb.AddWorktree(bare, linked, "feature/x")
+
+	out := sb.Git(bare, "worktree", "list", "--porcelain") + "\n"
+	for _, want := range []string{
+		"worktree " + filepath.ToSlash(Comparable(t, bare)) + "\nbare\n",
+		"worktree " + filepath.ToSlash(Comparable(t, linked)) + "\n",
+		"branch refs/heads/feature/x\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("git worktree list does not contain %q:\n%s", want, out)
+		}
+	}
+}
+
+func TestSandboxIsolatesGitAndWtConfiguration(t *testing.T) {
+	sb := New(t)
+
+	if got := sb.Getenv("GIT_CONFIG_NOSYSTEM"); got != "1" {
+		t.Errorf("GIT_CONFIG_NOSYSTEM = %q, want 1", got)
+	}
+	for _, key := range []string{"GIT_CONFIG_GLOBAL", "HOME", "USERPROFILE", "XDG_CONFIG_HOME", "APPDATA"} {
+		if got := sb.Getenv(key); !strings.HasPrefix(got, sb.Root) {
+			t.Errorf("%s = %q, want a path inside %q", key, got, sb.Root)
+		}
+	}
+	if got := sb.Getenv("WT_CONFIG"); got != "" {
+		t.Errorf("WT_CONFIG = %q, want unset", got)
+	}
+	if got := sb.Git(sb.Root, "config", "--global", "user.email"); got != "wt@example.com" {
+		t.Errorf("global user.email = %q, want the sandbox's", got)
+	}
+
+	sb.Setenv("WT_CONFIG", "/x/wt.toml")
+	found := false
+	for _, kv := range sb.Environ() {
+		if kv == "WT_CONFIG=/x/wt.toml" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("Setenv is not reflected in Environ")
+	}
+}
+
+func TestComparableResolvesSymlinkedTempDir(t *testing.T) {
+	dir := t.TempDir()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "darwin" && strings.HasPrefix(dir, "/var/") && !strings.HasPrefix(real, "/private/var/") {
+		t.Fatalf("expected macOS temp dir %q to resolve under /private/var, got %q", dir, real)
+	}
+
+	if a, b := Comparable(t, dir), Comparable(t, real); a != b {
+		t.Errorf("Comparable(%q) = %q, Comparable(%q) = %q; want equal", dir, a, real, b)
+	}
+}
+
+func TestComparableResolvesMissingPathThroughExistingAncestor(t *testing.T) {
+	dir := t.TempDir()
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := Comparable(t, filepath.Join(dir, "gone", "deeper"))
+	want := filepath.Join(real, "gone", "deeper")
+	if got != want {
+		t.Errorf("Comparable of a missing path = %q, want %q", got, want)
+	}
+}
+
+func TestComparableUsesNativeSeparators(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got := Comparable(t, filepath.ToSlash(dir)+"/sub")
+	want := Comparable(t, filepath.Join(dir, "sub"))
+	if got != want {
+		t.Errorf("Comparable with forward slashes = %q, want %q", got, want)
+	}
+}
