@@ -108,6 +108,35 @@ func TestVersionIsInjectedAtBuildTime(t *testing.T) {
 	}
 }
 
+// go install …@vX.Y.Z does not pass -ldflags; the binary must report the
+// module version Go recorded instead of a placeholder.
+func TestVersionFallsBackToTheModuleVersion(t *testing.T) {
+	bin := filepath.Join(t.TempDir(), exeName())
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("building git-wt: %v\n%s", err, out)
+	}
+	out, err := exec.Command("go", "version", "-m", bin).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	module := ""
+	for _, line := range strings.Split(string(out), "\n") {
+		if f := strings.Fields(line); len(f) >= 3 && f[0] == "mod" {
+			module = f[2]
+		}
+	}
+	want := "wt " + strings.TrimPrefix(module, "v")
+	if module == "" || module == "(devel)" {
+		want = "wt 0.0.0-dev"
+	}
+
+	sb := testutil.New(t)
+	r := execute(t, sb, sb.Root, bin, "version")
+	if !strings.HasPrefix(r.stdout, want+" ") && r.stdout != want+"\n" {
+		t.Errorf("stdout = %q, want %q (module version %q)", r.stdout, want, module)
+	}
+}
+
 func TestInvokedThroughGit(t *testing.T) {
 	sb := testutil.New(t)
 	sb.Setenv("PATH", binDir+string(os.PathListSeparator)+sb.Getenv("PATH"))

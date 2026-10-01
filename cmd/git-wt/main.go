@@ -12,13 +12,15 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/jMautone/worktree-manager/internal/cli"
 	"github.com/jMautone/worktree-manager/internal/term"
 )
 
-// version is overridden at build time via -ldflags "-X main.version=...".
-var version = "0.0.0-dev"
+// version is set by release builds via -ldflags "-X main.version=...". When it
+// is empty, cli.ResolveVersion falls back to the module version in the binary.
+var version string
 
 func main() {
 	os.Exit(cli.Run(context.Background(), cli.Env{
@@ -31,6 +33,14 @@ func main() {
 		Getwd:   os.Getwd,
 		GOOS:    runtime.GOOS,
 		IsTTY:   term.IsTerminal(os.Stdout) && term.EnableANSI(os.Stdout),
-		Version: version,
+		Version: cli.ResolveVersion(version, moduleVersion()),
 	}))
+}
+
+// moduleVersion is the main module version Go recorded in the binary, or "".
+func moduleVersion() string {
+	if info, ok := debug.ReadBuildInfo(); ok {
+		return info.Main.Version
+	}
+	return ""
 }
