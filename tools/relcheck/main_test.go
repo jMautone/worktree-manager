@@ -190,6 +190,18 @@ func TestRunNotes(t *testing.T) {
 	}
 }
 
+func TestRunNotesRejectsAlphas(t *testing.T) {
+	// Alpha notes are generated from the merged titles. Even a matching
+	// section must not turn notes into a second source for them.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "CHANGELOG.md"), "# Changelog\n\n## [0.1.0-alpha.1]\n\n- `wt list`.\n")
+
+	code, stdout, stderr := runT("notes", "--root", dir, "--version", "v0.1.0-alpha.1")
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "relcheck: v0.1.0-alpha.1 is an alpha") {
+		t.Errorf("got %d, %q, %q", code, stdout, stderr)
+	}
+}
+
 func TestRunPRReleaseRejectsEmptyChangelogSection(t *testing.T) {
 	dir := newRepo(t, "feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)")
 	// [0.1.0] added above [Unreleased] instead of renaming it: no notes.

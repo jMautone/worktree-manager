@@ -194,6 +194,9 @@ func runNotes(args []string, stdout io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if v.IsAlpha() {
+		return fmt.Errorf("%s is an alpha: its release notes are generated from the merged titles; notes only reads the CHANGELOG section of a final, vX.Y.0", v)
+	}
 	content, err := readChangelog(*root)
 	if err != nil {
 		return err
