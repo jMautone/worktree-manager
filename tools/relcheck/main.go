@@ -43,6 +43,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if err := cmd(args[1:], stdout); err != nil {
+		var usageErr usageError
+		if errors.As(err, &usageErr) {
+			fmt.Fprintln(stderr, "relcheck:", err)
+			fmt.Fprint(stderr, usage)
+			return 2
+		}
 		for _, line := range strings.Split(err.Error(), "\n") {
 			fmt.Fprintln(stderr, "relcheck:", line)
 		}
@@ -57,13 +63,33 @@ func newFlags(name string) *flag.FlagSet {
 	return flags
 }
 
+// usageError is a malformed command line: run prints the usage and exits 2.
+type usageError struct{ error }
+
+// parseFlags parses args. Unknown flags, positional arguments and missing
+// required flags are usage errors.
+func parseFlags(flags *flag.FlagSet, args []string, required ...string) error {
+	if err := flags.Parse(args); err != nil {
+		return usageError{err}
+	}
+	if flags.NArg() > 0 {
+		return usageError{fmt.Errorf("unexpected argument %q", flags.Arg(0))}
+	}
+	for _, name := range required {
+		if flags.Lookup(name).Value.String() == "" {
+			return usageError{fmt.Errorf("--%s is required", name)}
+		}
+	}
+	return nil
+}
+
 func runPR(args []string, stdout io.Writer) error {
 	flags := newFlags("pr")
 	branch := flags.String("branch", "", "head branch of the pull request")
 	title := flags.String("title", "", "title of the pull request")
 	base := flags.String("base", "origin/main", "ref whose history holds the published versions")
 	root := flags.String("root", ".", "repository root")
-	if err := flags.Parse(args); err != nil {
+	if err := parseFlags(flags, args, "branch", "title"); err != nil {
 		return err
 	}
 
@@ -109,7 +135,7 @@ func runMerge(args []string, stdout io.Writer) error {
 	flags := newFlags("merge")
 	rev := flags.String("rev", "HEAD", "the squash commit pushed to main")
 	root := flags.String("root", ".", "repository root")
-	if err := flags.Parse(args); err != nil {
+	if err := parseFlags(flags, args); err != nil {
 		return err
 	}
 
@@ -161,7 +187,7 @@ func runNotes(args []string, stdout io.Writer) error {
 	flags := newFlags("notes")
 	version := flags.String("version", "", "final version, vX.Y.0")
 	root := flags.String("root", ".", "repository root")
-	if err := flags.Parse(args); err != nil {
+	if err := parseFlags(flags, args, "version"); err != nil {
 		return err
 	}
 	v, err := ParseVersion(*version)

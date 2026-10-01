@@ -51,7 +51,16 @@ func runT(args ...string) (code int, stdout, stderr string) {
 }
 
 func TestRunUsage(t *testing.T) {
-	for _, args := range [][]string{nil, {"publish"}} {
+	for _, args := range [][]string{
+		nil,
+		{"publish"},
+		{"merge", "-h"},
+		{"merge", "--bogus"},
+		{"merge", "HEAD~3"}, // a positional rev must not silently check HEAD
+		{"pr", "--title", "ci(x): y"},
+		{"pr", "--branch", "ci/x"},
+		{"notes"},
+	} {
 		if code, _, stderr := runT(args...); code != 2 || !strings.Contains(stderr, "usage:") {
 			t.Errorf("run(%v) = %d, %q; want 2 and usage", args, code, stderr)
 		}
