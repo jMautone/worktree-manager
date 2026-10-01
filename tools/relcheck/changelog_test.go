@@ -55,3 +55,16 @@ func TestChangelogSection(t *testing.T) {
 		}
 	}
 }
+
+func TestChangelogSectionIgnoresLookAlikeHeadings(t *testing.T) {
+	lookAlikes := "# Changelog\n\n## [0.1.01] — not 0.1.0\n\n- wrong.\n\n## [0.1.0-alpha.1]\n\n- wrong too.\n"
+	if body, ok := ChangelogSection(lookAlikes, Version{Minor: 1}); ok {
+		t.Errorf("ChangelogSection(v0.1.0) matched a look-alike heading: %q", body)
+	}
+
+	// A look-alike before the real section must not shadow it.
+	both := lookAlikes + "\n## [0.1.0] — 2026-10-15\n\n- right.\n"
+	if body, ok := ChangelogSection(both, Version{Minor: 1}); !ok || body != "- right." {
+		t.Errorf("ChangelogSection(v0.1.0) = %q, %v; want %q", body, ok, "- right.")
+	}
+}
