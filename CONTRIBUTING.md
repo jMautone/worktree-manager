@@ -4,7 +4,11 @@ This repository follows one convention for branches, pull request titles,
 versions and releases. The reasoning, and the alternatives that were
 discarded, are in
 [docs/decisions/0002-versionado-y-releases.md](docs/decisions/0002-versionado-y-releases.md)
-(Spanish). The `pr-conventions` check enforces everything below.
+(Spanish). The `pr-conventions` check enforces the branch, title and version
+rules below.
+
+Changes to what `wt` does go through OpenSpec, step by step, as described in
+[Working on an OpenSpec change](#working-on-an-openspec-change).
 
 ## Versions
 
@@ -131,3 +135,88 @@ Every pull request that publishes adds its lines under `## [Unreleased]` in
    and add a new, empty `## [Unreleased]` above it.
 4. Open the pull request titled `chore(release): close MN [vX.Y.0]`.
 5. Squash-merge it. The release notes come from the new changelog section.
+
+## Working on an OpenSpec change
+
+`wt` is developed with [OpenSpec](https://openspec.dev).
+`openspec/changes/<change>/` holds a change in flight; `openspec/specs/`
+describes what `main` does today, and nothing more. `openspec/config.yaml`
+holds the product context and the rules every artifact follows; the
+`openspec` CLI and the `/opsx:*` commands in `.claude/` feed both to the
+agent that writes the artifacts.
+
+### Choosing the change
+
+Changes come from the milestone breakdown in
+[docs/design/product.md](docs/design/product.md) §7, in the order of its
+table, and only from the open milestone (see [Versions](#versions)). A
+milestone is broken into changes only when it opens: if §7 has no table for
+it yet, add one first, in a `docs/` pull request.
+
+### Steps
+
+1. **Branch** from an up-to-date `main`. The branch name is the change name,
+   under the minor of its milestone:
+
+   ```sh
+   git switch main && git pull
+   git switch -c vX.Y/<change>
+   ```
+
+2. **Explore** (optional). `/opsx:explore` works through open questions
+   before anything is written. Use it when the design has real unknowns.
+
+3. **Propose.** `/opsx:propose <change>` writes `proposal.md`, `design.md`,
+   `specs/<capability>/spec.md` and `tasks.md` under
+   `openspec/changes/<change>/`. Check them with
+   `openspec validate <change> --strict` and commit them on the branch.
+   **Stop here** until the artifacts are approved: no code is written before
+   that. Revise them with `/opsx:update`.
+
+4. **Apply.** `/opsx:apply <change>` works through `tasks.md` in order:
+   - each task brings its test, and is ticked (`- [x]`) only once that test
+     passes and `go test ./...` is green on macOS;
+   - a task marked **[Windows]** is closed by the `windows-latest` CI job or
+     by hand on Windows, never from macOS alone; until then it stays open,
+     with a note of what is pending;
+   - a new dependency is recorded in `design.md` before it is added;
+   - if the plan turns out to be wrong, fix the artifacts with
+     `/opsx:update` first, so code and artifacts never disagree.
+
+5. **Open the pull request.** The last task adds the change's lines under
+   `## [Unreleased]` in `CHANGELOG.md` and opens the pull request, titled
+   `<type>(<change>): <summary> [vX.Y.0-alpha.N]` (see
+   [Pull request titles](#pull-request-titles)).
+
+6. **Archive, in the same pull request.** Once every task is ticked and CI
+   is green, run `/opsx:archive <change>` and choose to sync the specs. It
+   merges the change's delta specs into `openspec/specs/` and moves the change
+   to `openspec/changes/archive/YYYY-MM-DD-<change>/`. Read the synced specs
+   against the code: they must describe what the code does, not what the
+   proposal planned. Run `openspec validate --all --strict`, then commit and
+   push.
+
+7. **Merge.** Squash-merge. The release workflow publishes the alpha, and
+   the branch is deleted.
+
+Archiving before the merge keeps `openspec/specs/` true at every published
+version: no alpha ships code whose specs are still pending, and no follow-up
+pull request is needed. `pr-conventions` finds the change in either place.
+
+### Languages
+
+| What | Language |
+|---|---|
+| `proposal.md`, `design.md`, `tasks.md` | Spanish |
+| Specs, both delta and in `openspec/specs/` | English |
+| Code, comments, CLI output, help, `README.md`, `CONTRIBUTING.md`, `CHANGELOG.md` | English |
+| `docs/decisions/`, `docs/design/` | Spanish |
+| Pull request title / body | English / Spanish |
+
+### Work outside a change
+
+- A `fix/<slug>` makes the code do what `openspec/specs/` already says, and
+  does not touch the specs. If the specified behavior itself has to change,
+  that is a change: open one.
+- `chore/`, `docs/`, `ci/`, `refactor/` and `test/` branches do not change
+  what `wt` does, and do not touch `openspec/specs/`.

@@ -61,6 +61,12 @@ context: |
     (el repo es publico y apunta a distribucion por brew/scoop/winget). Los
     documentos de decision y diseno en `docs/decisions/` y `docs/design/` estan
     en espanol, que es el idioma de trabajo del autor.
+  - **Idioma de OpenSpec**: `proposal.md`, `design.md` y `tasks.md` en espanol;
+    las specs (delta y `openspec/specs/`) en INGLES, porque son el contrato
+    publico que queda en el repo.
+  - **Flujo de un change**: rama `vX.Y/<change>` -> propose -> aprobacion del
+    autor -> apply -> PR -> archive en el mismo PR -> squash merge. El detalle
+    esta en `CONTRIBUTING.md`, seccion "Working on an OpenSpec change".
 
   # Tests
 
@@ -91,6 +97,7 @@ rules:
     - 'Ninguna tarea deja main sin compilar ni con tests rojos.'
     - 'Marcá las tareas que requieren verificación manual en Windows y no se pueden cerrar solo desde macOS.'
     - 'La última tarea integra el change: suma sus líneas bajo [Unreleased] en CHANGELOG.md y abre el PR con el título <type>(<change>): <summary> [vX.Y.0-alpha.N] (ver CONTRIBUTING.md).'
+    - 'El archive no es una tarea: se hace después de la última, en el mismo PR, porque exige todas las tareas tildadas.'
 
 operations:
   apply:
@@ -99,4 +106,7 @@ operations:
       - 'No agregues dependencias nuevas sin registrarlo en el design del cambio.'
   archive:
     guidance:
+      - 'Archivá en la rama del change, con el PR abierto, todas las tareas tildadas y el CI en verde, antes del merge: el archive viaja en el mismo PR.'
+      - 'Sincronizá siempre las specs; nunca archives sin sincronizar.'
       - 'Confirmá que la spec sincronizada describe lo que el código hace hoy, no lo que se pensaba hacer.'
+      - 'Después del archive corré openspec validate --all --strict y commiteá en la misma rama.'
