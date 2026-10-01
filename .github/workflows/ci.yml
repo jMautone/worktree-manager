@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, "v1/**"]
+    branches: [main, "v*/**", "fix/**", "release/**"]
   pull_request:
     branches: [main]
 
@@ -23,9 +23,9 @@ jobs:
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
@@ -56,24 +56,28 @@ jobs:
         run: go test -race ./...
 
   # Cross-compilation is a product requirement, not an afterthought: the daily
-  # development machine is macOS and the daily use machine is Windows.
+  # development machine is macOS and the daily use machine is Windows. The
+  # targets live in .goreleaser.yaml, so CI builds exactly what a release
+  # publishes. The job keeps its name: it is a required check on main.
   cross-build:
     name: cross-build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: build all targets
-        shell: bash
-        run: |
-          set -euo pipefail
-          for target in darwin/arm64 darwin/amd64 windows/amd64 linux/amd64 linux/arm64; do
-            GOOS="${target%/*}" GOARCH="${target#*/}" \
-              go build -o /dev/null ./cmd/git-wt
-            echo "ok  $target"
-          done
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: check
+
+      - uses: goreleaser/goreleaser-action@v7
+        with:
+          version: "~> v2"
+          args: build --snapshot --clean

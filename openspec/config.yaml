@@ -10,7 +10,7 @@ context: |
   lote sobre muchos worktrees.
 
   v1 es una reescritura en Go desde cero. La linea anterior (PowerShell 5.1,
-  solo Windows) esta congelada en el tag `v0.9.0` y la rama `v0.9.x`; no se
+  solo Windows) esta congelada en el tag `powershell-v0.9.0` y la rama `powershell/v0.9.x`; no se
   porta codigo. Ver `docs/decisions/0001-de-cero-en-go.md` y el diseno completo
   del producto en `docs/design/product.md`, que es la fuente de verdad del
   alcance y del orden de ejecucion (M1..M6).
@@ -75,6 +75,7 @@ rules:
     - 'Enumerá explícitamente los comandos, flags y claves de config que el cambio AGREGA, MODIFICA y QUITA. Si no cambia ninguno, decilo.'
     - 'Incluí una sección "Non-goals" y una sección "Milestone" que ubique el cambio en el mapa M1..M6 de docs/design/product.md.'
     - 'Declará si el cambio afecta el comportamiento en un OS y no en otro.'
+    - 'En la sección "Milestone", nombrá la rama del change: vX.Y/<nombre-del-change>, donde X.Y es el minor del milestone (tabla en docs/decisions/0002-versionado-y-releases.md).'
   design:
     - 'Acá sí se nombran Go, librerías, tipos y estructura de paquetes: es el lugar para hacerlo.'
     - 'Identificá qué parte es decisión pura (testeable sin git ni filesystem) y qué parte es efecto, y dónde va el borde.'
@@ -89,6 +90,7 @@ rules:
     - 'Cada tarea incluye su test. Una tarea sin test no está terminada.'
     - 'Ninguna tarea deja main sin compilar ni con tests rojos.'
     - 'Marcá las tareas que requieren verificación manual en Windows y no se pueden cerrar solo desde macOS.'
+    - 'La última tarea integra el change: suma sus líneas bajo [Unreleased] en CHANGELOG.md y abre el PR con el título <type>(<change>): <summary> [vX.Y.0-alpha.N] (ver CONTRIBUTING.md).'
 
 operations:
   apply:

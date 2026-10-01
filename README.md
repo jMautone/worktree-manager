@@ -7,7 +7,7 @@ A git worktree manager for multi-repo workspaces, built for the terminal.
 > **Looking for something that works?** The stable line is PowerShell, Windows-only:
 >
 > ```
-> git checkout v0.9.x     # or the v0.9.0 tag
+> git checkout powershell/v0.9.x     # or the powershell-v0.9.0 tag
 > ```
 >
 > `main` is a from-scratch rewrite in Go, targeting macOS and Windows as
@@ -47,8 +47,8 @@ The workflow it is built for:
 
 | | |
 |---|---|
-| `v0.9.x` / tag `v0.9.0` | **Stable.** PowerShell 5.1+, Windows only. Frozen — no new features. |
-| `main` | **In development.** Go, macOS + Windows + Linux. See the milestone map below. |
+| `powershell/v0.9.x` / tag `powershell-v0.9.0` | **Stable.** PowerShell 5.1+, Windows only. Frozen — no new features. |
+| `main` | **In development.** Go, macOS + Windows + Linux. Pre-releases on [Releases](https://github.com/jMautone/worktree-manager/releases). See the milestone map below. |
 
 Development is tracked with [OpenSpec](https://openspec.dev): durable
 capabilities live in `openspec/specs/`, work in flight in `openspec/changes/`.
@@ -63,6 +63,23 @@ so it never describes a product that does not exist.
   M5  extension          launchers, aliases, project hooks, doctor
   M6  product            dashboard, agent integrations, distribution, generated docs
 ```
+
+Each milestone ships as one minor version, and every merged change as a
+pre-release of it: M1 is `0.1.0`, M2 `0.2.0`, M3 `0.3.0`, M4 `0.4.0`, and M5
+is `1.0.0`. See [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Installing
+
+Download the archive for your platform from
+[Releases](https://github.com/jMautone/worktree-manager/releases) and put
+`git-wt` on your `PATH`. With Go installed, name the version explicitly:
+
+```sh
+go install github.com/jMautone/worktree-manager/cmd/git-wt@v0.1.0-alpha.1
+```
+
+`@latest` does not work until `1.0.0`: the Go module proxy still serves the
+PowerShell `v0.9.0`, which has no Go code.
 
 ## Building
 

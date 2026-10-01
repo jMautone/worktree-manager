@@ -1,5 +1,7 @@
 # Worktree Manager vs Worktrunk: análisis comparativo y hoja de ruta
 
+> **Nota (2026-09-30)**: el tag `v0.9.0` y la rama `v0.9.x` que menciona este documento se renombraron a `powershell-v0.9.0` y `powershell/v0.9.x`. Ver [0002-versionado-y-releases.md](0002-versionado-y-releases.md).
+
 > Documento de exploración (no de implementación). Fecha: 2026-09-17.
 > Fuentes: el código de este repo (`src/`, `tests/`, `README.md`, `CHANGELOG.md`),
 > el repo [max-sixty/worktrunk](https://github.com/max-sixty/worktrunk) y su
