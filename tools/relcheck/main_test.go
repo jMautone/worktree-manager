@@ -157,6 +157,17 @@ func TestRunMerge(t *testing.T) {
 	}
 }
 
+func TestRunMergeFinalWithChangelog(t *testing.T) {
+	dir := newRepo(t,
+		"feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)",
+		"chore(release): close M1 [v0.1.0] (#9)")
+	writeFile(t, filepath.Join(dir, "CHANGELOG.md"), "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] — 2026-10-15\n\n- `wt list`.\n")
+
+	if code, stdout, stderr := runT("merge", "--root", dir); code != 0 || stdout != "v0.1.0\n" {
+		t.Errorf("got %d, %q, %q", code, stdout, stderr)
+	}
+}
+
 func TestRunMergeIsIdempotentAfterTagging(t *testing.T) {
 	dir := newRepo(t, "feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)")
 	gitT(t, dir, "tag", "-a", "v0.1.0-alpha.1", "-m", "v0.1.0-alpha.1")
@@ -187,6 +198,18 @@ func TestRunNotes(t *testing.T) {
 	}
 	if code, _, _ := runT("notes", "--root", dir, "--version", "v0.2.0"); code != 1 {
 		t.Errorf("missing section: got %d, want 1", code)
+	}
+}
+
+func TestRunNotesRejectsAlphas(t *testing.T) {
+	// Alpha notes are generated from the merged titles. Even a matching
+	// section must not turn notes into a second source for them.
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "CHANGELOG.md"), "# Changelog\n\n## [0.1.0-alpha.1]\n\n- `wt list`.\n")
+
+	code, stdout, stderr := runT("notes", "--root", dir, "--version", "v0.1.0-alpha.1")
+	if code != 1 || stdout != "" || !strings.Contains(stderr, "relcheck: v0.1.0-alpha.1 is an alpha") {
+		t.Errorf("got %d, %q, %q", code, stdout, stderr)
 	}
 }
 

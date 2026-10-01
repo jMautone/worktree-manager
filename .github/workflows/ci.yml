@@ -11,6 +11,10 @@ permissions:
 
 env:
   GO_VERSION: "1.27"
+  # Pinned on purpose: `goreleaser check` fails on deprecated settings, so a
+  # floating version could turn the build red with no change in the repo.
+  # Bump it deliberately, together with .goreleaser.yaml if needed.
+  GORELEASER_VERSION: "v2.18.2"
 
 jobs:
   # macOS and Windows are both first-class targets (see docs/design/product.md).
@@ -74,10 +78,10 @@ jobs:
 
       - uses: goreleaser/goreleaser-action@v7
         with:
-          version: "~> v2"
+          version: ${{ env.GORELEASER_VERSION }}
           args: check
 
       - uses: goreleaser/goreleaser-action@v7
         with:
-          version: "~> v2"
+          version: ${{ env.GORELEASER_VERSION }}
           args: build --snapshot --clean

@@ -16,6 +16,10 @@ permissions:
 
 env:
   GO_VERSION: "1.27"
+  # Pinned on purpose: `goreleaser check` fails on deprecated settings, so a
+  # floating version could turn the build red with no change in the repo.
+  # Bump it deliberately, together with .goreleaser.yaml if needed.
+  GORELEASER_VERSION: "v2.18.2"
 
 # No concurrency group on purpose: GitHub keeps one pending run per group and
 # cancels the older one, which would silently drop a release. Each run tags
@@ -40,7 +44,7 @@ jobs:
       - uses: goreleaser/goreleaser-action@v7
         with:
           install-only: true
-          version: "~> v2"
+          version: ${{ env.GORELEASER_VERSION }}
 
       - name: dry run
         if: github.event_name == 'workflow_dispatch'
