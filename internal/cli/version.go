@@ -4,9 +4,29 @@ import (
 	"fmt"
 	"runtime"
 	"runtime/debug"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
+
+// DevVersion is the version reported when the build recorded none.
+const DevVersion = "0.0.0-dev"
+
+// ResolveVersion picks the version wt reports. injected is what release builds
+// set with -ldflags "-X main.version=...". module is the main module version Go
+// records in the binary: go install …@vX.Y.Z records the tag, a go build in a
+// checkout records a tag or a pseudo-version, and "(devel)" means none. The
+// leading "v" is dropped, so every source reads like a release build.
+func ResolveVersion(injected, module string) string {
+	switch {
+	case injected != "":
+		return injected
+	case module != "" && module != "(devel)":
+		return strings.TrimPrefix(module, "v")
+	default:
+		return DevVersion
+	}
+}
 
 func (a *app) versionCommand() *cobra.Command {
 	return &cobra.Command{

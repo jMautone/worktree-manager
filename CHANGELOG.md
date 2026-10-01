@@ -38,6 +38,11 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 - The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`,
   and the `v0.9.x` branch was removed (the tag points at the same commit).
 
+### Fixed
+
+- `wt version` reports the module version when installed with
+  `go install …@vX.Y.Z`, instead of `0.0.0-dev`.
+
 ---
 
 ## PowerShell 0.9.0 — 2026-09-21
