@@ -106,7 +106,8 @@ func TestNextCheck(t *testing.T) {
 		{"v0.2.0-alpha.1", []string{"v0.1.0-alpha.1", "v0.1.0"}, ""},
 		{"v1.0.0-alpha.1", []string{"v0.4.0-alpha.1", "v0.4.0"}, ""},
 		// Two PRs raced for the same alpha: the second one must fail.
-		{"v0.1.0-alpha.1", []string{"v0.1.0-alpha.1"}, "already published"},
+		{"v0.1.0-alpha.1", []string{"v0.1.0-alpha.1"}, "already published; the next alpha is v0.1.0-alpha.2"},
+		{"v0.1.0", []string{"v0.1.0-alpha.1", "v0.1.0"}, "already published; the open minor is now 0.2"},
 		{"v0.1.0-alpha.3", []string{"v0.1.0-alpha.1"}, "next alpha of 0.1 is v0.1.0-alpha.2"},
 		{"v0.2.0-alpha.1", []string{"v0.1.0-alpha.1"}, "open minor is 0.1"},
 		{"v0.1.0-alpha.2", []string{"v0.1.0-alpha.1", "v0.1.0"}, "open minor is 0.2"},

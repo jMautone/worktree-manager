@@ -129,14 +129,20 @@ func NextCheck(v Version, published []Version) error {
 	if v.Patch != 0 {
 		return fmt.Errorf("%s: patch releases come from a vX.Y.x branch, not from main", v)
 	}
-	for _, p := range published {
-		if p == v {
-			return fmt.Errorf("%s is already published", v)
-		}
-	}
 	open, err := OpenMinor(published)
 	if err != nil {
 		return err
+	}
+	for _, p := range published {
+		if p != v {
+			continue
+		}
+		// Another PR published it first: say what to use instead.
+		if v.IsAlpha() {
+			next := Version{Major: open.Major, Minor: open.Minor, Alpha: lastAlpha(published, open) + 1}
+			return fmt.Errorf("%s is already published; the next alpha is %s", v, next)
+		}
+		return fmt.Errorf("%s is already published; the open minor is now %s", v, open)
 	}
 	if v.MinorOf() != open {
 		return fmt.Errorf("%s targets %s, but the open minor is %s", v, v.MinorOf(), open)

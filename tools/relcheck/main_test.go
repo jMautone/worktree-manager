@@ -84,7 +84,7 @@ func TestRunPRReadsPublishedVersionsFromBase(t *testing.T) {
 	code, _, stderr := runT("pr", "--root", dir, "--base", "main",
 		"--branch", "v0.1/shell-integration",
 		"--title", "feat(shell-integration): add wt cd [v0.1.0-alpha.1]")
-	if code != 1 || !strings.Contains(stderr, "relcheck: v0.1.0-alpha.1 is already published") {
+	if code != 1 || !strings.Contains(stderr, "relcheck: v0.1.0-alpha.1 is already published; the next alpha is v0.1.0-alpha.2") {
 		t.Errorf("got %d, %q", code, stderr)
 	}
 }
