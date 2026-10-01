@@ -75,7 +75,7 @@ Download the archive for your platform from
 `git-wt` on your `PATH`. With Go installed, name the version explicitly:
 
 ```sh
-go install github.com/jMautone/worktree-manager/cmd/git-wt@v0.1.0-alpha.1
+go install github.com/jMautone/worktree-manager/cmd/git-wt@v0.1.0-alpha.2
 ```
 
 `@latest` does not work until `1.0.0`: the Go module proxy still serves the
