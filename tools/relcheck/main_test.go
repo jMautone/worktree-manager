@@ -78,7 +78,12 @@ func TestRunPR(t *testing.T) {
 }
 
 func TestRunPRReadsPublishedVersionsFromBase(t *testing.T) {
-	dir := newRepo(t, "feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)")
+	// The PR branch forked before the alpha landed on main, so only --base
+	// knows about it.
+	dir := newRepo(t)
+	gitT(t, dir, "branch", "v0.1/shell-integration")
+	gitT(t, dir, "commit", "-q", "--no-verify", "--allow-empty", "-m", "feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)")
+	gitT(t, dir, "switch", "-q", "v0.1/shell-integration")
 	writeFile(t, filepath.Join(dir, "openspec", "changes", "shell-integration", "proposal.md"), "x")
 
 	code, _, stderr := runT("pr", "--root", dir, "--base", "main",
