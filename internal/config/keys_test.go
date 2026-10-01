@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/jMautone/worktree-manager/internal/shell"
 )
 
 func TestRegistryDeclaresTheKeysOfThisChange(t *testing.T) {
@@ -61,5 +63,35 @@ func TestKeyValidation(t *testing.T) {
 		case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
 			t.Errorf("%s = %#v: error %v, want one containing %q", tc.key, tc.value, err, tc.wantErr)
 		}
+	}
+}
+
+// protocolCollisions returns the protocol variables of the shell integration
+// that a key in reg would also read as WT_<KEY>.
+func protocolCollisions(reg Registry) []string {
+	var hits []string
+	for _, k := range reg {
+		for _, v := range []string{shell.DirectiveVar, shell.PreviousVar} {
+			if EnvVar(k.Name) == v {
+				hits = append(hits, k.Name+" -> "+v)
+			}
+		}
+	}
+	return hits
+}
+
+// The function passes WT_DIRECTIVE_CD_FILE and WT_PREVIOUS_DIR to the binary.
+// They share the WT_ prefix with the environment layer, so a key named
+// previous_dir would read the shell's previous directory as its value.
+func TestNoKeyCollidesWithTheShellProtocol(t *testing.T) {
+	if hits := protocolCollisions(Keys()); len(hits) > 0 {
+		t.Errorf("keys collide with shell protocol variables: %q", hits)
+	}
+}
+
+func TestProtocolCollisionsDetectsACollidingKey(t *testing.T) {
+	reg := append(Keys(), Key{Name: "previous_dir", Type: "string", Default: "", Validate: validateString})
+	if hits := protocolCollisions(reg); len(hits) != 1 || !strings.Contains(hits[0], shell.PreviousVar) {
+		t.Errorf("collisions = %q, want previous_dir -> %s", hits, shell.PreviousVar)
 	}
 }

@@ -30,11 +30,22 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
   and flags, `wt:`/`hint:` errors or `wt.error.v1` with `--json`, and the
   global flags `--json`, `--dry-run`, `-C` and `--no-color`.
 - `wt version`, which works even when the configuration is broken.
+- `wt cd <target>`: moves the shell to a worktree of the current repository by
+  name or branch, to the main worktree (`^`), to the root of the current one
+  (`@`), or back to the previous directory (`-`); `--json` uses `wt.cd.v1`.
+- `wt shell init zsh|bash|fish|pwsh`: prints the `wt` shell function that runs
+  `git-wt` and moves the shell; `--json` uses `wt.shell.init.v1`. In
+  PowerShell on Windows the function hides `wt.exe` (Windows Terminal).
+- Completions in the four shells for commands, flags, worktree names in
+  `wt cd` and shell names in `wt shell init`.
+- The protocol between the function and the binary: the environment
+  variables `WT_DIRECTIVE_CD_FILE` and `WT_PREVIOUS_DIR`, which `wt` does not
+  pass to the processes it starts.
 
 ### Changed
 
-- `main` has read-only commands only (`list`, `config`, `version`); the stable
-  line is still the PowerShell tag `powershell-v0.9.0`.
+- `main` has read-only commands only (`list`, `cd`, `config`, `shell init`,
+  `version`); the stable line is still the PowerShell tag `powershell-v0.9.0`.
 - The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`,
   and the `v0.9.x` branch was removed (the tag points at the same commit).
 

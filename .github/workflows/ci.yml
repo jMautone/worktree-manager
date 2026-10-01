@@ -26,6 +26,18 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, windows-latest, ubuntu-latest]
+        # The shells the shell-integration tests must run in. A shell listed
+        # here that is missing fails the tests instead of skipping them. On
+        # Windows only PowerShell is supported.
+        include:
+          - os: macos-latest
+            shells: zsh,bash,fish,pwsh
+          - os: ubuntu-latest
+            shells: zsh,bash,fish,pwsh
+          - os: windows-latest
+            shells: pwsh
+    env:
+      WT_TEST_SHELLS: ${{ matrix.shells }}
     steps:
       - uses: actions/checkout@v7
 
@@ -33,6 +45,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      # The runners bring bash and pwsh, and zsh on macOS. bash-completion
+      # 1.x is the one the system bash of macOS (3.2) supports.
+      - name: install shells (macOS)
+        if: runner.os == 'macOS'
+        run: brew install fish bash-completion
+
+      - name: install shells (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
 
       - name: gofmt
         shell: bash

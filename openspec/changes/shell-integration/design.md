@@ -13,6 +13,9 @@ Hechos observados que moldean el diseño:
 5. **PowerShell 7.2 usa por defecto `$PSNativeCommandArgumentPassing = 'Legacy'`**, que descarta los argumentos vacíos al llamar a un ejecutable. 7.4 (LTS) usa `Standard` en macOS y Linux, y `Windows` en Windows, que para un `.exe` común se comporta igual que `Standard`.
 6. **En bash y zsh los alias se expanden al definir la función**, no al ejecutarla. Un `alias rm='rm -i'` cargado antes que el script convertiría la limpieza del temporal en una pregunta interactiva.
 7. **Los runners de GitHub traen pwsh y bash en los tres OS, y zsh en macOS.** fish no viene en ninguno, y zsh no está garantizado en Ubuntu.
+8. **En PowerShell, un `@` suelto no parsea**: `wt cd @` falla con "Unrecognized token" antes de llamar a la función. `wt cd '@'` anda, y `^` no tiene problema.
+9. **En pwsh, el stderr del binario llega a la terminal aunque el script de cobra redirija.** Cobra pide las completions con `Invoke-Expression … 2>&1 | Out-Null`, pero ese `2>&1` no alcanza al ejecutable que corre adentro de la función `wt`: la línea `Completion ended with directive: …` que cobra escribe en stderr aparecería en cada TAB.
+10. **Sin valores y con `ShellCompDirectiveNoFileComp`, el completer de pwsh de cobra devuelve `""`**, para que PowerShell no complete nombres de archivo. `TabExpansion2` llamado directo puede lanzar una excepción por ese valor; PSReadLine, que es quien lo llama en cada TAB, la ignora. En una pwsh interactiva, TAB no ofrece nada y no escribe nada.
 
 ## Goals / Non-Goals
 
@@ -134,7 +137,7 @@ Guardas, por los hechos observados 3 y 4:
    pwsh  sin guarda (Register-ArgumentCompleter reemplaza al anterior)
 ```
 
-Las completions pasan por la función `wt` (hecho 3), que crea y borra un temporal por TAB. Cobra escribe `Completion ended with directive: …` en stderr; los cuatro scripts de cobra ya redirigen stderr a la nada.
+Las completions pasan por la función `wt` (hecho 3), que crea y borra un temporal por TAB. Cobra escribe `Completion ended with directive: …` en stderr. Los scripts de zsh, bash y fish lo descartan, pero en pwsh llega a la terminal (hecho 9), así que `cli.Run` descarta el stderr de los pedidos `__complete` y `__completeNoDesc`, en todas las shells: ningún script de completion lo lee.
 
 *Alternativa descartada:* reescribir los scripts de cobra para que llamen a `git-wt` directo. Sería reemplazar texto dentro de la salida de cobra, y se rompe en silencio con cualquier actualización.
 *Alternativa descartada:* completions escritas a mano por shell. Son cuatro implementaciones del mismo árbol de comandos; cobra lo deriva de la definición, que es la "fuente única" que pide `cli-contract`.
@@ -177,11 +180,13 @@ Disponibilidad: si una shell no está en el `PATH`, el test hace `Skip`, salvo q
 Completions por shell:
 
 ```
-   bash  source bash_completion si existe; COMP_WORDS/COMP_CWORD; __start_wt; COMPREPLY
+   bash  PS1 + source bash_completion; COMP_WORDS/COMP_CWORD; __start_wt; COMPREPLY
    fish  complete -C 'wt cd '
-   pwsh  (TabExpansion2 -inputScript 'wt cd ' -cursorColumn 6).CompletionMatches
+   pwsh  try { TabExpansion2 -inputScript 'wt cd ' -cursorColumn 6 } catch { }, sin textos vacíos
    zsh   solo que `compinit` + script registra _comps[wt]; el TAB real se verifica a mano
 ```
+
+pwsh se pide como lo hace PSReadLine (hecho 10): una excepción o un `CompletionText` vacío cuentan como "no se ofrece nada". `bash-completion` 1.x, la de macOS, no se carga si `PS1` está vacía, así que el test la define. Si bash figura en `WT_TEST_SHELLS` y `bash-completion` no está instalado, el test falla en vez de saltearse.
 
 Programas falsos: `cmd/git-wt/testdata/fakeprog` (un `main.go` que `go build ./...` ignora por estar en `testdata`), compilado en `TestMain` dos veces: como `git` (registra su entorno en un archivo, para la spec "Processes started by wt") y como `wt`/`wt.exe` (imprime una marca, para "Shadowing other programs named wt"). Un programa Go sirve en los tres OS; un script de shell no sería ejecutable como `wt.exe` en Windows.
 
@@ -194,11 +199,13 @@ En el job `test`:
 ```yaml
 - name: install shells (macOS)
   if: runner.os == 'macOS'
-  run: brew install fish
+  run: brew install fish bash-completion
 - name: install shells (Linux)
   if: runner.os == 'Linux'
-  run: sudo apt-get update && sudo apt-get install -y zsh fish
+  run: sudo apt-get update && sudo apt-get install -y zsh fish bash-completion
 ```
+
+`bash-completion` es para que el test de completions de bash no se saltee. En macOS va la 1.x, la única que soporta la bash 3.2 del sistema.
 
 y `WT_TEST_SHELLS` por OS desde la matrix (`include`). Ningún job nuevo; el nombre `test (<os>)` no cambia, porque es check requerido en `main`.
 
@@ -206,6 +213,7 @@ y `WT_TEST_SHELLS` por OS desde la matrix (`include`). Ningún job nuevo; el nom
 
 - **[Riesgo] Ctrl-C durante `wt` en bash deja el temporal.** Si el binario muere por SIGINT, bash aborta la función antes del `rm`. → Un archivo vacío o con una ruta, en el temporal del sistema, que el OS limpia. zsh usa `{ … } always { … }` y pwsh `try/finally`, que sí limpian. Los programas interactivos (`-x claude`) manejan SIGINT ellos mismos y salen normalmente, así que el caso real es raro.
 - **[Riesgo] `wt cd ^` en zsh con `EXTENDED_GLOB`** expande `^` (hecho 2). → Se documenta en el help de `wt cd`: con esa opción, `wt cd '^'`. No se agrega `alias wt='noglob wt'`: cambiaría la expansión de todos los argumentos, incluido `wt each -- cmd *.log` de M2.
+- **[Riesgo] `wt cd @` en PowerShell no parsea** (hecho 8). → Se documenta en el help de `wt cd`, junto al caso de zsh: en PowerShell, `wt cd '@'`.
 - **[Riesgo] Salida de un ejecutable dentro de una función de pwsh.** Si pwsh redirige la salida de `& git-wt` por estar dentro de una función, el binario no ve una TTY: sin color, y en M4 sin picker. → Es el patrón habitual de perfiles de pwsh (`function v { nvim @args }`) y debería conectar la consola directo. Se verifica a mano en Windows Terminal y en macOS (tarea **[Windows]**). Si falla, el plan B es `Start-Process -NoNewWindow -Wait`, que obliga a reescribir solo la función de pwsh.
 - **[Trade-off] Completions de bash solo con `bash-completion`, y de zsh solo después de `compinit`.** → La alternativa es escribir un `_get_comp_words_by_ref` propio, que es reimplementar parte de `bash-completion`. El help de `wt shell init` lo dice; la función anda igual sin completions.
 - **[Trade-off] Un temporal por invocación, incluido cada TAB.** → `mktemp` + `rm` cuestan del orden de 1 ms frente a los ~10 ms de `git worktree list`. Se revisa si M4 baja el resto.

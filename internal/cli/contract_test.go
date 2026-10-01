@@ -15,13 +15,13 @@ func TestHelpListsCommands(t *testing.T) {
 	for _, args := range [][]string{{}, {"help"}, {"-h"}, {"--help"}} {
 		r := h.run(args...)
 		r.mustCode(t, 0)
-		for _, cmd := range []string{"list", "config", "version"} {
+		for _, cmd := range []string{"list", "cd", "config", "shell", "version"} {
 			if !regexp.MustCompile(`(?m)^\s+` + cmd + `\s`).MatchString(r.stdout) {
 				t.Errorf("wt %v: help does not list %q:\n%s", args, cmd, r.stdout)
 			}
 		}
-		if strings.Contains(r.stdout, "completion") {
-			t.Errorf("wt %v: help lists the completion command, which belongs to shell-integration", args)
+		if regexp.MustCompile(`(?m)^\s+completion\s`).MatchString(r.stdout) {
+			t.Errorf("wt %v: help lists cobra's completion command; completions come from wt shell init", args)
 		}
 		if r.stderr != "" {
 			t.Errorf("wt %v: stderr = %q", args, r.stderr)
