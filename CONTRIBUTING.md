@@ -86,9 +86,12 @@ ci(release): add branch, title and release conventions
 If another pull request publishes first, `main` requires yours to be up to
 date: update the branch, and the check tells you the alpha to use instead.
 
-To check a title before pushing:
+To check a title before pushing, fetch first: the check reads the versions
+already published from `origin/main`, and a stale copy suggests an alpha that
+is already taken.
 
 ```sh
+git fetch origin
 go run ./tools/relcheck pr --branch "$(git branch --show-current)" --title "<title>"
 ```
 
