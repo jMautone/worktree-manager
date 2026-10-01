@@ -10,7 +10,7 @@ context: |
   lote sobre muchos worktrees.
 
   v1 es una reescritura en Go desde cero. La linea anterior (PowerShell 5.1,
-  solo Windows) esta congelada en el tag `powershell-v0.9.0` y la rama `powershell/v0.9.x`; no se
+  solo Windows) esta congelada en el tag `powershell-v0.9.0`; no se
   porta codigo. Ver `docs/decisions/0001-de-cero-en-go.md` y el diseno completo
   del producto en `docs/design/product.md`, que es la fuente de verdad del
   alcance y del orden de ejecucion (M1..M6).

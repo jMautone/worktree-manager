@@ -5,29 +5,32 @@
 // `wt shell init`, because a binary cannot change its parent shell's working
 // directory. See docs/design/product.md.
 //
-// This is the bootstrap scaffold: the command surface arrives with the
-// walking-skeleton change (M1). See openspec/changes/.
+// main only builds the real environment; everything else is internal/cli.
 package main
 
 import (
-	"fmt"
+	"context"
 	"os"
+	"runtime"
+
+	"github.com/jMautone/worktree-manager/internal/cli"
+	"github.com/jMautone/worktree-manager/internal/term"
 )
 
 // version is overridden at build time via -ldflags "-X main.version=...".
 var version = "0.0.0-dev"
 
 func main() {
-	if err := run(os.Args[1:]); err != nil {
-		fmt.Fprintln(os.Stderr, "wt:", err)
-		os.Exit(1)
-	}
-}
-
-func run(args []string) error {
-	if len(args) == 1 && (args[0] == "version" || args[0] == "--version") {
-		fmt.Println(version)
-		return nil
-	}
-	return fmt.Errorf("not implemented yet: v1 is being built, see docs/design/product.md (stable line: git checkout v0.9.x)")
+	os.Exit(cli.Run(context.Background(), cli.Env{
+		Args:    os.Args[1:],
+		Stdin:   os.Stdin,
+		Stdout:  os.Stdout,
+		Stderr:  os.Stderr,
+		Getenv:  os.Getenv,
+		Environ: os.Environ(),
+		Getwd:   os.Getwd,
+		GOOS:    runtime.GOOS,
+		IsTTY:   term.IsTerminal(os.Stdout) && term.EnableANSI(os.Stdout),
+		Version: version,
+	}))
 }

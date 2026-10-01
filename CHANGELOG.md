@@ -17,18 +17,26 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 - Project bootstrap: Go module, package layout, CI matrix on macOS, Windows and
   Linux, plus cross-compilation checks for all release targets.
 - [`docs/design/product.md`](docs/design/product.md) — the full product design:
-  CLI contract, config schema, the 20 capabilities and the M1–M6 execution order.
+  CLI contract, config schema, the 23 capabilities and the M1–M6 execution order.
 - OpenSpec project context and per-artifact rules, including the rule that specs
   stay language-agnostic.
 - Release pipeline: every merged change publishes a GitHub pre-release with
   binaries for macOS, Windows and Linux, plus `checksums.txt`.
+- `wt list`: one table with every worktree of the current repository, current
+  (`@`) and main (`^`) marks and a `STATE` column; `--json` uses `wt.list.v1`.
+- `wt config path|list|get`: layered configuration (defaults < user file <
+  `.wt.toml` < `WT_*`), with an allowlist for the repository file.
+- The CLI contract: documented exit codes 0–8, strict validation of commands
+  and flags, `wt:`/`hint:` errors or `wt.error.v1` with `--json`, and the
+  global flags `--json`, `--dry-run`, `-C` and `--no-color`.
+- `wt version`, which works even when the configuration is broken.
 
 ### Changed
 
-- Nothing works yet. `main` has no usable commands; the stable line is
-  `powershell/v0.9.x`.
-- The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`
-  and the branch `v0.9.x` is now `powershell/v0.9.x`.
+- `main` has read-only commands only (`list`, `config`, `version`); the stable
+  line is still the PowerShell tag `powershell-v0.9.0`.
+- The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`,
+  and the `v0.9.x` branch was removed (the tag points at the same commit).
 
 ---
 
@@ -37,6 +45,6 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 Last PowerShell release. Windows only, PowerShell 5.1+. Frozen: this line
 receives no new features.
 
-Its history is preserved on the `powershell/v0.9.x` branch and the
-`powershell-v0.9.0` tag. The changelog for that line is at
+Its history is preserved in the `powershell-v0.9.0` tag. The changelog for
+that line is at
 [docs/historial/CHANGELOG-v0.9.md](docs/historial/CHANGELOG-v0.9.md).
