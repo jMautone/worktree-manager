@@ -52,8 +52,9 @@ The workflow it is built for:
 
 Development is tracked with [OpenSpec](https://openspec.dev): durable
 capabilities live in `openspec/specs/`, work in flight in `openspec/changes/`.
-`openspec/specs/` is empty on purpose — it grows only as things actually land,
-so it never describes a product that does not exist.
+`openspec/specs/` grows only as changes land, so it never describes a product
+that does not exist. The workflow is in
+[CONTRIBUTING.md](CONTRIBUTING.md#working-on-an-openspec-change).
 
 ```
   M1  usable skeleton    list, cd, create, remove + shell integration
