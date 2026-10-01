@@ -258,6 +258,19 @@ Los cuatro cortes de M1 se abren ahora. M2 en adelante se desglosa cuando le toc
 
 Un milestone no está cerrado hasta que: los tests pasan en la matrix de 3 OSes, `wt doctor` no reporta nada roto, las specs están sincronizadas a `openspec/specs/`, y **lo usaste una semana en macOS sin volver a v0.9**.
 
+### Versiones
+
+Cada milestone sale como un minor, y cada change mergeado como una pre-release de ese minor (`v0.1.0-alpha.N`). El detalle está en [`0002-versionado-y-releases.md`](../decisions/0002-versionado-y-releases.md).
+
+| Milestone | Versión |
+|---|---|
+| M1 | `0.1.0` |
+| M2 | `0.2.0` |
+| M3 | `0.3.0` |
+| M4 | `0.4.0` |
+| M5 | `1.0.0` |
+| M6 (opcional) | `1.1.0` |
+
 ---
 
 ## 8. Non-goals de v1

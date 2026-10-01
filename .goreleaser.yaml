@@ -1,0 +1,58 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# The single source of the release targets. CI builds a snapshot with this
+# file on every PR (job cross-build), and release.yml publishes with it.
+# Conventions: docs/decisions/0002-versionado-y-releases.md.
+version: 2
+
+project_name: git-wt
+
+builds:
+  - id: git-wt
+    main: ./cmd/git-wt
+    binary: git-wt
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    targets:
+      - darwin_arm64
+      - darwin_amd64
+      - windows_amd64
+      - linux_amd64
+      - linux_arm64
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: git-wt
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: git
+  sort: asc
+  abbrev: -1
+  groups:
+    - title: Features
+      regexp: '^feat(\([^)]*\))?!?:'
+      order: 0
+    - title: Fixes
+      regexp: '^fix(\([^)]*\))?!?:'
+      order: 1
+    - title: Other
+      order: 999
+
+release:
+  prerelease: auto
+  replace_existing_artifacts: true

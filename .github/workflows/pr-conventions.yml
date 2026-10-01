@@ -1,0 +1,39 @@
+name: PR conventions
+
+# Checks the branch name, the pull request title and the version it declares.
+# Conventions: docs/decisions/0002-versionado-y-releases.md and CONTRIBUTING.md.
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, edited, reopened, synchronize]
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION: "1.27"
+
+jobs:
+  pr-conventions:
+    name: pr-conventions
+    runs-on: ubuntu-latest
+    steps:
+      # Full history: relcheck reads every published version from main's titles.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      # Title and branch come from the PR author: they reach the script through
+      # the environment and are never interpolated into it.
+      - name: relcheck
+        env:
+          BRANCH: ${{ github.head_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BASE: origin/${{ github.base_ref }}
+        run: go run ./tools/relcheck pr --branch "$BRANCH" --title "$TITLE" --base "$BASE"
