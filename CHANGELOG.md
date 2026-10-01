@@ -34,9 +34,9 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 ### Changed
 
 - `main` has read-only commands only (`list`, `config`, `version`); the stable
-  line is still `powershell/v0.9.x`.
-- The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`
-  and the branch `v0.9.x` is now `powershell/v0.9.x`.
+  line is still the PowerShell tag `powershell-v0.9.0`.
+- The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`,
+  and the `v0.9.x` branch was removed (the tag points at the same commit).
 
 ---
 
@@ -45,6 +45,6 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 Last PowerShell release. Windows only, PowerShell 5.1+. Frozen: this line
 receives no new features.
 
-Its history is preserved on the `powershell/v0.9.x` branch and the
-`powershell-v0.9.0` tag. The changelog for that line is at
+Its history is preserved in the `powershell-v0.9.0` tag. The changelog for
+that line is at
 [docs/historial/CHANGELOG-v0.9.md](docs/historial/CHANGELOG-v0.9.md).

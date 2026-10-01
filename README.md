@@ -7,7 +7,7 @@ A git worktree manager for multi-repo workspaces, built for the terminal.
 > **Looking for something that works?** The stable line is PowerShell, Windows-only:
 >
 > ```
-> git checkout powershell/v0.9.x     # or the powershell-v0.9.0 tag
+> git checkout powershell-v0.9.0
 > ```
 >
 > `main` is a from-scratch rewrite in Go, targeting macOS and Windows as
@@ -47,7 +47,7 @@ The workflow it is built for:
 
 | | |
 |---|---|
-| `powershell/v0.9.x` / tag `powershell-v0.9.0` | **Stable.** PowerShell 5.1+, Windows only. Frozen — no new features. |
+| tag `powershell-v0.9.0` | **Stable.** PowerShell 5.1+, Windows only. Frozen — no new features. |
 | `main` | **In development.** Go, macOS + Windows + Linux. Pre-releases on [Releases](https://github.com/jMautone/worktree-manager/releases). See the milestone map below. |
 
 Development is tracked with [OpenSpec](https://openspec.dev): durable

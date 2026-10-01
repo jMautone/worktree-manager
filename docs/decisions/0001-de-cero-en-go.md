@@ -4,7 +4,7 @@
 - **Estado**: aceptada
 - **Antecedente**: [0000-analisis-worktrunk.md](0000-analisis-worktrunk.md)
 
-> **Nota (2026-09-30)**: el tag `v0.9.0` y la rama `v0.9.x` que menciona este documento se renombraron a `powershell-v0.9.0` y `powershell/v0.9.x`. Ver [0002-versionado-y-releases.md](0002-versionado-y-releases.md).
+> **Nota (2026-10-01)**: el tag `v0.9.0` que menciona este documento se renombró a `powershell-v0.9.0`, y la rama `v0.9.x` se eliminó: el tag apunta al mismo commit. Ver [0002-versionado-y-releases.md](0002-versionado-y-releases.md).
 
 ## Contexto
 

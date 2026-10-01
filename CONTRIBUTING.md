@@ -39,7 +39,7 @@ minor version:
 | `release/vX.Y.0` | Closing a milestone | final |
 | `chore/`, `docs/`, `ci/`, `refactor/`, `test/` + `<slug>` | Everything else | nothing |
 | `dependabot/**` | Dependabot | nothing |
-| `vX.Y.x`, `powershell/v0.9.x` | Maintenance lines (protected) | patch |
+| `vX.Y.x` | Maintenance lines (protected) | patch |
 
 Change names and slugs are lowercase kebab-case. Work branches are deleted
 when their pull request merges.

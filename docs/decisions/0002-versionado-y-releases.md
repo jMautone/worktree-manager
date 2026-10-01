@@ -49,7 +49,7 @@ Consecuencia directa: **los milestones son secuenciales**. Un change de M2 no se
 | `release/vX.Y.0` | Cierre de milestone | final |
 | `chore/` `docs/` `ci/` `refactor/` `test/` + `<slug>` | Todo lo demás | nada |
 | `dependabot/**` | Las crea Dependabot | nada |
-| `vX.Y.x`, `powershell/v0.9.x` | Líneas de mantenimiento, protegidas | patch |
+| `vX.Y.x` | Líneas de mantenimiento, protegidas | patch |
 
 La versión exacta no va en la rama: `alpha.N` depende del orden de merge y no se conoce al abrirla. Lo que sí se conoce es el minor.
 
@@ -138,7 +138,7 @@ Rulesets:
 | Ruleset | Cubre | Reglas |
 |---|---|---|
 | `main` | rama por defecto | sin borrar, sin force-push, historia lineal, PR con solo squash, checks requeridos (los 3 `test`, `cross-build`, `pr-conventions`) con la rama al día |
-| `protect-maintenance-branches` | `v*.*.x`, `powershell/**` | sin borrar, sin force-push |
+| `protect-maintenance-branches` | `v*.*.x` | sin borrar, sin force-push |
 | `protect-release-tags` | `v*`, `powershell-v*` | sin borrar, sin mover |
 
 "Rama al día" evita que dos PR abiertos tomen la misma alpha: al mergear uno, el otro tiene que actualizarse, el check corre de nuevo y ve la versión ya usada. Cuesta un click en *Update branch*.
@@ -151,6 +151,8 @@ Se renombra para que no compita con la numeración `0.x`:
 |---|---|
 | tag `v0.9.0` | tag `powershell-v0.9.0` (anotado, mismo commit `e1447e5`) |
 | rama `v0.9.x` | rama `powershell/v0.9.x` |
+
+**Actualización (2026-10-01)**: terminada la transición, la rama `powershell/v0.9.x` se eliminó. La línea PowerShell vive solo en el tag `powershell-v0.9.0`, que apunta al mismo commit, y `protect-maintenance-branches` cubre solo `v*.*.x`.
 
 `powershell-v0.9.0` no tiene forma semver, así que Go y GoReleaser lo ignoran como versión.
 
