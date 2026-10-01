@@ -4,7 +4,8 @@ import "strings"
 
 // ChangelogSection returns the body of the "## [X.Y.Z]" section of a Keep a
 // Changelog file, without its heading and without a trailing "---" separator.
-// ok is false when the section does not exist.
+// ok is false when the section does not exist or is empty: a final needs
+// release notes.
 func ChangelogSection(content string, v Version) (body string, ok bool) {
 	heading := "## [" + strings.TrimPrefix(v.String(), "v") + "]"
 	lines := strings.Split(strings.ReplaceAll(content, "\r\n", "\n"), "\n")
@@ -26,5 +27,5 @@ func ChangelogSection(content string, v Version) (body string, ok bool) {
 	}
 	body = strings.TrimSpace(strings.Join(lines[start:end], "\n"))
 	body = strings.TrimSpace(strings.TrimSuffix(body, "---"))
-	return body, true
+	return body, body != ""
 }

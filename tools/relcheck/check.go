@@ -9,7 +9,7 @@ import (
 type Facts struct {
 	Published        []Version // versions already published on main
 	ChangeExists     bool      // ChangeBranch: openspec/changes/<change>/ exists, archived or not
-	ChangelogSection bool      // ReleaseBranch: CHANGELOG.md has a "## [X.Y.0]" section
+	ChangelogSection bool      // ReleaseBranch: CHANGELOG.md has a non-empty "## [X.Y.0]" section
 }
 
 // CheckPR validates a pull request against ADR 0002. It returns the version
@@ -35,7 +35,7 @@ func CheckPR(b Branch, t Title, f Facts) (*Version, []error) {
 			fail("a release/ branch needs chore(release), not %s(%s)", t.Type, t.Scope)
 		}
 		if !f.ChangelogSection {
-			fail("CHANGELOG.md has no \"## [%s]\" section", strings.TrimPrefix(b.Release.String(), "v"))
+			fail("CHANGELOG.md has no \"## [%s]\" section with release notes", strings.TrimPrefix(b.Release.String(), "v"))
 		}
 	case PlainBranch:
 		if t.Type != b.Prefix {

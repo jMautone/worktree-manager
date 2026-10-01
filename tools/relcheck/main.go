@@ -174,7 +174,7 @@ func runNotes(args []string, stdout io.Writer) error {
 	}
 	body, ok := ChangelogSection(content, v)
 	if !ok {
-		return fmt.Errorf("CHANGELOG.md has no \"## [%s]\" section", strings.TrimPrefix(v.String(), "v"))
+		return fmt.Errorf("CHANGELOG.md has no \"## [%s]\" section with release notes", strings.TrimPrefix(v.String(), "v"))
 	}
 	fmt.Fprintln(stdout, body)
 	return nil

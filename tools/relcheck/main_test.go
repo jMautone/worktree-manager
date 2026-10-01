@@ -175,3 +175,14 @@ func TestRunNotes(t *testing.T) {
 		t.Errorf("missing section: got %d, want 1", code)
 	}
 }
+
+func TestRunPRReleaseRejectsEmptyChangelogSection(t *testing.T) {
+	dir := newRepo(t, "feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)")
+	// [0.1.0] added above [Unreleased] instead of renaming it: no notes.
+	writeFile(t, filepath.Join(dir, "CHANGELOG.md"), "# Changelog\n\n## [0.1.0] — 2026-10-15\n\n## [Unreleased]\n\n- `wt list`.\n")
+
+	code, _, stderr := runT("pr", "--root", dir, "--base", "main", "--branch", "release/v0.1.0", "--title", "chore(release): close M1 [v0.1.0]")
+	if code != 1 || !strings.Contains(stderr, `no "## [0.1.0]" section`) {
+		t.Errorf("got %d, %q", code, stderr)
+	}
+}

@@ -56,6 +56,19 @@ func TestChangelogSection(t *testing.T) {
 	}
 }
 
+func TestChangelogSectionRejectsEmptySections(t *testing.T) {
+	// A final published with this file would get blank release notes.
+	for _, content := range []string{
+		"# Changelog\n\n## [0.1.0] — 2026-10-15\n\n## [Unreleased]\n\n- Something.\n",
+		"# Changelog\n\n## [0.1.0] — 2026-10-15\n\n---\n\n## PowerShell 0.9.0\n",
+		"# Changelog\n\n## [0.1.0]",
+	} {
+		if body, ok := ChangelogSection(content, Version{Minor: 1}); ok {
+			t.Errorf("ChangelogSection(%q) = %q, true; want false for an empty section", content, body)
+		}
+	}
+}
+
 func TestChangelogSectionIgnoresLookAlikeHeadings(t *testing.T) {
 	lookAlikes := "# Changelog\n\n## [0.1.01] — not 0.1.0\n\n- wrong.\n\n## [0.1.0-alpha.1]\n\n- wrong too.\n"
 	if body, ok := ChangelogSection(lookAlikes, Version{Minor: 1}); ok {
