@@ -22,11 +22,19 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
   stay language-agnostic.
 - Release pipeline: every merged change publishes a GitHub pre-release with
   binaries for macOS, Windows and Linux, plus `checksums.txt`.
+- `wt list`: one table with every worktree of the current repository, current
+  (`@`) and main (`^`) marks and a `STATE` column; `--json` uses `wt.list.v1`.
+- `wt config path|list|get`: layered configuration (defaults < user file <
+  `.wt.toml` < `WT_*`), with an allowlist for the repository file.
+- The CLI contract: documented exit codes 0–8, strict validation of commands
+  and flags, `wt:`/`hint:` errors or `wt.error.v1` with `--json`, and the
+  global flags `--json`, `--dry-run`, `-C` and `--no-color`.
+- `wt version`, which works even when the configuration is broken.
 
 ### Changed
 
-- Nothing works yet. `main` has no usable commands; the stable line is
-  `powershell/v0.9.x`.
+- `main` has read-only commands only (`list`, `config`, `version`); the stable
+  line is still `powershell/v0.9.x`.
 - The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`
   and the branch `v0.9.x` is now `powershell/v0.9.x`.
 
