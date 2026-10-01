@@ -164,11 +164,11 @@ El orden importa: la fase 3 exige un check que tiene que existir antes en `main`
    1. mergear los PR de Dependabot abiertos (#4, #5), que ya cumplen la convención y tocan `ci.yml`;
    2. crear `powershell-v0.9.0` y `powershell/v0.9.x`;
    3. borrar `v0.9.0`, `v0.9.x`, `v1/bootstrap` y `chore/dependabot-config`;
-   4. renombrar `v1/walking-skeleton` → `v0.1/walking-skeleton` con la API de rename, que mantiene el PR #3;
+   4. renombrar `v1/walking-skeleton` → `v0.1/walking-skeleton` con la API de rename. GitHub cierra el PR cuya rama head se renombra, así que el #3 quedó cerrado y walking-skeleton sigue en un PR nuevo desde `v0.1/walking-skeleton`;
    5. ajustar rulesets (sin `pr-conventions` todavía) y settings.
 2. **PR `ci/release-conventions`**, que no publica: esta ADR, `CONTRIBUTING.md`, `tools/relcheck/`, workflows, `.goreleaser.yaml`, plantilla de PR, `retract`, y los ajustes de `README.md`, `CHANGELOG.md`, `product.md` §7 y `openspec/config.yaml`. Una nota al principio de 0000 y 0001 apunta acá, sin reescribirlas.
 3. **Activar el candado**: `pr-conventions` como check requerido, con la rama al día.
-4. **PR #3 → `v0.1.0-alpha.1`**: actualizar con `main` (merge, sin force-push; el squash lo aplana), sus líneas bajo `[Unreleased]`, título `feat(walking-skeleton): add wt list, wt config and CLI contract [v0.1.0-alpha.1]`, squash. Se verifica que el Release sea pre-release, que tenga los 5 assets más `checksums.txt`, y que `git-wt version` del binario descargado diga `wt 0.1.0-alpha.1 (…)`.
+4. **walking-skeleton → `v0.1.0-alpha.1`** (PR nuevo, reemplaza al #3): actualizar con `main` (merge, sin force-push; el squash lo aplana), sus líneas bajo `[Unreleased]`, título `feat(walking-skeleton): add wt list, wt config and CLI contract [v0.1.0-alpha.1]`, squash. Se verifica que el Release sea pre-release, que tenga los 5 assets más `checksums.txt`, y que `git-wt version` del binario descargado diga `wt 0.1.0-alpha.1 (…)`.
 
 El design archivado de `walking-skeleton` menciona `v0.9.x`; se deja como está, porque es historia.
 
