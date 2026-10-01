@@ -288,7 +288,7 @@ func TestShellFunction(t *testing.T) {
 		// Exit code.
 		mustMark(t, r, "lsit", "2", e.feat)
 		// Variable not left set.
-		if !strings.Contains(r.stdout, "@@ var=unset\n") {
+		if !strings.Contains(strings.ReplaceAll(r.stdout, "\r\n", "\n"), "@@ var=unset\n") {
 			t.Errorf("WT_DIRECTIVE_CD_FILE is set after wt returns:\n%s", r.stdout)
 		}
 		// No file left behind.
@@ -508,8 +508,13 @@ func completionScript(t *testing.T, d dialect, line string) string {
 			// bash-completion 1.x returns early when the shell is not
 			// interactive, which it tells by PS1.
 			`PS1='$ '`,
-			"source "+quote(bc),
+			// The package also loads every completion installed on the
+			// machine, and some fail in bash 3.2: not ours to report.
+			"source "+quote(bc)+" 2>/dev/null",
 			d.load,
+			// compopt only works while readline runs a completion
+			// function, and the test calls __start_wt directly.
+			`[[ $(type -t compopt) == builtin ]] && compopt() { :; }`,
 			"COMP_LINE="+quote(line)+"; COMP_POINT=${#COMP_LINE}; COMP_TYPE=9",
 			"read -ra COMP_WORDS <<< \"$COMP_LINE\"",
 			`[[ $COMP_LINE == *' ' ]] && COMP_WORDS+=('')`,
