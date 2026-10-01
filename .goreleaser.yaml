@@ -42,7 +42,9 @@ checksum:
 changelog:
   use: git
   sort: asc
-  abbrev: -1
+  # One line per squash title, without the commit hash: the title already ends
+  # in (#N), which links to the pull request.
+  format: "{{ .Message }}"
   groups:
     - title: Features
       regexp: '^feat(\([^)]*\))?!?:'
