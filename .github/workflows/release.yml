@@ -17,9 +17,9 @@ permissions:
 env:
   GO_VERSION: "1.27"
 
-concurrency:
-  group: release
-  cancel-in-progress: false
+# No concurrency group on purpose: GitHub keeps one pending run per group and
+# cancels the older one, which would silently drop a release. Each run tags
+# and publishes its own commit, so runs for different commits are independent.
 
 jobs:
   release:
