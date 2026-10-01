@@ -157,6 +157,17 @@ func TestRunMerge(t *testing.T) {
 	}
 }
 
+func TestRunMergeFinalWithChangelog(t *testing.T) {
+	dir := newRepo(t,
+		"feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)",
+		"chore(release): close M1 [v0.1.0] (#9)")
+	writeFile(t, filepath.Join(dir, "CHANGELOG.md"), "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] — 2026-10-15\n\n- `wt list`.\n")
+
+	if code, stdout, stderr := runT("merge", "--root", dir); code != 0 || stdout != "v0.1.0\n" {
+		t.Errorf("got %d, %q, %q", code, stdout, stderr)
+	}
+}
+
 func TestRunMergeIsIdempotentAfterTagging(t *testing.T) {
 	dir := newRepo(t, "feat(walking-skeleton): add wt list [v0.1.0-alpha.1] (#3)")
 	gitT(t, dir, "tag", "-a", "v0.1.0-alpha.1", "-m", "v0.1.0-alpha.1")
