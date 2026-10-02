@@ -34,7 +34,7 @@ Los tests de fish y pwsh corren en macOS solo si están instalados (`brew instal
 
 ## 5. Verificación manual, docs e integración
 
-- [ ] 5.1 Verificar a mano en macOS, en una zsh interactiva con el script en `~/.zshrc`: `wt cd <TAB>` ofrece los nombres, `wt list` mantiene el color a través de la función, `wt cd -` vuelve, y anotar el resultado en el PR
+- [x] 5.1 Verificar a mano en macOS, en una zsh interactiva con el script en `~/.zshrc`: `wt cd <TAB>` ofrece los nombres, `wt list` mantiene el color a través de la función, `wt cd -` vuelve, y anotar el resultado en el PR
 - [ ] 5.2 **[Windows]** Verificar a mano en Windows Terminal con PowerShell 7.4: `wt list` con color a través de la función (el binario ve una TTY), `wt cd` mueve la shell, TAB completa nombres, y `wt.exe` sigue abriendo Windows Terminal; si la salida pierde la TTY, aplicar el plan B de Riesgos y repetir; anotar el resultado en el PR
 - [x] 5.3 Documentar la instalación por shell en `README.md` (sección "Installing") y actualizar la fila de `shell-integration` en `docs/design/product.md` §7 (`wt cd <name>|^|@|-`, completions); verificar que las líneas del README coinciden con las de `wt shell init --help`
 - [x] 5.4 Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` y la cross-compilación de los 5 targets; verificar sin salida de gofmt ni fallos
