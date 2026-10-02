@@ -41,11 +41,36 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 - The protocol between the function and the binary: the environment
   variables `WT_DIRECTIVE_CD_FILE` and `WT_PREVIOUS_DIR`, which `wt` does not
   pass to the processes it starts.
+- `wt create <name>`: creates a worktree of the current repository on a new
+  branch, at the path `worktree_path` dictates, and moves the shell into it.
+  The branch is `branch_prefix` followed by `<name>`, or `-b <branch>`; it
+  starts at `--base`, `default_base` or the repository's default branch, and
+  has no upstream. A branch or a path that already exists is exit 5. Shell
+  completion offers branches for `--base`; `--json` uses `wt.create.v1`, also
+  with `--dry-run`.
+- `wt create -x <cmd>` runs a command in the new worktree, in the foreground,
+  with `sh -c` on macOS and Linux and `cmd.exe` on Windows, and exits with its
+  exit code. `--cd` and `--no-cd` override `create_cd` for one run.
+- Path templates: `{repo}`, `{repo_parent}`, `{repo_path}`, `{name}` and
+  `{branch}`, with the filters `sanitize` (the same valid directory name on
+  every OS) and `lower`. An invalid template in `worktree_path` is invalid
+  configuration (exit 1).
+- Configuration keys `branch_prefix`, `fetch_before_create` (fetch the
+  remote of a `<remote>/<branch>` base before creating) and `create_cd`, which
+  `.wt.toml` may not set. Boolean keys read `true`, `false`, `1` or `0` from
+  `WT_*`.
 
 ### Changed
 
-- `main` has read-only commands only (`list`, `cd`, `config`, `shell init`,
-  `version`); the stable line is still the PowerShell tag `powershell-v0.9.0`.
+- `main` creates worktrees but cannot remove them yet (`remove-worktree` is the
+  next change); the stable line is still the PowerShell tag
+  `powershell-v0.9.0`.
+- The default `worktree_path` is `{repo_parent}/{repo}.worktrees/{name|sanitize}`
+  (it was `{branch|sanitize}`), so that `wt cd <name>` finds what `wt create`
+  made whatever `-b` or `branch_prefix` chose. The key is now validated as a
+  template.
+- Exit codes: once a command given with `-x` starts, its exit code replaces
+  `wt`'s own, unchanged.
 - The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`,
   and the `v0.9.x` branch was removed (the tag points at the same commit).
 

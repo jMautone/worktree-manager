@@ -169,6 +169,54 @@ func (s *Sandbox) InitBare(dir string) {
 	s.Git(s.Root, "clone", "-q", "--bare", src, dir)
 }
 
+// InitRemote creates a bare repository at dir with one commit on main, to
+// serve as origin for Clone.
+func (s *Sandbox) InitRemote(dir string) {
+	s.t.Helper()
+	s.InitBare(dir)
+}
+
+// Clone clones remote into dir. The clone has origin and origin/HEAD.
+func (s *Sandbox) Clone(remote, dir string) {
+	s.t.Helper()
+	s.Git(s.Root, "clone", "-q", remote, dir)
+}
+
+// Commit adds an empty commit in dir and returns its full id.
+func (s *Sandbox) Commit(dir, msg string) string {
+	s.t.Helper()
+	s.Git(dir, "commit", "-q", "--allow-empty", "-m", msg)
+	return s.Git(dir, "rev-parse", "HEAD")
+}
+
+// Push pushes from dir with args, as in Push(clone, "origin", "HEAD:main").
+func (s *Sandbox) Push(dir string, args ...string) {
+	s.t.Helper()
+	s.Git(dir, append([]string{"push", "-q"}, args...)...)
+}
+
+// PushFromAnotherClone advances remote as someone else would: it clones it
+// into a fresh directory, commits there, and pushes HEAD to branch. It
+// returns the id of the commit pushed.
+func (s *Sandbox) PushFromAnotherClone(remote, branch string) string {
+	s.t.Helper()
+	other, err := os.MkdirTemp(s.Root, "other-clone-")
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	s.Clone(remote, other)
+	id := s.Commit(other, "pushed by someone else")
+	s.Push(other, "origin", "HEAD:refs/heads/"+branch)
+	return id
+}
+
+// BreakRemote points the remote name of repo to a directory that does not
+// exist, so fetching from it fails without touching the network.
+func (s *Sandbox) BreakRemote(repo, name string) {
+	s.t.Helper()
+	s.Git(repo, "remote", "set-url", name, s.Path("unreachable-remote"))
+}
+
 // AddWorktree adds a linked worktree at dir on a new branch.
 func (s *Sandbox) AddWorktree(repo, dir, branch string) {
 	s.t.Helper()

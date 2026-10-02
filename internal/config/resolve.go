@@ -73,6 +73,10 @@ func EnvLayer(reg Registry, getenv func(string) string) Layer {
 // Resolve computes the effective configuration. Precedence comes from each
 // layer's Source (default < user < repo < env), not from argument order.
 //
+// A value from the environment goes through the key's FromEnv, when it has
+// one, before Validate: WT_CREATE_CD=0 is a boolean, while create_cd = "0" in
+// a file is a string, and an error.
+//
 // An unknown key in a file, and a key the repository file may not set, are
 // ignored with a warning. A value of the wrong type fails with an error naming
 // the key and where it was set, even when a higher layer overrides it: a
@@ -107,7 +111,15 @@ func Resolve(reg Registry, layers ...Layer) (*Config, error) {
 				cfg.Warnings = append(cfg.Warnings, fmt.Sprintf("ignoring %q in %s: repository configuration may not set it", name, origin))
 				continue
 			}
-			v, err := k.Validate(layer.Values[name])
+			raw := layer.Values[name]
+			var err error
+			if s, ok := raw.(string); ok && layer.Source == SourceEnv && k.FromEnv != nil {
+				raw, err = k.FromEnv(s)
+			}
+			v := raw
+			if err == nil {
+				v, err = k.Validate(raw)
+			}
 			if err != nil {
 				return nil, fmt.Errorf("invalid value for %q in %s: %v", name, origin, err)
 			}

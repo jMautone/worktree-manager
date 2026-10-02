@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -65,6 +66,10 @@ func Run(ctx context.Context, env Env) int {
 	err := root.ExecuteContext(ctx)
 	if err == nil {
 		return ExitOK
+	}
+	var status *exitStatus
+	if errors.As(err, &status) {
+		return status.code
 	}
 	var e *Error
 	if !errors.As(err, &e) {
@@ -129,7 +134,7 @@ func (a *app) rootCommand() *cobra.Command {
 	root.Flags().BoolVar(&a.version, "version", false, "print the version")
 
 	root.SetHelpCommand(a.helpCommand())
-	root.AddCommand(a.listCommand(), a.cdCommand(), a.configCommand(), a.shellCommand(), a.versionCommand())
+	root.AddCommand(a.listCommand(), a.cdCommand(), a.createCommand(), a.configCommand(), a.shellCommand(), a.versionCommand())
 	return root
 }
 
@@ -137,11 +142,28 @@ func init() {
 	cobra.AddTemplateFunc("flagUsages", flagUsages)
 }
 
+// shortOnly matches a flag with only a short form as pflag renders it: -C
+// is registered with an empty long name ("-C, -- dir") and -x with one no
+// one can type ("-x, ---x cmd").
+var shortOnly = regexp.MustCompile(`-([A-Za-z]), --(?:-[A-Za-z])? `)
+
 // flagUsages renders a flag set for help. pflag has no flags without a long
-// name, so -C is registered with an empty one and would render as "-C, --";
-// the replacement keeps the width so the descriptions stay aligned.
+// name; the replacement drops the long form and keeps the width so the
+// descriptions stay aligned.
 func flagUsages(fs interface{ FlagUsages() string }) string {
-	return strings.Replace(fs.FlagUsages(), "-C, -- dir", "-C dir    ", 1)
+	usages := fs.FlagUsages()
+	var b strings.Builder
+	for _, line := range strings.SplitAfter(usages, "\n") {
+		if m := shortOnly.FindStringSubmatchIndex(line); m != nil {
+			start, end := m[0], m[1]
+			short := line[m[2]:m[3]]
+			rest := line[end:]
+			value, after, _ := strings.Cut(rest, " ")
+			line = line[:start] + "-" + short + " " + value + strings.Repeat(" ", end-start-3) + " " + after
+		}
+		b.WriteString(line)
+	}
+	return b.String()
 }
 
 func (a *app) helpCommand() *cobra.Command {
@@ -166,12 +188,14 @@ func (a *app) helpCommand() *cobra.Command {
 }
 
 // action adapts a command implementation so that every error it returns is
-// an *Error; anything else is an execution error (exit 1).
+// an *Error, or the *exitStatus of a -x command; anything else is an
+// execution error (exit 1).
 func action(f func(cmd *cobra.Command, args []string) error) func(*cobra.Command, []string) error {
 	return func(cmd *cobra.Command, args []string) error {
 		err := f(cmd, args)
 		var e *Error
-		if err != nil && !errors.As(err, &e) {
+		var status *exitStatus
+		if err != nil && !errors.As(err, &e) && !errors.As(err, &status) {
 			return &Error{Code: ExitError, Msg: err.Error()}
 		}
 		return err
