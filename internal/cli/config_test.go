@@ -9,7 +9,7 @@ import (
 	"github.com/jMautone/worktree-manager/internal/testutil"
 )
 
-const defaultWorktreePath = "{repo_parent}/{repo}.worktrees/{branch|sanitize}"
+const defaultWorktreePath = "{repo_parent}/{repo}.worktrees/{name|sanitize}"
 
 // configLine returns the line of `wt config list` for key.
 func configLine(t *testing.T, stdout, key string) []string {
@@ -134,7 +134,7 @@ func TestConfigListSources(t *testing.T) {
 	r.mustCode(t, 0)
 	doc := decodeOne(t, r.stdout)
 	keys, _ := doc["keys"].([]any)
-	if doc["schema"] != "wt.config.list.v1" || len(keys) != 2 {
+	if doc["schema"] != "wt.config.list.v1" || len(keys) != 5 {
 		t.Fatalf("document = %v", doc)
 	}
 	first, _ := keys[0].(map[string]any)
@@ -273,4 +273,123 @@ func TestLayerPrecedence(t *testing.T) {
 	if v, s := get(); v != "origin/main" || s != "user" {
 		t.Errorf("empty environment variable is unset: got %s from %s", v, s)
 	}
+}
+
+// Scenarios of "Configuration keys" and "Boolean values in the environment".
+func TestConfigDefaultsOfCreate(t *testing.T) {
+	h := newHarness(t)
+	if r := h.run("config", "get", "worktree_path"); r.stdout != defaultWorktreePath+"\n" {
+		t.Errorf("worktree_path = %q", r.stdout)
+	}
+	if r := h.run("config", "get", "create_cd"); r.stdout != "true\n" {
+		t.Errorf("create_cd = %q, want true", r.stdout)
+	}
+	r := h.run("config", "list")
+	r.mustCode(t, 0)
+	for key, value := range map[string]string{"branch_prefix": `""`, "fetch_before_create": "true", "create_cd": "true"} {
+		if f := configLine(t, r.stdout, key); len(f) != 3 || f[1] != value || f[2] != "default" {
+			t.Errorf("%s line = %q", key, f)
+		}
+	}
+}
+
+func TestConfigStringForABooleanKey(t *testing.T) {
+	h := newHarness(t)
+	file := h.userConfig("create_cd = \"false\"\n")
+	r := h.run("config", "list")
+	r.mustCode(t, 1)
+	if !strings.Contains(r.stderr, "create_cd") || !strings.Contains(r.stderr, file) {
+		t.Errorf("stderr %q does not name create_cd and %s", r.stderr, file)
+	}
+}
+
+func TestConfigRepositorySetsCreateCd(t *testing.T) {
+	h := newHarness(t)
+	h.cwd = h.repo()
+	h.sb.WriteFile(filepath.Join(h.cwd, ".wt.toml"), "create_cd = false\n")
+	r := h.run("config", "get", "create_cd")
+	r.mustCode(t, 0)
+	if r.stdout != "true\n" {
+		t.Errorf("create_cd = %q, want true", r.stdout)
+	}
+	if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "create_cd") || !strings.Contains(r.stderr, ".wt.toml") {
+		t.Errorf("stderr = %q, want a warning naming create_cd and .wt.toml", r.stderr)
+	}
+}
+
+func TestConfigBooleansFromTheEnvironment(t *testing.T) {
+	h := newHarness(t)
+
+	h.sb.Setenv("WT_CREATE_CD", "0")
+	if r := h.run("config", "get", "create_cd"); r.stdout != "false\n" {
+		t.Errorf("WT_CREATE_CD=0: %q, want false", r.stdout)
+	}
+	if f := configLine(t, h.run("config", "list").stdout, "create_cd"); len(f) != 3 || f[1] != "false" || f[2] != "env" {
+		t.Errorf("WT_CREATE_CD=0: list line %q", f)
+	}
+	h.sb.Setenv("WT_CREATE_CD", "")
+
+	h.sb.Setenv("WT_FETCH_BEFORE_CREATE", "FALSE")
+	if r := h.run("config", "get", "fetch_before_create"); r.stdout != "false\n" {
+		t.Errorf("WT_FETCH_BEFORE_CREATE=FALSE: %q, want false", r.stdout)
+	}
+	h.sb.Setenv("WT_FETCH_BEFORE_CREATE", "")
+
+	h.cwd = h.repo()
+	h.sb.Setenv("WT_CREATE_CD", "yes")
+	r := h.run("list")
+	r.mustCode(t, 1)
+	if !strings.Contains(r.stderr, "WT_CREATE_CD") {
+		t.Errorf("WT_CREATE_CD=yes: stderr %q does not name the variable", r.stderr)
+	}
+}
+
+func TestConfigBooleanAsJSON(t *testing.T) {
+	r := newHarness(t).run("config", "get", "create_cd", "--json")
+	r.mustCode(t, 0)
+	if v := decodeOne(t, r.stdout)["value"]; v != true {
+		t.Errorf("value = %#v, want the JSON boolean true", v)
+	}
+}
+
+// Scenarios "Unknown variable", "Unknown filter" and "Unclosed brace" of
+// path-templates: an invalid template is an invalid value.
+func TestConfigInvalidTemplate(t *testing.T) {
+	t.Run("unknown variable in the user file", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		file := h.userConfig("worktree_path = \"{repo_parent}/{nope}\"\n")
+		r := h.run("list")
+		r.mustCode(t, 1)
+		for _, want := range []string{"worktree_path", file, "nope"} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not name %q", r.stderr, want)
+			}
+		}
+	})
+	t.Run("unknown filter in .wt.toml", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		h.sb.WriteFile(filepath.Join(h.cwd, ".wt.toml"), "worktree_path = \"{repo_parent}/{name|upper}\"\n")
+		r := h.run("config", "list")
+		r.mustCode(t, 1)
+		for _, want := range []string{"worktree_path", ".wt.toml", "upper"} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not name %q", r.stderr, want)
+			}
+		}
+	})
+	t.Run("unclosed brace in the environment", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		h.sb.Setenv("WT_WORKTREE_PATH", "{repo_parent/x")
+		h.activate()
+		for _, args := range [][]string{{"list"}, {"config", "list"}, {"config", "get", "default_base"}, {"cd", "^"}, {"create", "feat"}} {
+			r := h.run(args...)
+			r.mustCode(t, 1)
+			if !strings.Contains(r.stderr, "WT_WORKTREE_PATH") {
+				t.Errorf("wt %v: stderr %q does not name WT_WORKTREE_PATH", args, r.stderr)
+			}
+		}
+	})
 }

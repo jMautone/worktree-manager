@@ -45,8 +45,11 @@ func assertValue(t *testing.T, cfg *Config, key string, value any, source Source
 func TestResolveDefaults(t *testing.T) {
 	cfg := mustResolve(t, testRegistry())
 	assertValue(t, cfg, "default_base", "", SourceDefault)
-	assertValue(t, cfg, "worktree_path", "{repo_parent}/{repo}.worktrees/{branch|sanitize}", SourceDefault)
-	if len(cfg.Values) != 3 || cfg.Values[0].Key != "default_base" || cfg.Values[2].Key != "secret_cmd" {
+	assertValue(t, cfg, "worktree_path", "{repo_parent}/{repo}.worktrees/{name|sanitize}", SourceDefault)
+	assertValue(t, cfg, "branch_prefix", "", SourceDefault)
+	assertValue(t, cfg, "fetch_before_create", true, SourceDefault)
+	assertValue(t, cfg, "create_cd", true, SourceDefault)
+	if len(cfg.Values) != 6 || cfg.Values[0].Key != "default_base" || cfg.Values[5].Key != "secret_cmd" {
 		t.Errorf("values not in registry order: %+v", cfg.Values)
 	}
 	if len(cfg.Warnings) != 0 {
@@ -156,5 +159,67 @@ func TestResolveInvalidValueInEnvNamesTheVariable(t *testing.T) {
 	_, err := Resolve(reg, EnvLayer(reg, env(map[string]string{"WT_N": "x"})))
 	if err == nil || !strings.Contains(err.Error(), "WT_N") || !strings.Contains(err.Error(), `"n"`) {
 		t.Errorf("error = %v, want one naming WT_N and the key", err)
+	}
+}
+
+func TestResolveBooleansFromTheEnvironment(t *testing.T) {
+	reg := Keys()
+	for _, tc := range []struct {
+		value string
+		want  bool
+	}{
+		{"0", false}, {"1", true}, {"true", true}, {"FALSE", false},
+	} {
+		cfg := mustResolve(t, reg, EnvLayer(reg, env(map[string]string{"WT_CREATE_CD": tc.value})))
+		assertValue(t, cfg, "create_cd", tc.want, SourceEnv)
+	}
+
+	_, err := Resolve(reg, EnvLayer(reg, env(map[string]string{"WT_CREATE_CD": "yes"})))
+	if err == nil || !strings.Contains(err.Error(), "WT_CREATE_CD") || !strings.Contains(err.Error(), `"yes"`) {
+		t.Errorf("WT_CREATE_CD=yes: error %v, want one naming the variable and the value", err)
+	}
+}
+
+// Only the environment is converted: in a file, a boolean key takes a TOML
+// boolean.
+func TestResolveStringForABooleanInAFile(t *testing.T) {
+	user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{"create_cd": "false"}}
+	_, err := Resolve(Keys(), user)
+	if err == nil || !strings.Contains(err.Error(), `"create_cd"`) || !strings.Contains(err.Error(), "/u/config.toml") {
+		t.Errorf("error %v, want one naming create_cd and the file", err)
+	}
+
+	user.Values["create_cd"] = false
+	assertValue(t, mustResolve(t, Keys(), user), "create_cd", false, SourceUser)
+}
+
+func TestResolveRepositoryMayNotSetCreateCd(t *testing.T) {
+	repo := Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{"create_cd": false, "fetch_before_create": false}}
+	cfg := mustResolve(t, Keys(), repo)
+	assertValue(t, cfg, "create_cd", true, SourceDefault)
+	assertValue(t, cfg, "fetch_before_create", false, SourceRepo)
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"create_cd"`) || !strings.Contains(cfg.Warnings[0], ".wt.toml") {
+		t.Errorf("warnings = %q, want one naming create_cd and .wt.toml", cfg.Warnings)
+	}
+}
+
+func TestResolveInvalidTemplateNamesKeyOriginAndPart(t *testing.T) {
+	for _, tc := range []struct {
+		layer Layer
+		want  []string
+	}{
+		{Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{"worktree_path": "{repo_parent}/{nope}"}},
+			[]string{`"worktree_path"`, "/u/config.toml", "nope"}},
+		{Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{"worktree_path": "{repo_parent}/{name|upper}"}},
+			[]string{`"worktree_path"`, "/r/.wt.toml", "upper"}},
+		{EnvLayer(Keys(), env(map[string]string{"WT_WORKTREE_PATH": "{repo_parent/x"})),
+			[]string{`"worktree_path"`, "WT_WORKTREE_PATH", "{repo_parent/x"}},
+	} {
+		_, err := Resolve(Keys(), tc.layer)
+		for _, w := range tc.want {
+			if err == nil || !strings.Contains(err.Error(), w) {
+				t.Errorf("error %v does not name %q", err, w)
+			}
+		}
 	}
 }

@@ -62,7 +62,7 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 
 | Comando | Qué hace |
 |---|---|
-| `wt create <name> [-b <branch>] [--base <ref>] [-x <cmd>] [--no-cd] [--detach]` | Crea el worktree, corre `post-create`, te deja parado adentro. Con `-x` corre el comando ahí, en foreground. |
+| `wt create <name> [-b <branch>] [--base <ref>] [-x <cmd>] [--cd\|--no-cd] [--detach]` | Crea el worktree sobre una rama nueva, corre `post-create`, te deja parado adentro. Con `-x` corre el comando ahí, en foreground. `--cd`/`--no-cd` pisan `create_cd`. `--detach` (lanzar en un tab nuevo) llega con los launchers, en M5. |
 | `wt cd [<name>\|-\|^\|@]` | Salta a un worktree, a un repo, al anterior (`-`), al principal (`^`) o al actual (`@`). Sin argumento, abre el picker. |
 | `wt list [--full] [--all-repos] [--json]` | Una sola tabla con todo el estado. Reemplaza al `status` de v0.9. |
 | `wt remove <name> [--delete-branch] [--force]` | Borra el worktree, corre `pre-remove`/`post-remove`. |
@@ -133,13 +133,13 @@ Capas, de menor a mayor precedencia: **defaults → usuario → repo (lista blan
 ```
 
 ```toml
-worktree_path       = "{repo_parent}/{repo}.worktrees/{branch|sanitize}"
+worktree_path       = "{repo_parent}/{repo}.worktrees/{name|sanitize}"
 repos_root          = ["~/Repos", "~/Documents/GIT"]
 repos_depth         = 2
 default_base        = "origin/main"
 branch_prefix       = ""
 fetch_before_create = true
-create_cd           = true          # create termina parado en el worktree
+create_cd           = true          # create termina parado en el worktree (no va en .wt.toml)
 agent               = "copilot"     # lo que corre -x sin argumento
 
 [launchers.editor]
@@ -259,7 +259,7 @@ Los cuatro cortes de M1 se abren ahora. M2 en adelante se desglosa cuando le toc
 |---|---|---|
 | `walking-skeleton` | `wt list` del repo actual. Contrato de CLI, exit codes, `--json`, config mínima, porcelain, CI en 3 OSes. | Prueba el vertical completo end-to-end antes de acumular superficie. |
 | `shell-integration` | Archivo-directiva, `wt shell init` para 4 shells con completions, `wt cd <name>\|^\|@\|-`. | Es el mecanismo con más riesgo multiplataforma del proyecto. Lo querés roto en la semana 2, no en el mes 5. |
-| `create-worktree` | Motor de plantillas con `sanitize`, `wt create` que te deja adentro, `-x` en foreground. | Sin `sanitize` no hay ruta para una rama con barra. |
+| `create-worktree` | Motor de plantillas con `sanitize` y `lower`, `wt create` sobre una rama nueva que te deja adentro, `-x` en foreground, `branch_prefix`, `fetch_before_create` y `create_cd`. | Sin `sanitize` no hay ruta para una rama con barra. |
 | `remove-worktree` | `remove`, `lock`/`unlock`, `prune`. | Cierra el ciclo mínimo: ya podés dejar v0.9 en macOS. |
 
 ### Definición de "listo" por milestone
@@ -296,7 +296,7 @@ Cada milestone sale como un minor, y cada change mergeado como una pre-release d
 |---|---|---|---|
 | D1 | Formato de config: TOML o JSON | **TOML**: admite comentarios, y una herramienta con config rica los necesita. v0.9 usaba JSON, pero en greenfield no hay compatibilidad que preservar. | `config-layers` (M1) |
 | D2 | ¿`wt list` muestra todos los repos por defecto, o solo el actual? | Solo el actual, con `--all-repos` para el workspace. Menos sorpresa y más rápido. | `list-worktrees` (M1) |
-| D3 | Nombre del directorio de worktrees por defecto | `{repo_parent}/{repo}.worktrees/{branch\|sanitize}`, igual que v0.9. Funciona y ya tenés la memoria muscular. | `path-templates` (M1) |
+| D3 | Nombre del directorio de worktrees por defecto | `{repo_parent}/{repo}.worktrees/{name\|sanitize}`: el layout de v0.9 (que usaba `{name}`), más `sanitize`. Con `{name}` y no `{branch}`, `wt cd <name>` encuentra lo que creaste aunque uses `-b` o `branch_prefix`. Decidido en `create-worktree`. | `path-templates` (M1) |
 | D4 | ¿`wt` gana sobre `wt.exe` en Windows, o se instala como `wtm`? | La función de shell gana; es lo que ya pasa en v0.9 sin fricción. Costo residual: tipear `wt.exe` para Windows Terminal. | `shell-integration` (M1) |
 
 ## 10. Riesgos
