@@ -258,7 +258,7 @@ Los cuatro cortes de M1 se abren ahora. M2 en adelante se desglosa cuando le toc
 | Change | Entrega | Por qué en ese orden |
 |---|---|---|
 | `walking-skeleton` | `wt list` del repo actual. Contrato de CLI, exit codes, `--json`, config mínima, porcelain, CI en 3 OSes. | Prueba el vertical completo end-to-end antes de acumular superficie. |
-| `shell-integration` | Archivo-directiva, `wt shell init` para 4 shells, `wt cd <name>`. | Es el mecanismo con más riesgo multiplataforma del proyecto. Lo querés roto en la semana 2, no en el mes 5. |
+| `shell-integration` | Archivo-directiva, `wt shell init` para 4 shells con completions, `wt cd <name>\|^\|@\|-`. | Es el mecanismo con más riesgo multiplataforma del proyecto. Lo querés roto en la semana 2, no en el mes 5. |
 | `create-worktree` | Motor de plantillas con `sanitize`, `wt create` que te deja adentro, `-x` en foreground. | Sin `sanitize` no hay ruta para una rama con barra. |
 | `remove-worktree` | `remove`, `lock`/`unlock`, `prune`. | Cierra el ciclo mínimo: ya podés dejar v0.9 en macOS. |
 

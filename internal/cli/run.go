@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/jMautone/worktree-manager/internal/git"
+	"github.com/jMautone/worktree-manager/internal/shell"
 	"github.com/jMautone/worktree-manager/internal/term"
 )
 
@@ -23,7 +24,7 @@ type Env struct {
 	Stdin          io.Reader
 	Stdout, Stderr io.Writer
 	Getenv         func(string) string
-	Environ        []string // environment for child processes (git)
+	Environ        []string // environment for child processes (git); Run removes the shell protocol variables
 	Getwd          func() (string, error)
 	GOOS           string // runtime.GOOS in production
 	// IsTTY reports whether stdout is a terminal that renders ANSI sequences
@@ -47,12 +48,19 @@ type app struct {
 // Run executes the command line in env.Args and returns the exit code. It is
 // the only place that prints errors and chooses the exit code.
 func Run(ctx context.Context, env Env) int {
-	a := &app{env: env, git: git.Exec{Env: env.Environ}}
+	a := &app{env: env, git: git.Exec{Env: shell.ChildEnviron(env.Environ, env.GOOS)}}
 	root := a.rootCommand()
 	root.SetArgs(env.Args)
 	root.SetIn(env.Stdin)
 	root.SetOut(env.Stdout)
 	root.SetErr(env.Stderr)
+	if len(env.Args) > 0 && (env.Args[0] == cobra.ShellCompRequestCmd || env.Args[0] == cobra.ShellCompNoDescRequestCmd) {
+		// A completion request never writes to the terminal. The completion
+		// scripts ignore stderr, but in PowerShell the request goes through
+		// the wt function, whose stderr reaches the terminal: cobra's
+		// "Completion ended with directive" line would print on every TAB.
+		root.SetErr(io.Discard)
+	}
 
 	err := root.ExecuteContext(ctx)
 	if err == nil {
@@ -121,7 +129,7 @@ func (a *app) rootCommand() *cobra.Command {
 	root.Flags().BoolVar(&a.version, "version", false, "print the version")
 
 	root.SetHelpCommand(a.helpCommand())
-	root.AddCommand(a.listCommand(), a.configCommand(), a.versionCommand())
+	root.AddCommand(a.listCommand(), a.cdCommand(), a.configCommand(), a.shellCommand(), a.versionCommand())
 	return root
 }
 

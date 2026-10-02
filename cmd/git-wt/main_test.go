@@ -34,16 +34,44 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 	binDir = dir
+	if err := buildFakes(dir); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)
 }
 
 func exeName() string {
+	return exe("git-wt")
+}
+
+func exe(name string) string {
 	if runtime.GOOS == "windows" {
-		return "git-wt.exe"
+		return name + ".exe"
 	}
-	return "git-wt"
+	return name
+}
+
+// Directories with testdata/fakeprog built as git and as wt, to put first on
+// the PATH; realGit is the git they stand in front of.
+var fakeGitDir, fakeWtDir, realGit string
+
+func buildFakes(dir string) error {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		return err
+	}
+	realGit = git
+	fakeGitDir, fakeWtDir = filepath.Join(dir, "fakegit"), filepath.Join(dir, "fakewt")
+	for _, out := range []string{filepath.Join(fakeGitDir, exe("git")), filepath.Join(fakeWtDir, exe("wt"))} {
+		build := exec.Command("go", "build", "-o", out, "./testdata/fakeprog")
+		if b, err := build.CombinedOutput(); err != nil {
+			return fmt.Errorf("building %s: %v\n%s", out, err, b)
+		}
+	}
+	return nil
 }
 
 type result struct {

@@ -22,6 +22,8 @@ type harness struct {
 	sb  *testutil.Sandbox
 	cwd string
 	tty bool
+	// goos is the GOOS wt runs with; "" is the test's own.
+	goos string
 }
 
 type result struct {
@@ -41,6 +43,10 @@ func newHarness(t *testing.T) *harness {
 
 func (h *harness) run(args ...string) result {
 	h.t.Helper()
+	goos := h.goos
+	if goos == "" {
+		goos = runtime.GOOS
+	}
 	var stdout, stderr bytes.Buffer
 	code := cli.Run(context.Background(), cli.Env{
 		Args:    args,
@@ -50,7 +56,7 @@ func (h *harness) run(args ...string) result {
 		Getenv:  h.sb.Getenv,
 		Environ: h.sb.Environ(),
 		Getwd:   func() (string, error) { return h.cwd, nil },
-		GOOS:    runtime.GOOS,
+		GOOS:    goos,
 		IsTTY:   h.tty,
 		Version: "1.2.3-test",
 	})

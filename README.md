@@ -76,11 +76,30 @@ Download the archive for your platform from
 `git-wt` on your `PATH`. With Go installed, name the version explicitly:
 
 ```sh
-go install github.com/jMautone/worktree-manager/cmd/git-wt@v0.1.0-alpha.2
+go install github.com/jMautone/worktree-manager/cmd/git-wt@v0.1.0-alpha.3
 ```
 
 `@latest` does not work until `1.0.0`: the Go module proxy still serves the
 PowerShell `v0.9.0`, which has no Go code.
+
+### Shell integration
+
+The `wt` you type is a shell function that runs `git-wt`: a binary cannot
+change the working directory of its shell, so `wt cd` needs the function. Add
+the line for your shell to its startup file:
+
+- **zsh**, in `~/.zshrc`: `eval "$(git-wt shell init zsh)"`
+- **bash**, in `~/.bashrc`: `eval "$(git-wt shell init bash)"`
+- **fish**, in `~/.config/fish/config.fish`: `git-wt shell init fish | source`
+- **PowerShell 7**, in `$PROFILE`: `Invoke-Expression (& git-wt shell init pwsh | Out-String)`
+
+`wt shell init --help` shows the same lines. They also register completions:
+in zsh, `compinit` must run before the line; in bash, the `bash-completion`
+package must be loaded before it.
+
+Supported: zsh 5.8, bash 3.2, fish 3.3 and PowerShell 7.4, or later. On
+Windows only PowerShell is supported, and the function hides `wt.exe`
+(Windows Terminal): type `wt.exe` to open it.
 
 ## Building
 
