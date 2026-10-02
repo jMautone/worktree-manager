@@ -24,7 +24,7 @@
 ## 5. Ejecución de `-x` (`internal/process`)
 
 - [x] 5.1 Implementar `process.Command` y `process.Run` con `process_unix.go` (`/bin/sh -c`, 128 + señal, `signal.Notify` mientras corre) (D6); verificar con tests de `Command` para unix y windows (argv, `CmdLine` con `/d /s /c`, `ComSpec` y su fallback) y, en macOS y Linux, de `Run`: exit 3, `echo a && echo b`, `kill -INT $$` → 130, directorio de trabajo, entorno recibido tal cual, y error (no exit code) cuando el directorio no existe
-- [ ] 5.2 **[Windows]** Implementar `process_windows.go` (`SysProcAttr.CmdLine`, exit code tal cual) (D6); verificar en el CI de `windows-latest` con tests de `Run`: `exit /b 3`, `echo a& echo b` y un argumento con comillas internas (`echo "a b"`)
+- [x] 5.2 **[Windows]** Implementar `process_windows.go` (`SysProcAttr.CmdLine`, exit code tal cual) (D6); verificar en el CI de `windows-latest` con tests de `Run`: `exit /b 3`, `echo a& echo b` y un argumento con comillas internas (`echo "a b"`)
 
 ## 6. `wt create` (`create-worktree`)
 
@@ -42,7 +42,7 @@ Los tests de fish y pwsh corren en macOS solo si están instalados; si no, se ci
 
 - [x] 7.1 Probar "Interrupt while the command runs (macOS, Linux)" con el binario compilado en `TestMain`: SIGINT al pid de `git-wt` mientras `-x "sleep 1; exit 7"` corre; verificar que `git-wt` sale recién después del comando y con exit 7, en macOS y en el CI de Linux
 - [x] 7.2 Probar a través de la función, en zsh, bash, fish y pwsh: "Through the function", "Staying put", "The shell ends in the worktree" (`-x "exit 1"`: resultado 1 y la shell adentro) y "Protocol variables not passed" (`-x` registra su entorno en un archivo); verificar que pasan en macOS para zsh y bash, y en el CI para fish y pwsh
-- [ ] 7.3 **[Windows]** Correr en `windows-latest` los tests de 7.2 en pwsh y los escenarios de Windows in-process: "Default template (Windows)", "Reserved name without sanitize (Windows)", "Exit code (Windows)", "Interpreter operators (Windows)" y "Letter case differs (macOS, Windows)"; verificar en el CI de Windows
+- [x] 7.3 **[Windows]** Correr en `windows-latest` los tests de 7.2 en pwsh y los escenarios de Windows in-process: "Default template (Windows)", "Reserved name without sanitize (Windows)", "Exit code (Windows)", "Interpreter operators (Windows)" y "Letter case differs (macOS, Windows)"; verificar en el CI de Windows
 
 ## 8. Verificación manual, docs e integración
 
