@@ -82,7 +82,7 @@ Every other character, including letters outside ASCII and spaces that are not a
 - **THEN** the new worktree's path is `/src/repo.worktrees/feature-abc1`
 
 #### Scenario: Reserved name on every OS
-- **WHEN** with the default `worktree_path` the user runs `wt create nul`, on macOS, Windows or Linux
+- **WHEN** with the default `worktree_path` the user runs `wt create nul -b reserved`, on macOS, Windows or Linux
 - **THEN** the last component of the new worktree's path is `nul-`
 
 ### Requirement: lower filter

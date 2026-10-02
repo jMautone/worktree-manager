@@ -326,7 +326,9 @@ func TestCreatePaths(t *testing.T) {
 	}{
 		{"default template", "", []string{"feat"},
 			func(h *harness) string { return h.sb.Path("repo.worktrees", "feat") }},
-		{"reserved name on every OS", "", []string{"nul"},
+		// -b: on Windows git cannot create the branch nul, whose ref is
+		// a file named nul; the scenario is about the directory.
+		{"reserved name on every OS", "", []string{"nul", "-b", "reserved"},
 			func(h *harness) string { return h.sb.Path("repo.worktrees", "nul-") }},
 		{"filters applied in order", "{repo_parent}/{branch|sanitize|lower}", []string{"x", "-b", "Feature/ABC"},
 			func(h *harness) string { return h.sb.Path("feature-abc") }},
@@ -406,8 +408,18 @@ func TestCreateValidPathOnlyCheckedOnWindows(t *testing.T) {
 	if !strings.Contains(r.stderr, filepath.Base(filepath.Dir(want))) || !strings.Contains(r.stderr, "sanitize") {
 		t.Errorf("stderr = %q, want the path and sanitize", r.stderr)
 	}
-	if h.branchHead(repo, "nul") != "" || h.worktreeCount(repo) != 1 || exists(want) {
-		t.Error("something was created")
+	// Lstat cannot tell: on Windows, nul exists in every directory.
+	entries, err := os.ReadDir(filepath.Dir(want))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.EqualFold(e.Name(), "nul") {
+			t.Errorf("%s was created", want)
+		}
+	}
+	if h.branchHead(repo, "nul") != "" || h.worktreeCount(repo) != 1 {
+		t.Error("the branch or the worktree was created")
 	}
 }
 
