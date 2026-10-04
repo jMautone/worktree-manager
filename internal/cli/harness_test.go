@@ -24,6 +24,8 @@ type harness struct {
 	tty bool
 	// goos is the GOOS wt runs with; "" is the test's own.
 	goos string
+	// chdir is Env.Chdir; nil, as in most tests, does nothing.
+	chdir func(string) error
 }
 
 type result struct {
@@ -56,6 +58,7 @@ func (h *harness) run(args ...string) result {
 		Getenv:  h.sb.Getenv,
 		Environ: h.sb.Environ(),
 		Getwd:   func() (string, error) { return h.cwd, nil },
+		Chdir:   h.chdir,
 		GOOS:    goos,
 		IsTTY:   h.tty,
 		Version: "1.2.3-test",

@@ -175,3 +175,44 @@ func TestSandboxRemoteHelpers(t *testing.T) {
 		t.Errorf("fetch from the broken remote succeeded: %s", out)
 	}
 }
+
+func TestSandboxBranchHelpers(t *testing.T) {
+	sb := New(t)
+	origin := sb.Path("origin.git")
+	sb.InitRemote(origin)
+	clone := sb.Path("clone")
+	sb.Clone(origin, clone)
+
+	sb.Git(clone, "checkout", "-q", "-b", "feat")
+	tip := sb.Commit(clone, "feat work")
+	sb.Push(clone, "origin", "feat")
+	sb.SetUpstream(clone, "feat", "origin/feat")
+	if got := sb.Git(clone, "for-each-ref", "--format=%(upstream:short)", "refs/heads/feat"); got != "origin/feat" {
+		t.Errorf("upstream of feat = %q, want origin/feat", got)
+	}
+
+	sb.Git(clone, "checkout", "-q", "main")
+	squash := sb.SquashMerge(clone, "feat")
+	if got := sb.Git(clone, "rev-parse", "main"); got != squash || squash == tip {
+		t.Errorf("main = %q, squash commit %q, feat %q", got, squash, tip)
+	}
+	cmd := exec.Command("git", "merge-base", "--is-ancestor", tip, squash)
+	cmd.Dir = clone
+	cmd.Env = sb.Environ()
+	if err := cmd.Run(); err == nil {
+		t.Error("the squash commit has the branch's tip as an ancestor")
+	}
+}
+
+func TestSandboxReadOnlyDir(t *testing.T) {
+	sb := New(t)
+	dir := sb.Path("ro")
+	sb.WriteFile(filepath.Join(dir, "kept"), "")
+	sb.ReadOnlyDir(dir)
+	if err := os.WriteFile(filepath.Join(dir, "new"), nil, 0o644); err == nil {
+		t.Error("a file was created in the read-only directory")
+	}
+	if err := os.Remove(filepath.Join(dir, "kept")); err == nil {
+		t.Error("a file was deleted from the read-only directory")
+	}
+}

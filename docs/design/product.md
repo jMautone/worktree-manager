@@ -65,7 +65,7 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 | `wt create <name> [-b <branch>] [--base <ref>] [-x <cmd>] [--cd\|--no-cd] [--detach]` | Crea el worktree sobre una rama nueva, corre `post-create`, te deja parado adentro. Con `-x` corre el comando ahí, en foreground. `--cd`/`--no-cd` pisan `create_cd`. `--detach` (lanzar en un tab nuevo) llega con los launchers, en M5. |
 | `wt cd [<name>\|-\|^\|@]` | Salta a un worktree, a un repo, al anterior (`-`), al principal (`^`) o al actual (`@`). Sin argumento, abre el picker. |
 | `wt list [--full] [--all-repos] [--json]` | Una sola tabla con todo el estado. Reemplaza al `status` de v0.9. |
-| `wt remove <name> [--delete-branch] [--force]` | Borra el worktree, corre `pre-remove`/`post-remove`. |
+| `wt remove <name> [--keep-branch] [-D] [-f]` | Borra el worktree y, por defecto, su rama si está mergeada (en la base o en su upstream). `--keep-branch` la conserva; `-D` la borra aunque no lo esté; `-f` borra el worktree con archivos sin commitear. Los hooks `pre-remove`/`post-remove` llegan con `hooks`, en M3. |
 | `wt merge [<target>] [--squash] [--no-rebase] [--no-remove]` | Cierra el ciclo: commit pendiente → rebase → `pre-merge` → fast-forward → remove. |
 | `wt step commit\|squash\|rebase\|push [<target>]` | Corre un paso suelto del pipeline de `merge`, con sus mismos hooks. Para cuando querés el rebase sin mergear, o el squash sin borrar. |
 | `wt sync [<name>...] [--all]` | Rebase de uno o varios worktrees sobre su base. Nunca stashea; el conflicto se reporta y se sigue. |
