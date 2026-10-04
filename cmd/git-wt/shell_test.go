@@ -618,3 +618,45 @@ func TestShellZshWithoutCompinit(t *testing.T) {
 		mustMark(t, r, "cd", "0", e.feat)
 	})
 }
+
+// wt create through the function: the shell ends in the new worktree, also
+// when -x fails, and -x does not see the protocol variables.
+func TestShellCreate(t *testing.T) {
+	forEachShell(t, func(t *testing.T, d dialect) {
+		e := newShellEnv(t)
+		record := e.sb.Path("env.txt")
+		dump := "env > " + record
+		if runtime.GOOS == "windows" {
+			dump = "set > " + record
+		}
+		r := e.run(t, d, e.sub, lines(
+			d.load,
+			"wt create stay --no-cd", d.rep("stay"),
+			"wt create new", d.rep("new"),
+			"wt create fail -x "+quote("exit 1"), d.rep("fail"),
+			"wt create rec --no-cd -x "+quote(dump), d.rep("rec"),
+		))
+		// "Staying put".
+		mustMark(t, r, "stay", "0", e.sub)
+		if _, err := os.Stat(e.sb.Path("repo.worktrees", "stay")); err != nil {
+			t.Errorf("--no-cd did not create the worktree: %v", err)
+		}
+		// "Through the function".
+		mustMark(t, r, "new", "0", e.sb.Path("repo.worktrees", "new"))
+		// "The shell ends in the worktree".
+		mustMark(t, r, "fail", "1", e.sb.Path("repo.worktrees", "fail"))
+		// "Protocol variables not passed".
+		mustMark(t, r, "rec", "0", "")
+		b, err := os.ReadFile(record)
+		if err != nil {
+			t.Fatalf("-x did not record its environment: %v\nstderr:\n%s", err, r.stderr)
+		}
+		if env := strings.ToUpper(string(b)); strings.Contains(env, "WT_DIRECTIVE_CD_FILE") || strings.Contains(env, "WT_PREVIOUS_DIR") {
+			t.Errorf("-x saw the protocol variables:\n%s", b)
+		}
+		if strings.Contains(r.stderr, "shell integration is not active") {
+			t.Errorf("stderr = %q", r.stderr)
+		}
+		e.mustNoLeftovers(t, d)
+	})
+}

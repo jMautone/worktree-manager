@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -130,5 +131,47 @@ func TestComparableUsesNativeSeparators(t *testing.T) {
 	want := Comparable(t, filepath.Join(dir, "sub"))
 	if got != want {
 		t.Errorf("Comparable with forward slashes = %q, want %q", got, want)
+	}
+}
+
+func TestSandboxRemoteHelpers(t *testing.T) {
+	sb := New(t)
+	origin := sb.Path("origin.git")
+	sb.InitRemote(origin)
+	clone := sb.Path("clone")
+	sb.Clone(origin, clone)
+
+	if got := sb.Git(clone, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); got != "origin/main" {
+		t.Errorf("origin/HEAD = %q, want origin/main", got)
+	}
+
+	id := sb.Commit(clone, "local")
+	if got := sb.Git(clone, "rev-parse", "HEAD"); got != id || len(id) < 40 {
+		t.Errorf("Commit returned %q, HEAD is %q", id, got)
+	}
+	sb.Push(clone, "origin", "HEAD:refs/heads/topic")
+	if got := sb.Git(origin, "rev-parse", "refs/heads/topic"); got != id {
+		t.Errorf("origin topic = %q, want %q", got, id)
+	}
+
+	pushed := sb.PushFromAnotherClone(origin, "main")
+	if got := sb.Git(origin, "rev-parse", "refs/heads/main"); got != pushed {
+		t.Errorf("origin main = %q, want the commit from the other clone %q", got, pushed)
+	}
+	if got := sb.Git(clone, "rev-parse", "refs/remotes/origin/main"); got == pushed {
+		t.Error("the clone saw the push without fetching")
+	}
+
+	sb.Git(clone, "fetch", "-q", "origin")
+	if got := sb.Git(clone, "rev-parse", "refs/remotes/origin/main"); got != pushed {
+		t.Errorf("after fetch origin/main = %q, want %q", got, pushed)
+	}
+
+	sb.BreakRemote(clone, "origin")
+	cmd := exec.Command("git", "fetch", "-q", "origin")
+	cmd.Dir = clone
+	cmd.Env = sb.Environ()
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Errorf("fetch from the broken remote succeeded: %s", out)
 	}
 }

@@ -123,13 +123,17 @@ func gitError(err error) error {
 	return err
 }
 
+// home is the user's home directory: HOME, or USERPROFILE on windows.
+func (a *app) home() string {
+	if a.env.GOOS == "windows" {
+		return a.env.Getenv("USERPROFILE")
+	}
+	return a.env.Getenv("HOME")
+}
+
 // userFile is the path of the user configuration file.
 func (a *app) userFile() (string, error) {
-	home := a.env.Getenv("HOME")
-	if a.env.GOOS == "windows" {
-		home = a.env.Getenv("USERPROFILE")
-	}
-	return config.UserFile(a.env.GOOS, a.env.Getenv, home)
+	return config.UserFile(a.env.GOOS, a.env.Getenv, a.home())
 }
 
 // loadConfig reads and resolves every layer. repoRoot is the current
