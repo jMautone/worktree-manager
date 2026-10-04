@@ -40,7 +40,7 @@ Los tests de fish y pwsh corren en macOS solo si están instalados; si no, se ci
 
 - [x] 7.1 Probar "Binary started inside the worktree" con el binario compilado en `TestMain`, con `exec.Cmd.Dir` en `<feat>/src` y los argumentos `remove @` (D5, D10); verificar en macOS y en el CI de Linux que el directorio ya no existe y el exit code es 0
 - [x] 7.2 Probar "From inside, through the function" en zsh, bash, fish y pwsh: `wt create gone`, `cd` a un subdirectorio, `wt remove @`, y la shell termina en el principal con resultado 0; verificar que pasa en macOS para zsh y bash, y en el CI para fish y pwsh
-- [ ] 7.3 **[Windows]** Correr en `windows-latest` los tests de 7.1 y de 7.2 en pwsh (si 7.2 falla porque pwsh retiene el directorio, aplicar el plan B de Risks con `/opsx:update` antes de seguir), y "Directory in use by another process (Windows)" in-process, con un hijo `cmd /c pause` con stdin abierto y `Dir` dentro del worktree: exit 1, el mensaje de git y el hint que nombra la carpeta; verificar en el CI de Windows
+- [x] 7.3 **[Windows]** Correr en `windows-latest` los tests de 7.1 y de 7.2 en pwsh (si 7.2 falla porque pwsh retiene el directorio, aplicar el plan B de Risks con `/opsx:update` antes de seguir), y "Directory in use by another process (Windows)" in-process, con un hijo `cmd /c pause` con stdin abierto y `Dir` dentro del worktree: exit 1, el mensaje de git y el hint que nombra la carpeta; verificar en el CI de Windows
 
 ## 8. Verificación manual, docs e integración
 
