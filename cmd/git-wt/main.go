@@ -31,6 +31,7 @@ func main() {
 		Getenv:  os.Getenv,
 		Environ: os.Environ(),
 		Getwd:   os.Getwd,
+		Chdir:   os.Chdir,
 		GOOS:    runtime.GOOS,
 		IsTTY:   term.IsTerminal(os.Stdout) && term.EnableANSI(os.Stdout),
 		Version: cli.ResolveVersion(version, moduleVersion()),

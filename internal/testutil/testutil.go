@@ -274,3 +274,40 @@ func Comparable(t testing.TB, p string) string {
 		cur = parent
 	}
 }
+
+// SetUpstream sets upstream (a remote-tracking branch, as origin/feat) as
+// the upstream of branch in repo. The upstream must exist.
+func (s *Sandbox) SetUpstream(repo, branch, upstream string) {
+	s.t.Helper()
+	s.Git(repo, "branch", "-q", "--set-upstream-to="+upstream, branch)
+}
+
+// SquashMerge merges branch into the branch checked out in dir as one new
+// commit, as a squash merge on a forge does, and returns its id. The new
+// commit does not have branch's tip as an ancestor.
+func (s *Sandbox) SquashMerge(dir, branch string) string {
+	s.t.Helper()
+	s.Git(dir, "merge", "-q", "--squash", branch)
+	// --allow-empty: the branch's commits may be empty, as Commit makes them.
+	return s.Commit(dir, "squash merge of "+branch)
+}
+
+// ReadOnlyDir removes the write permission of dir, so that nothing inside it
+// can be created or deleted, and restores it when t ends so that the sandbox
+// can be cleaned up. It skips t on Windows, where directory permissions do
+// not work this way, and when running as root, who ignores them. t is the
+// calling test, which may be a subtest of the sandbox's: skipping through
+// the sandbox's own test from a subtest would panic.
+func (s *Sandbox) ReadOnlyDir(t testing.TB, dir string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("directory permissions do not prevent deletion on Windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores directory permissions")
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+}

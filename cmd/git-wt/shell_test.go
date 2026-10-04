@@ -660,3 +660,38 @@ func TestShellCreate(t *testing.T) {
 		e.mustNoLeftovers(t, d)
 	})
 }
+
+// wt remove @ through the function, from a subdirectory of the worktree: the
+// shell ends in the main worktree. On Windows this is also the proof that
+// neither git-wt nor PowerShell keeps the directory in use.
+func TestShellRemove(t *testing.T) {
+	forEachShell(t, func(t *testing.T, d dialect) {
+		e := newShellEnv(t)
+		// A committed subdirectory, so that every new worktree has one.
+		e.sb.WriteFile(filepath.Join(e.repo, "src", "main.txt"), "")
+		e.sb.Git(e.repo, "add", "src")
+		e.sb.Git(e.repo, "commit", "-q", "-m", "src")
+		gone := e.sb.Path("repo.worktrees", "gone")
+
+		r := e.run(t, d, e.sub, lines(
+			d.load,
+			"wt create gone", d.rep("created"),
+			"cd src", d.rep("inside"),
+			"wt remove "+quote("@"), d.rep("removed"),
+		))
+		mustMark(t, r, "created", "0", gone)
+		mustMark(t, r, "inside", "0", filepath.Join(gone, "src"))
+		// "From inside, through the function".
+		mustMark(t, r, "removed", "0", e.repo)
+		if _, err := os.Lstat(gone); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("the worktree's directory is still there: %v\nstderr:\n%s", err, r.stderr)
+		}
+		if out := e.sb.Git(e.repo, "branch", "--list", "gone"); out != "" {
+			t.Errorf("the branch gone was kept: %q", out)
+		}
+		if r.stderr != "" {
+			t.Errorf("stderr = %q", r.stderr)
+		}
+		e.mustNoLeftovers(t, d)
+	})
+}

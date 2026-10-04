@@ -59,11 +59,30 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
   remote of a `<remote>/<branch>` base before creating) and `create_cd`, which
   `.wt.toml` may not set. Boolean keys read `true`, `false`, `1` or `0` from
   `WT_*`.
+- `wt remove <target>`: removes a worktree of the current repository, resolved
+  as in `wt cd`, and deletes its branch when it is merged: when its tip is in
+  the base (`default_base` or the default branch) or in its upstream, judged
+  without fetching; a squash merge does not count. `--keep-branch` keeps the
+  branch, `-D` (`--force-delete-branch`) deletes it even if not merged, and
+  `-f` (`--force`) removes a worktree with modified or untracked files; `-f`
+  never deletes an unmerged branch. A locked worktree, one that contains
+  another worktree, or one with uncommitted work (without `-f`) is exit 5;
+  the main worktree is exit 2. Ignored files are deleted with the worktree.
+  Removed from inside, the shell ends in the main worktree. Coming from
+  v0.9: the merged branch is deleted by default (it needed `--delete-branch`)
+  and `-D` replaces `--force-branch`.
+- `wt lock <target> [<reason>]` and `wt unlock <target>`, and `wt prune`,
+  which forgets the worktrees whose directory is gone and never deletes
+  branches.
+- JSON schemas `wt.remove.v1`, `wt.lock.v1`, `wt.unlock.v1` and
+  `wt.prune.v1`, the same with `--dry-run`.
+- Completions for the `<target>` of `wt remove` and `wt lock` (worktrees that
+  are neither main nor locked) and of `wt unlock` (locked worktrees).
 
 ### Changed
 
-- `main` creates worktrees but cannot remove them yet (`remove-worktree` is the
-  next change); the stable line is still the PowerShell tag
+- `main` covers the minimum cycle of M1: create, move to and remove
+  worktrees; the stable line is still the PowerShell tag
   `powershell-v0.9.0`.
 - The default `worktree_path` is `{repo_parent}/{repo}.worktrees/{name|sanitize}`
   (it was `{branch|sanitize}`), so that `wt cd <name>` finds what `wt create`

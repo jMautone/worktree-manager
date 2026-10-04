@@ -27,7 +27,11 @@ type Env struct {
 	Getenv         func(string) string
 	Environ        []string // environment for child processes (git); Run removes the shell protocol variables
 	Getwd          func() (string, error)
-	GOOS           string // runtime.GOOS in production
+	// Chdir changes the process's working directory; nil does nothing. Tests
+	// that run in process leave it nil: the working directory belongs to the
+	// whole test process.
+	Chdir func(dir string) error
+	GOOS  string // runtime.GOOS in production
 	// IsTTY reports whether stdout is a terminal that renders ANSI sequences
 	// (on Windows, one where virtual terminal processing could be enabled).
 	IsTTY   bool
@@ -46,10 +50,14 @@ type app struct {
 	version bool // --version
 }
 
+// gitRunner builds the git.Runner of a run from the environment for git;
+// tests wrap it to see which git commands run.
+var gitRunner = func(environ []string) git.Runner { return git.Exec{Env: environ} }
+
 // Run executes the command line in env.Args and returns the exit code. It is
 // the only place that prints errors and chooses the exit code.
 func Run(ctx context.Context, env Env) int {
-	a := &app{env: env, git: git.Exec{Env: shell.ChildEnviron(env.Environ, env.GOOS)}}
+	a := &app{env: env, git: gitRunner(shell.ChildEnviron(env.Environ, env.GOOS))}
 	root := a.rootCommand()
 	root.SetArgs(env.Args)
 	root.SetIn(env.Stdin)
@@ -134,7 +142,7 @@ func (a *app) rootCommand() *cobra.Command {
 	root.Flags().BoolVar(&a.version, "version", false, "print the version")
 
 	root.SetHelpCommand(a.helpCommand())
-	root.AddCommand(a.listCommand(), a.cdCommand(), a.createCommand(), a.configCommand(), a.shellCommand(), a.versionCommand())
+	root.AddCommand(a.listCommand(), a.cdCommand(), a.createCommand(), a.removeCommand(), a.lockCommand(), a.unlockCommand(), a.pruneCommand(), a.configCommand(), a.shellCommand(), a.versionCommand())
 	return root
 }
 

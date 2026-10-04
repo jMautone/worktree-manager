@@ -1,10 +1,8 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"slices"
 
 	"github.com/spf13/cobra"
 
@@ -34,9 +32,8 @@ func (a *app) cdCommand() *cobra.Command {
 		Short: "Move the shell to a worktree",
 		Long:  cdLong,
 		Args:  exactArgs("target"),
-		// The names come from git only: no configuration is loaded, so
-		// typing never prints a warning.
-		ValidArgsFunction: a.completeWorktreeNames,
+		// Only worktrees whose directory exists: there is nowhere else to go.
+		ValidArgsFunction: a.completeNames(func(w worktree.Worktree) bool { return !w.Prunable }),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			dir, err := a.workdir()
 			if err != nil {
@@ -96,57 +93,9 @@ func (a *app) cdDestination(cmd *cobra.Command, dir, target string) (string, err
 	if _, err := a.loadConfig(repo.root()); err != nil {
 		return "", err
 	}
-	w, err := worktree.Resolve(repo.worktrees, target)
-	var nf *worktree.NotFoundError
-	var amb *worktree.AmbiguousError
-	switch {
-	case errors.As(err, &nf):
-		return "", &Error{Code: ExitNotFound, Msg: nf.Error(), Hints: []string{"run 'wt list' to see the worktrees"}}
-	case errors.As(err, &amb):
-		var hints []string
-		for _, c := range amb.Candidates {
-			hints = append(hints, fmt.Sprintf("%s (%s)", c.Path, describeCheckout(c)))
-		}
-		return "", &Error{Code: ExitAmbiguous, Msg: amb.Error(), Hints: hints}
-	case errors.Is(err, worktree.ErrNoCurrent):
-		return "", &Error{Code: ExitNotFound, Msg: err.Error()}
-	case err != nil:
+	w, err := a.resolveTarget(repo, target)
+	if err != nil {
 		return "", err
 	}
 	return w.Path, nil
-}
-
-// describeCheckout tells candidates with the same name apart in a hint.
-func describeCheckout(w worktree.Worktree) string {
-	switch {
-	case w.Bare:
-		return "bare"
-	case w.Detached:
-		return "detached"
-	}
-	return "branch " + w.Branch
-}
-
-// completeWorktreeNames offers the NAME of every worktree of the repository
-// whose directory exists. Any error offers nothing: a completion never
-// writes to the terminal.
-func (a *app) completeWorktreeNames(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
-	if len(args) > 0 {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	dir, err := a.workdir()
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	repo, err := a.loadRepository(cmd.Context(), dir)
-	if err != nil {
-		return nil, cobra.ShellCompDirectiveNoFileComp
-	}
-	var names []string
-	for _, w := range repo.worktrees {
-		if !w.Prunable && !slices.Contains(names, w.Name) {
-			names = append(names, w.Name)
-		}
-	}
-	return withPrefix(names, toComplete), cobra.ShellCompDirectiveNoFileComp
 }

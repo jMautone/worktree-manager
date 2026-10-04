@@ -254,20 +254,29 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 	}, nil
 }
 
-// defaultBranch reads what DefaultBranch decides with: origin/HEAD and, for
-// a bare repository, which git does not report the branch of, its HEAD.
-func (a *app) defaultBranch(ctx context.Context, dir string, main worktree.Worktree) (string, error) {
+// readDefaultBranch reads what DefaultBranch decides with: origin/HEAD and,
+// for a bare repository, which git does not report the branch of, its HEAD.
+func (a *app) readDefaultBranch(ctx context.Context, dir string, main worktree.Worktree) (string, bool, error) {
 	originHEAD, err := git.OriginHEAD(ctx, a.git, dir)
 	if err != nil {
-		return "", gitError(err)
+		return "", false, gitError(err)
 	}
 	var bareHEAD string
 	if originHEAD == "" && main.Bare {
 		if bareHEAD, err = git.SymbolicHEAD(ctx, a.git, main.Path); err != nil {
-			return "", gitError(err)
+			return "", false, gitError(err)
 		}
 	}
 	branch, ok := worktree.DefaultBranch(originHEAD, main, bareHEAD)
+	return branch, ok, nil
+}
+
+// defaultBranch is the repository's default branch, which wt create needs.
+func (a *app) defaultBranch(ctx context.Context, dir string, main worktree.Worktree) (string, error) {
+	branch, ok, err := a.readDefaultBranch(ctx, dir, main)
+	if err != nil {
+		return "", err
+	}
 	if !ok {
 		return "", &Error{
 			Code:  ExitNotFound,

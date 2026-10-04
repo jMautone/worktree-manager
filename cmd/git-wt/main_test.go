@@ -175,3 +175,30 @@ func TestInvokedThroughGit(t *testing.T) {
 		t.Errorf("git wt version = %q (exit %d, stderr %q), want %q", viaGit.stdout, viaGit.code, viaGit.stderr, direct.stdout)
 	}
 }
+
+// The binary started inside the worktree it removes: it must not keep the
+// directory as its own working directory, or as that of git, which Windows
+// does not allow to delete.
+func TestRemoveFromInside(t *testing.T) {
+	sb := testutil.New(t)
+	repo := sb.Path("repo")
+	sb.InitRepo(repo)
+	feat := sb.Path("repo.worktrees", "feat")
+	sb.AddWorktree(repo, feat, "feat")
+	src := filepath.Join(feat, "src")
+	sb.WriteFile(filepath.Join(src, "main.txt"), "")
+	sb.Git(feat, "add", "src")
+	sb.Git(feat, "commit", "-q", "-m", "src")
+
+	r := wt(t, sb, src, "remove", "@")
+	if r.code != 0 {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", r.code, r.stdout, r.stderr)
+	}
+	if _, err := os.Lstat(feat); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the worktree's directory is still there: %v", err)
+	}
+	// Without the shell function, the warning that the shell stays behind.
+	if !strings.Contains(r.stderr, "shell integration is not active") {
+		t.Errorf("stderr = %q", r.stderr)
+	}
+}
