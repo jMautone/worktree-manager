@@ -208,7 +208,7 @@ func TestSandboxReadOnlyDir(t *testing.T) {
 	sb := New(t)
 	dir := sb.Path("ro")
 	sb.WriteFile(filepath.Join(dir, "kept"), "")
-	sb.ReadOnlyDir(dir)
+	sb.ReadOnlyDir(t, dir)
 	if err := os.WriteFile(filepath.Join(dir, "new"), nil, 0o644); err == nil {
 		t.Error("a file was created in the read-only directory")
 	}

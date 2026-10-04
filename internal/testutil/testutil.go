@@ -293,20 +293,21 @@ func (s *Sandbox) SquashMerge(dir, branch string) string {
 }
 
 // ReadOnlyDir removes the write permission of dir, so that nothing inside it
-// can be created or deleted, and restores it when the test ends so that the
-// sandbox can be cleaned up. It skips the test on Windows, where directory
-// permissions do not work this way, and when running as root, who ignores
-// them.
-func (s *Sandbox) ReadOnlyDir(dir string) {
-	s.t.Helper()
+// can be created or deleted, and restores it when t ends so that the sandbox
+// can be cleaned up. It skips t on Windows, where directory permissions do
+// not work this way, and when running as root, who ignores them. t is the
+// calling test, which may be a subtest of the sandbox's: skipping through
+// the sandbox's own test from a subtest would panic.
+func (s *Sandbox) ReadOnlyDir(t testing.TB, dir string) {
+	t.Helper()
 	if runtime.GOOS == "windows" {
-		s.t.Skip("directory permissions do not prevent deletion on Windows")
+		t.Skip("directory permissions do not prevent deletion on Windows")
 	}
 	if os.Geteuid() == 0 {
-		s.t.Skip("root ignores directory permissions")
+		t.Skip("root ignores directory permissions")
 	}
 	if err := os.Chmod(dir, 0o555); err != nil {
-		s.t.Fatal(err)
+		t.Fatal(err)
 	}
-	s.t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 }

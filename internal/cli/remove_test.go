@@ -651,7 +651,7 @@ func TestRemoveDirectoryCannotBeDeleted(t *testing.T) {
 	repo, feat := removeRepo(h)
 	h.commitFile(feat, filepath.Join("sub", "file.txt"), "x")
 	h.sb.Push(feat, "origin", "HEAD:main") // merged: only the directory stops it
-	h.sb.ReadOnlyDir(filepath.Join(feat, "sub"))
+	h.sb.ReadOnlyDir(t, filepath.Join(feat, "sub"))
 	directive := h.activate()
 	h.cwd = feat
 

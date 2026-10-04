@@ -181,7 +181,7 @@ func TestRemoveWorktree(t *testing.T) {
 		sb.WriteFile(filepath.Join(wt, "sub", "file"), "x")
 		sb.Git(wt, "add", ".")
 		sb.Git(wt, "commit", "-q", "-m", "sub")
-		sb.ReadOnlyDir(filepath.Join(wt, "sub"))
+		sb.ReadOnlyDir(t, filepath.Join(wt, "sub"))
 		var ce *git.CommandError
 		if err := git.RemoveWorktree(ctx, runner(sb), repo, wt, false); !errors.As(err, &ce) || ce.Stderr == "" {
 			t.Fatalf("%v, want a *CommandError with git's message", err)
