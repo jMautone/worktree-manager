@@ -71,7 +71,7 @@ Exit codes SHALL be part of the public contract and SHALL mean:
 | 7 | Hook failed |
 | 8 | Repository hook not approved |
 
-A command SHALL NOT use a code for a meaning other than the one listed.
+A command SHALL NOT use a code for a meaning other than the one listed, with one exception: a command that runs a command the user gave it with `-x` SHALL, once that command has started, exit with that command's exit code, unchanged, whatever its value. Until the command starts, the codes above apply.
 
 #### Scenario: Not found
 - **WHEN** the user runs `wt list` in a directory that is not inside a git repository
@@ -80,6 +80,10 @@ A command SHALL NOT use a code for a meaning other than the one listed.
 #### Scenario: Usage error
 - **WHEN** the user runs `wt -C` without a directory
 - **THEN** the exit code is 2
+
+#### Scenario: Exit code of a user command
+- **WHEN** the user runs `wt create feat -x <a command that exits with 4>` and the worktree is created
+- **THEN** the exit code is 4, although `wt` found no ambiguous name
 
 ### Requirement: Human-readable error format
 On failure without `--json`, `wt` SHALL write nothing to stdout and SHALL write to stderr one line `wt: <message>`, optionally followed by lines beginning with `hint: `. Warnings SHALL be written to stderr as `wt: warning: <message>` and SHALL NOT change the exit code.
