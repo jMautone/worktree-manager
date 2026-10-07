@@ -7,6 +7,8 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-10-07
+
 v1 is a from-scratch rewrite in Go, with macOS and Windows as first-class
 platforms. No code is ported from v0.9. See
 [docs/decisions/0001-de-cero-en-go.md](docs/decisions/0001-de-cero-en-go.md).
