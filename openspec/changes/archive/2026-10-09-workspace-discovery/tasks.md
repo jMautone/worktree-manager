@@ -44,7 +44,7 @@ Los tests de fish y pwsh corren en macOS solo si están instalados; si no, se ci
 
 ## 8. Verificación manual, docs e integración
 
-- [ ] 8.1 Verificar a mano en macOS, con `repos_root = ["~/Documents/GIT"]` en `~/.config/wt/config.toml`: `wt repos` lista los 10 repos con `@` en `worktree-manager`; desde `/tmp`, `wt cd cortex` y `wt cd trend` (→ `TrendFisher`); `wt cd cv` sale con 4 y nombra los dos `cv-scorer-*`; `wt cd -` vuelve; y en Terminal.app `wt cd cv<TAB>` ofrece los dos `cv-scorer-*`; anotar el resultado en el PR
+- [x] 8.1 Verificar a mano en macOS, con `repos_root = ["~/Documents/GIT"]` en `~/.config/wt/config.toml`: `wt repos` lista los 10 repos con `@` en `worktree-manager`; desde `/tmp`, `wt cd cortex` y `wt cd trend` (→ `TrendFisher`); `wt cd cv` sale con 4 y nombra los dos `cv-scorer-*`; `wt cd -` vuelve; y en Terminal.app `wt cd cv<TAB>` ofrece los dos `cv-scorer-*`; anotar el resultado en el PR
 - [ ] 8.2 **[Windows]** Verificar a mano en Windows Terminal con PowerShell 7.4, con `repos_root = ["~\\Repos"]` en `%APPDATA%\wt\config.toml`: `wt repos` lista los repos con rutas `C:\...`, `wt cd <repo>` desde `C:\` deja la shell en el repo, y `wt cd <TAB>` ofrece los repos; anotar el resultado en el PR
 - [x] 8.3 Sumar a `docs/design/product.md` §7 la tabla "M2, desglosado en changes" (`workspace-discovery`, `cross-repo-resolution`, `batch-execution`: qué entrega cada uno y por qué en ese orden); verificar que la tabla nombra los tres changes y que `openspec validate --all --strict` sigue en verde
 - [x] 8.4 Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` y la cross-compilación de los 5 targets; verificar sin salida de gofmt ni fallos
