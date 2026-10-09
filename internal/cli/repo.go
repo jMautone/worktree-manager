@@ -55,6 +55,19 @@ func (r *repository) root() string {
 	return r.current.Path
 }
 
+// main is the main worktree, or nil.
+func (r *repository) main() *worktree.Worktree {
+	if r == nil {
+		return nil
+	}
+	for i := range r.worktrees {
+		if r.worktrees[i].Main {
+			return &r.worktrees[i]
+		}
+	}
+	return nil
+}
+
 // loadRepository lists the worktrees of the repository associated with dir.
 // It returns git's errors unchanged; gitError maps them to exit codes.
 //
@@ -139,7 +152,20 @@ func (a *app) userFile() (string, error) {
 // loadConfig reads and resolves every layer. repoRoot is the current
 // worktree's root, or "" for no repository layer. Warnings are printed here.
 func (a *app) loadConfig(repoRoot string) (*config.Config, error) {
-	reg := config.Keys()
+	cfg, err := a.loadConfigQuiet(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	for _, w := range cfg.Warnings {
+		a.warn(w)
+	}
+	return cfg, nil
+}
+
+// loadConfigQuiet is loadConfig without printing the warnings, for a
+// completion, which never writes to the terminal.
+func (a *app) loadConfigQuiet(repoRoot string) (*config.Config, error) {
+	reg := config.Keys(a.env.GOOS)
 	userFile, err := a.userFile()
 	if err != nil {
 		return nil, err
@@ -161,12 +187,5 @@ func (a *app) loadConfig(repoRoot string) (*config.Config, error) {
 		}
 	}
 	layers = append(layers, config.EnvLayer(reg, a.env.Getenv))
-	cfg, err := config.Resolve(reg, layers...)
-	if err != nil {
-		return nil, err
-	}
-	for _, w := range cfg.Warnings {
-		a.warn(w)
-	}
-	return cfg, nil
+	return config.Resolve(reg, layers...)
 }

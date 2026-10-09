@@ -169,6 +169,53 @@ func (s *Sandbox) InitBare(dir string) {
 	s.Git(s.Root, "clone", "-q", "--bare", src, dir)
 }
 
+// InitDotBare creates, at dir, the .bare layout: a bare repository with one
+// commit on main at <dir>/.bare, and a <dir>/.git file that points to it
+// with the relative path git accepts, "gitdir: ./.bare".
+func (s *Sandbox) InitDotBare(dir string) {
+	s.t.Helper()
+	src := s.Path(".dotbare-source-" + filepath.Base(dir))
+	s.InitRepo(src)
+	s.Git(s.Root, "clone", "-q", "--bare", src, filepath.Join(dir, ".bare"))
+	s.WriteFile(filepath.Join(dir, ".git"), "gitdir: ./.bare\n")
+}
+
+// InitSeparateGitDir creates a repository with one commit on main whose
+// working tree is dir and whose repository directory is gitdir, as
+// --separate-git-dir does: dir/.git is a file that points to gitdir.
+func (s *Sandbox) InitSeparateGitDir(dir, gitdir string) {
+	s.t.Helper()
+	if err := os.MkdirAll(filepath.Dir(gitdir), 0o755); err != nil {
+		s.t.Fatal(err)
+	}
+	s.Git(s.Root, "init", "-q", "--separate-git-dir", gitdir, dir)
+	s.Git(dir, "commit", "-q", "--allow-empty", "-m", "initial commit")
+}
+
+// Symlink creates a symbolic link at link that points to target. On Windows
+// creating one needs a privilege the CI runner may not have; tests that use
+// it run on macOS and Linux.
+func (s *Sandbox) Symlink(target, link string) {
+	s.t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		s.t.Fatal(err)
+	}
+}
+
+// Junction creates a directory junction at link that points to the
+// directory target, with mklink /J as a Windows user would. Junctions exist
+// only on Windows.
+func (s *Sandbox) Junction(target, link string) {
+	s.t.Helper()
+	if runtime.GOOS != "windows" {
+		s.t.Fatal("directory junctions exist only on Windows")
+	}
+	out, err := exec.Command("cmd", "/c", "mklink", "/J", link, target).CombinedOutput()
+	if err != nil {
+		s.t.Fatalf("mklink /J %s %s: %v\n%s", link, target, err, out)
+	}
+}
+
 // InitRemote creates a bare repository at dir with one commit on main, to
 // serve as origin for Clone.
 func (s *Sandbox) InitRemote(dir string) {

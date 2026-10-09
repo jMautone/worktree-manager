@@ -48,3 +48,21 @@ func join(goos, base string, elem ...string) string {
 	base = strings.TrimRight(base, `/\`)
 	return base + sep + strings.Join(elem, sep)
 }
+
+// isAbs reports whether s is an absolute path on goos: one that starts with /
+// on macOS and Linux; on windows, one with a drive letter followed by :\ or
+// :/, or a UNC path (\\server\share). filepath.IsAbs would answer for the OS
+// running the code.
+func isAbs(goos, s string) bool {
+	if goos != "windows" {
+		return strings.HasPrefix(s, "/")
+	}
+	if strings.HasPrefix(s, `\\`) {
+		return true
+	}
+	return len(s) >= 3 && isLetter(s[0]) && s[1] == ':' && (s[2] == '\\' || s[2] == '/')
+}
+
+func isLetter(c byte) bool {
+	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
+}

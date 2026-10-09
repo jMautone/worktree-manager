@@ -3,6 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jMautone/worktree-manager/internal/template"
@@ -49,8 +50,10 @@ func (r Registry) Names() []string {
 	return names
 }
 
-// Keys returns the registry of every key wt knows.
-func Keys() Registry {
+// Keys returns the registry of every key wt knows. goos decides what an
+// absolute path is and how a list is split in the environment, so the rules
+// of every OS are testable from any OS.
+func Keys(goos string) Registry {
 	return Registry{
 		{
 			Name: "default_base",
@@ -94,6 +97,24 @@ func Keys() Registry {
 			InRepo:   false,
 			Validate: validateBool,
 			FromEnv:  parseBoolEnv,
+		},
+		{
+			Name: "repos_root",
+			Type: "path list",
+			// No roots, no workspace: wt behaves as it did before it had one.
+			Default: []string{},
+			// Where wt searches is the user's machine, not the repository's.
+			InRepo:   false,
+			Validate: validatePathList(goos),
+			FromEnv:  splitPathList(goos),
+		},
+		{
+			Name:     "repos_depth",
+			Type:     "integer",
+			Default:  1,
+			InRepo:   false,
+			Validate: validateIntRange(1, 3),
+			FromEnv:  parseIntEnv,
 		},
 	}
 }
@@ -149,6 +170,105 @@ func parseBoolEnv(s string) (any, error) {
 		return false, nil
 	}
 	return nil, fmt.Errorf("expected true, false, 1 or 0, got %q", s)
+}
+
+// validatePathList accepts an array of paths, each absolute for goos or
+// starting with ~. Elements are kept as written: the command that uses the
+// key expands ~. The value is a []string, never nil, so an empty list is []
+// in JSON.
+func validatePathList(goos string) func(any) (any, error) {
+	return func(v any) (any, error) {
+		var elems []any
+		switch v := v.(type) {
+		case []any:
+			elems = v
+		case []string:
+			// What Validate returned, as in a key's default.
+			for _, s := range v {
+				elems = append(elems, s)
+			}
+		case string:
+			return nil, fmt.Errorf("expected an array of strings, got a string; write it as [%q]", v)
+		default:
+			return nil, fmt.Errorf("expected an array of strings, got %s", describe(v))
+		}
+		paths := make([]string, 0, len(elems))
+		for i, e := range elems {
+			s, ok := e.(string)
+			if !ok {
+				return nil, fmt.Errorf("expected an array of strings, element %d is %s", i+1, describe(e))
+			}
+			if !isAbs(goos, s) && !hasTilde(goos, s) {
+				return nil, fmt.Errorf("%q is not an absolute path and does not start with %s", s, tildePrefixes(goos))
+			}
+			paths = append(paths, s)
+		}
+		return paths, nil
+	}
+}
+
+// hasTilde reports whether s is ~ or starts with ~/ (or ~\ on windows).
+func hasTilde(goos, s string) bool {
+	return s == "~" || strings.HasPrefix(s, "~/") || goos == "windows" && strings.HasPrefix(s, `~\`)
+}
+
+// tildePrefixes names, for messages, the forms hasTilde accepts.
+func tildePrefixes(goos string) string {
+	if goos == "windows" {
+		return `~/ or ~\`
+	}
+	return "~/"
+}
+
+// splitPathList reads a list of paths from the environment, split where
+// PATH is: at : on macOS and Linux, and at ; on windows, where C:\x has a
+// colon. Empty elements are dropped. The result goes through Validate like
+// an array from a file.
+func splitPathList(goos string) func(string) (any, error) {
+	sep := ":"
+	if goos == "windows" {
+		sep = ";"
+	}
+	return func(s string) (any, error) {
+		elems := []any{}
+		for _, e := range strings.Split(s, sep) {
+			if e != "" {
+				elems = append(elems, e)
+			}
+		}
+		return elems, nil
+	}
+}
+
+// validateIntRange accepts an integer from lo to hi. TOML decodes integers
+// as int64; the value kept is an int.
+func validateIntRange(lo, hi int) func(any) (any, error) {
+	return func(v any) (any, error) {
+		var n int64
+		switch v := v.(type) {
+		case int64:
+			n = v
+		case int:
+			// What Validate returned, as in a key's default.
+			n = int64(v)
+		default:
+			return nil, fmt.Errorf("expected an integer, got %s", describe(v))
+		}
+		if n < int64(lo) || n > int64(hi) {
+			return nil, fmt.Errorf("must be from %d to %d, got %d", lo, hi, n)
+		}
+		return int(n), nil
+	}
+}
+
+// parseIntEnv reads an integer written in decimal digits from the
+// environment.
+func parseIntEnv(s string) (any, error) {
+	n, err := strconv.ParseInt(s, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("expected an integer, got %q", s)
+	}
+	return n, nil
 }
 
 // describe names the TOML type of a decoded value.
