@@ -23,7 +23,7 @@ Las tareas **[Windows]** se cierran con el CI de `windows-latest`, salvo la veri
 
 - [x] 4.1 Crear `wt repos` en `internal/cli/repos.go` sin argumentos posicionales, con su `Long`, el registro en la raíz y el error sin raíces con el hint que nombra `repos_root` y el archivo de usuario (D9); verificar in-process "Nothing configured", "Nothing configured, as JSON" y "Extra argument", y que `wt repos -h` y `wt -h` lo muestran
 - [x] 4.2 Conectar `Roots` + `Walk` + `List`, la marca con `fileID` del principal y `Current`, la tabla `[marca, NAME, PATH]` con `renderTable`, stdout vacío sin filas, y `wt.repos.v1` (D9); verificar in-process "Home directory on macOS or Linux", "Missing root", "Clone", "Worktrees beside the repository", "Bare repository with a .git file", "Bare repository on its own", "Plain directory", "One level by default", "Organisation folders", "Repository inside a repository", "Hidden directory", "Overlapping roots", "Same name, different repositories", "Order ignores case", "Marker from a linked worktree", "Outside any repository", "Working directory override", "No repositories found", "Repositories as JSON (macOS, Linux)" y "Missing root as JSON"; en macOS y Linux "Unreadable directory (macOS, Linux)", "Linked repository (macOS, Linux)" y "Link to a repository already found (macOS, Linux)"; la marca en el contenedor de un `.bare`; "Not an integer in the environment" de `config-layers`; y que `--dry-run` da la misma salida
-- [ ] 4.3 **[Windows]** Escribir los escenarios de Windows de `wt repos` in-process, salteados fuera de Windows: "Home directory on Windows", "Native path on Windows", "Junction (Windows)", "Junction to a repository already found (Windows)" y "Repositories as JSON (Windows)"; verificar en el CI de `windows-latest`
+- [x] 4.3 **[Windows]** Escribir los escenarios de Windows de `wt repos` in-process, salteados fuera de Windows: "Home directory on Windows", "Native path on Windows", "Junction (Windows)", "Junction to a repository already found (Windows)" y "Repositories as JSON (Windows)"; verificar en el CI de `windows-latest`
 
 ## 5. `wt cd` (`navigate`)
 
@@ -40,7 +40,7 @@ Las tareas **[Windows]** se cierran con el CI de `windows-latest`, salvo la veri
 Los tests de fish y pwsh corren en macOS solo si están instalados; si no, se cierran con el CI de `macos-latest` y `ubuntu-latest`.
 
 - [x] 7.1 Probar `wt cd <repo>` a través de la función en zsh, bash, fish y pwsh: con `WT_REPOS_ROOT` apuntando a una raíz del sandbox, desde un directorio fuera de cualquier repo, `wt cd we` termina en `<root>/web` con resultado 0 y `wt cd -` vuelve; verificar que pasa en macOS para zsh y bash, y en el CI para fish y pwsh
-- [ ] 7.2 **[Windows]** Correr en `windows-latest` los tests de 1.2, 3.2, 3.3, 4.3 y 7.1 en pwsh (en Windows, `WT_REPOS_ROOT` con `;`); verificar en el CI de Windows
+- [x] 7.2 **[Windows]** Correr en `windows-latest` los tests de 1.2, 3.2, 3.3, 4.3 y 7.1 en pwsh (en Windows, `WT_REPOS_ROOT` con `;`); verificar en el CI de Windows
 
 ## 8. Verificación manual, docs e integración
 
