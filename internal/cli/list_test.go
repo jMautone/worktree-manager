@@ -21,10 +21,17 @@ type row struct {
 // offsets, which also checks that every row is aligned to the header.
 func parseTable(t *testing.T, out string) []row {
 	t.Helper()
+	return parseColumns(t, out, listColumns)
+}
+
+// parseColumns is parseTable for a table with the given columns after the
+// markers.
+func parseColumns(t *testing.T, out string, columns []string) []row {
+	t.Helper()
 	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
 	header := lines[0]
-	offsets := make([]int, len(listColumns))
-	for i, c := range listColumns {
+	offsets := make([]int, len(columns))
+	for i, c := range columns {
 		offsets[i] = strings.Index(header, c)
 		if offsets[i] < 0 || (i > 0 && offsets[i] <= offsets[i-1]) {
 			t.Fatalf("header %q: column %s missing or out of order", header, c)
@@ -36,7 +43,7 @@ func parseTable(t *testing.T, out string) []row {
 	var rows []row
 	for _, line := range lines[1:] {
 		r := row{markers: strings.TrimSpace(line[:offsets[0]]), cols: map[string]string{}}
-		for i, c := range listColumns {
+		for i, c := range columns {
 			end := len(line)
 			if i+1 < len(offsets) && offsets[i+1] < end {
 				end = offsets[i+1]

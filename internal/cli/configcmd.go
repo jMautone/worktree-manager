@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -154,8 +155,16 @@ func (a *app) configListCommand() *cobra.Command {
 }
 
 // displayValue shows a value in the `config list` table, where an empty
-// string would otherwise be an invisible blank.
+// string would otherwise be an invisible blank. A list is shown as a TOML
+// array, as it is written in the file.
 func displayValue(v any) string {
+	if list, ok := v.([]string); ok {
+		quoted := make([]string, len(list))
+		for i, e := range list {
+			quoted[i] = strconv.Quote(e)
+		}
+		return "[" + strings.Join(quoted, ", ") + "]"
+	}
 	s := fmt.Sprint(v)
 	if s == "" {
 		return `""`
@@ -169,7 +178,7 @@ func (a *app) configGetCommand() *cobra.Command {
 		Short: "Print the effective value of a key",
 		Args:  exactArgs("key"),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
-			reg := config.Keys()
+			reg := config.Keys(a.env.GOOS)
 			if _, ok := reg.Lookup(args[0]); !ok {
 				return &Error{
 					Code:  ExitUsage,
@@ -191,6 +200,16 @@ func (a *app) configGetCommand() *cobra.Command {
 					Schema string `json:"schema"`
 					configValueJSON
 				}{"wt.config.get.v1", configValueJSON{v.Key, v.Value, string(v.Source)}})
+			}
+			// A list prints one element per line, and nothing when empty,
+			// so that a script can read it line by line.
+			if list, ok := v.Value.([]string); ok {
+				var buf bytes.Buffer
+				for _, e := range list {
+					fmt.Fprintln(&buf, e)
+				}
+				_, err = a.env.Stdout.Write(buf.Bytes())
+				return err
 			}
 			_, err = fmt.Fprintln(a.env.Stdout, v.Value)
 			return err

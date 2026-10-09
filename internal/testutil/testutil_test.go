@@ -216,3 +216,60 @@ func TestSandboxReadOnlyDir(t *testing.T) {
 		t.Error("a file was deleted from the read-only directory")
 	}
 }
+
+func TestSandboxCreatesTheDotBareLayout(t *testing.T) {
+	sb := New(t)
+	proj := sb.Path("proj")
+	sb.InitDotBare(proj)
+
+	if b, err := os.ReadFile(filepath.Join(proj, ".git")); err != nil || string(b) != "gitdir: ./.bare\n" {
+		t.Fatalf(".git = %q, %v", b, err)
+	}
+	// git reports the bare repository as the main worktree.
+	out := sb.Git(proj, "worktree", "list", "--porcelain") + "\n"
+	if want := "worktree " + filepath.ToSlash(Comparable(t, filepath.Join(proj, ".bare"))) + "\nbare\n"; !strings.Contains(out, want) {
+		t.Errorf("git worktree list does not contain %q:\n%s", want, out)
+	}
+	linked := sb.Path("proj", "feat")
+	sb.AddWorktree(proj, linked, "feat")
+	if got := sb.Git(linked, "rev-parse", "--abbrev-ref", "HEAD"); got != "feat" {
+		t.Errorf("HEAD of the linked worktree = %q", got)
+	}
+}
+
+func TestSandboxCreatesASeparateGitDir(t *testing.T) {
+	sb := New(t)
+	dir, gitdir := sb.Path("sep"), sb.Path("store", "sep.git")
+	sb.InitSeparateGitDir(dir, gitdir)
+
+	info, err := os.Lstat(filepath.Join(dir, ".git"))
+	if err != nil || !info.Mode().IsRegular() {
+		t.Fatalf(".git is not a file: %v, %v", info, err)
+	}
+	if got := sb.Git(dir, "rev-parse", "--git-dir"); Comparable(t, got) != Comparable(t, gitdir) {
+		t.Errorf("git dir = %q, want %q", got, gitdir)
+	}
+	if got := sb.Git(dir, "log", "--format=%s"); got != "initial commit" {
+		t.Errorf("log = %q", got)
+	}
+}
+
+func TestSandboxCreatesLinks(t *testing.T) {
+	sb := New(t)
+	target := sb.Path("target")
+	sb.WriteFile(filepath.Join(target, "f"), "x")
+
+	link := sb.Path("link")
+	if runtime.GOOS == "windows" {
+		sb.Junction(target, link)
+	} else {
+		sb.Symlink(target, link)
+	}
+	if b, err := os.ReadFile(filepath.Join(link, "f")); err != nil || string(b) != "x" {
+		t.Errorf("reading through the link: %q, %v", b, err)
+	}
+	info, err := os.Lstat(link)
+	if err != nil || info.IsDir() {
+		t.Errorf("Lstat(link) = %v, %v; want a link, not a directory", info, err)
+	}
+}

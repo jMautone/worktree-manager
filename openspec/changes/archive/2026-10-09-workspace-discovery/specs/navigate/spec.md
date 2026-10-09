@@ -1,10 +1,4 @@
-# navigate Specification
-
-## Purpose
-
-Defines `wt cd`, the command that moves the shell to a worktree of the current repository by its name or branch, to a repository under the configured roots by its name, to the main worktree, to the root of the current worktree, or back to the directory it was in before the last jump.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Targets
 `wt cd` SHALL take exactly one argument, `<target>`:
@@ -33,29 +27,6 @@ A missing `<target>` or an extra argument SHALL be a usage error (exit 2).
 - **WHEN** the user runs `wt cd feat fix`
 - **THEN** stderr reports the unexpected argument `fix`
 - **AND** the exit code is 2
-
-### Requirement: Shell integration required
-`wt cd` SHALL fail with exit code 1 when the shell integration is not active (see the `shell-integration` capability), before resolving its target: stdout SHALL be empty, the first line of stderr SHALL be `wt: shell integration is not active`, and a hint SHALL name `wt shell init`. This applies with and without `--json` and `--dry-run`.
-
-#### Scenario: Run without the function
-- **WHEN** the user runs `git-wt cd feat` in a shell that did not load the script
-- **THEN** stderr's first line is `wt: shell integration is not active`
-- **AND** a `hint:` line names `wt shell init`
-- **AND** stdout is empty
-- **AND** the exit code is 1
-
-#### Scenario: Unknown target without the function
-- **WHEN** the user runs `git-wt cd does-not-exist` in a shell that did not load the script
-- **THEN** the exit code is 1
-
-### Requirement: Moving the shell
-When the target resolves to an existing directory, `wt cd` SHALL write that directory as the directive (see the `shell-integration` capability), SHALL print nothing to stdout, and SHALL exit 0. Through the function, the shell ends in that directory.
-
-#### Scenario: Jump to a worktree
-- **WHEN** the shell is in a subdirectory of the main worktree and the user runs `wt cd feat`, where `feat` is a linked worktree
-- **THEN** the shell's working directory is the path of `feat`
-- **AND** stdout is empty
-- **AND** the exit code is 0
 
 ### Requirement: Resolving a name
 Any target other than `^`, `@` and `-` SHALL be resolved first in the current repository and then, only if that finds nothing, in the workspace.
@@ -195,52 +166,3 @@ These rules SHALL be the same on every operating system. An empty target SHALL m
 - **WHEN** `repos_root` names at least one root and the user runs `wt cd ^` outside any repository
 - **THEN** stderr's first line is `wt: not a git repository: <dir>`
 - **AND** the exit code is 3
-
-### Requirement: Previous directory
-`-` SHALL resolve to the directory in `WT_PREVIOUS_DIR` (see the `shell-integration` capability) and SHALL NOT require a repository. When that variable is unset or empty, `wt cd -` SHALL fail with exit code 3 and the message `no previous directory`.
-
-#### Scenario: Previous directory outside a repository
-- **WHEN** the user ran `wt cd feat` from a directory outside any repository, and then runs `wt cd -`
-- **THEN** the shell is back in that directory
-- **AND** the exit code is 0
-
-#### Scenario: No previous directory
-- **WHEN** the user runs `wt cd -` in a shell session where the function has not changed directory
-- **THEN** stderr's first line is `wt: no previous directory`
-- **AND** the exit code is 3
-
-### Requirement: Destination must exist
-When the destination directory does not exist, such as a prunable worktree or a previous directory that was deleted, `wt cd` SHALL fail with exit code 3, a message naming the path, and SHALL NOT write the directive.
-
-#### Scenario: Prunable worktree
-- **WHEN** the directory of the linked worktree `feat` was deleted without `git worktree remove`, and the user runs `wt cd feat`
-- **THEN** stderr names the path of `feat`
-- **AND** the shell's working directory does not change
-- **AND** the exit code is 3
-
-### Requirement: Working directory override
-With `-C <dir>`, `wt cd` SHALL resolve names, `^` and `@` as if it had been started in `<dir>`. `-C` SHALL NOT change what `-` resolves to.
-
-#### Scenario: Main worktree of another repository
-- **WHEN** the shell is in repository `a` and the user runs `wt -C <path of repository b> cd ^`
-- **THEN** the shell's working directory is the main worktree of `b`
-
-### Requirement: JSON output
-`wt cd <target> --json` SHALL move the shell like `wt cd <target>` and SHALL print `{"schema":"wt.cd.v1","path":<destination>}`, where `path` is the destination's absolute path in the operating system's native form.
-
-#### Scenario: Destination as JSON (macOS, Linux)
-- **WHEN** on macOS or Linux the user runs `wt cd feat --json` for a worktree at `/src/repo.worktrees/feat`
-- **THEN** stdout is a JSON object with `schema` `wt.cd.v1` and `path` `/src/repo.worktrees/feat`
-
-#### Scenario: Destination as JSON (Windows)
-- **WHEN** on Windows the user runs `wt cd feat --json` for a worktree at `C:\src\repo.worktrees\feat`
-- **THEN** `path` is `C:\src\repo.worktrees\feat`
-
-### Requirement: Dry run
-`wt cd --dry-run <target>` SHALL perform every check of `wt cd`, with the same errors and exit codes, SHALL NOT write the directive, and on success SHALL print `would change directory to <destination>` to stdout and exit 0. With `--json` it SHALL print the same `wt.cd.v1` document as without `--dry-run`.
-
-#### Scenario: Preview a jump
-- **WHEN** the user runs `wt cd --dry-run feat` through the function
-- **THEN** stdout is `would change directory to <path of feat>`
-- **AND** the shell's working directory does not change
-- **AND** the exit code is 0

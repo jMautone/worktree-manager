@@ -193,7 +193,39 @@ func TestCdResolutionErrors(t *testing.T) {
 		if got, want := firstLine(r.stderr), "wt: not a git repository: "+h.cwd; got != want {
 			t.Errorf("first line = %q, want %q", got, want)
 		}
+		if !strings.Contains(r.stderr, "\nhint: ") || !strings.Contains(r.stderr, "repos_root") {
+			t.Errorf("stderr = %q, want a hint naming repos_root", r.stderr)
+		}
 	})
+}
+
+// Scenarios "No target with roots configured" and "Main worktree outside a
+// repository": with roots, neither a missing target nor ^ and @ go to the
+// workspace.
+func TestCdWithRootsKeepsUsageAndMain(t *testing.T) {
+	h := newHarness(t)
+	root := h.mkdir(h.sb.Path("root"))
+	h.sb.InitRepo(filepath.Join(root, "api"))
+	h.roots(0, root)
+
+	d := h.activate()
+	r := h.run("cd")
+	r.mustCode(t, 2)
+	if !strings.Contains(r.stderr, "<target>") || readDirective(t, d) != "" {
+		t.Errorf("stderr = %q, directive %q; want the missing <target> and no directive", r.stderr, readDirective(t, d))
+	}
+
+	for _, target := range []string{"^", "@"} {
+		d := h.activate()
+		r := h.run("cd", target)
+		r.mustCode(t, 3)
+		if got, want := firstLine(r.stderr), "wt: not a git repository: "+h.cwd; got != want {
+			t.Errorf("wt cd %s: first line = %q, want %q", target, got, want)
+		}
+		if strings.Contains(r.stderr, "hint:") || readDirective(t, d) != "" {
+			t.Errorf("wt cd %s: stderr = %q, directive %q", target, r.stderr, readDirective(t, d))
+		}
+	}
 }
 
 func TestCdMainAndCurrent(t *testing.T) {
@@ -384,7 +416,7 @@ func TestCdDryRun(t *testing.T) {
 func TestCdHelp(t *testing.T) {
 	r := newHarness(t).run("cd", "-h")
 	r.mustCode(t, 0)
-	for _, want := range []string{"wt cd <target>", "EXTENDED_GLOB", "wt cd '^'", "wt cd '@'", "wt shell init"} {
+	for _, want := range []string{"wt cd <target>", "EXTENDED_GLOB", "wt cd '^'", "wt cd '@'", "wt shell init", "repos_root", "wt repos", "full names"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("help does not contain %q:\n%s", want, r.stdout)
 		}

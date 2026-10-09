@@ -1,7 +1,9 @@
 package cli_test
 
 import (
+	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -190,6 +192,86 @@ func TestCompletions(t *testing.T) {
 		got, _, r := h.complete("cd", "")
 		if len(got) != 0 || r.stdout != ":4\n" {
 			t.Errorf("stdout = %q, want only the directive", r.stdout)
+		}
+	})
+}
+
+// Scenarios of "Completions" with repositories under the roots.
+func TestCompletionsOfRepositories(t *testing.T) {
+	h := newHarness(t)
+	root := h.mkdir(h.sb.Path("root"))
+	for _, name := range []string{"api", "web", "TrendFisher", "feat"} {
+		h.sb.InitRepo(filepath.Join(root, name))
+	}
+	h.roots(0, root)
+
+	// complete checks that a completion writes nothing but its values.
+	complete := func(t *testing.T, args ...string) []string {
+		t.Helper()
+		got, directive, r := h.complete(args...)
+		if r.stderr != "" || directive != ":4" {
+			t.Errorf("wt %v: stderr %q, directive %q", args, r.stderr, directive)
+		}
+		return got
+	}
+
+	t.Run("repository names outside a repository", func(t *testing.T) {
+		if got, want := complete(t, "cd", ""), []string{"api", "feat", "TrendFisher", "web"}; !slices.Equal(got, want) {
+			t.Errorf("offered %q, want %q", got, want)
+		}
+	})
+	t.Run("repository prefix ignores case", func(t *testing.T) {
+		if got := complete(t, "cd", "trend"); !slices.Equal(got, []string{"TrendFisher"}) {
+			t.Errorf("wt cd trend: offered %q", got)
+		}
+		if got := complete(t, "cd", "W"); !slices.Equal(got, []string{"web"}) {
+			t.Errorf("wt cd W: offered %q", got)
+		}
+	})
+
+	repo, _ := cdRepo(h)
+	t.Run("worktrees and repositories together", func(t *testing.T) {
+		// feat is both a worktree and a repository: offered once.
+		if got, want := complete(t, "cd", ""), []string{"repo", "feat", "api", "TrendFisher", "web"}; !slices.Equal(got, want) {
+			t.Errorf("offered %q, want %q", got, want)
+		}
+		if got := complete(t, "cd", "f"); !slices.Equal(got, []string{"feat"}) {
+			t.Errorf("wt cd f: offered %q", got)
+		}
+	})
+	t.Run("other commands offer only worktrees", func(t *testing.T) {
+		if got := complete(t, "remove", ""); !slices.Equal(got, []string{"feat"}) {
+			t.Errorf("wt remove: offered %q", got)
+		}
+	})
+	t.Run("missing root", func(t *testing.T) {
+		h.roots(0, h.sb.Path("usb", "repos"), root)
+		if got := complete(t, "cd", "a"); !slices.Equal(got, []string{"api"}) {
+			t.Errorf("offered %q", got)
+		}
+		h.cwd = h.sb.Path("outside")
+		h.roots(0, h.sb.Path("usb", "repos"))
+		if got, _, r := h.complete("cd", ""); len(got) != 0 || r.stdout != ":4\n" || r.stderr != "" {
+			t.Errorf("stdout %q, stderr %q; want only the directive", r.stdout, r.stderr)
+		}
+		h.cwd = filepath.Join(repo, "sub")
+	})
+	t.Run("invalid configuration", func(t *testing.T) {
+		for _, content := range []string{"repos_root = \n", "repos_root = [\"GIT\"]\n", "repos_depth = 9\n"} {
+			h.userConfig(content)
+			if got := complete(t, "cd", ""); !slices.Equal(got, []string{"repo", "feat"}) {
+				t.Errorf("%q: offered %q, want only the worktrees", content, got)
+			}
+		}
+		// A warning is dropped, and the repositories are still offered.
+		h.userConfig("repos_root = [" + strconv.Quote(root) + "]\ncolour = \"blue\"\n")
+		if got := complete(t, "cd", "a"); !slices.Equal(got, []string{"api"}) {
+			t.Errorf("with a warning: offered %q", got)
+		}
+		h.roots(0, root)
+		h.sb.Setenv("WT_REPOS_DEPTH", "two")
+		if got := complete(t, "cd", ""); !slices.Equal(got, []string{"repo", "feat"}) {
+			t.Errorf("WT_REPOS_DEPTH=two: offered %q", got)
 		}
 	})
 }

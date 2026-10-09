@@ -3,6 +3,7 @@ package cli_test
 import (
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -134,7 +135,7 @@ func TestConfigListSources(t *testing.T) {
 	r.mustCode(t, 0)
 	doc := decodeOne(t, r.stdout)
 	keys, _ := doc["keys"].([]any)
-	if doc["schema"] != "wt.config.list.v1" || len(keys) != 5 {
+	if doc["schema"] != "wt.config.list.v1" || len(keys) != 7 {
 		t.Fatalf("document = %v", doc)
 	}
 	first, _ := keys[0].(map[string]any)
@@ -392,4 +393,189 @@ func TestConfigInvalidTemplate(t *testing.T) {
 			}
 		}
 	})
+}
+
+// configListLine returns the line of `wt config list` for key as written:
+// a list's value has spaces, so configLine's fields would split it.
+func configListLine(t *testing.T, stdout, key string) string {
+	t.Helper()
+	for _, line := range strings.Split(stdout, "\n") {
+		if strings.HasPrefix(line, key+" ") {
+			return line
+		}
+	}
+	t.Fatalf("no line for %s in\n%s", key, stdout)
+	return ""
+}
+
+// otherRoot is an absolute path on the OS running the tests, for the second
+// root of "Two roots".
+func otherRoot() string {
+	if runtime.GOOS == "windows" {
+		return `D:\x`
+	}
+	return "/Volumes/x"
+}
+
+// Scenarios "Defaults with no configuration files", "List as JSON" and
+// "Integer as JSON".
+func TestConfigDefaultsOfTheWorkspace(t *testing.T) {
+	h := newHarness(t)
+	for key, want := range map[string]string{
+		"worktree_path": defaultWorktreePath + "\n",
+		"create_cd":     "true\n",
+		"repos_depth":   "1\n",
+		"repos_root":    "",
+	} {
+		r := h.run("config", "get", key)
+		r.mustCode(t, 0)
+		if r.stdout != want || r.stderr != "" {
+			t.Errorf("%s: stdout %q, stderr %q; want %q", key, r.stdout, r.stderr, want)
+		}
+	}
+
+	r := h.run("config", "list")
+	r.mustCode(t, 0)
+	if line := configListLine(t, r.stdout, "repos_root"); strings.Join(strings.Fields(line), " ") != "repos_root [] default" {
+		t.Errorf("repos_root line = %q", line)
+	}
+
+	r = h.run("config", "get", "repos_root", "--json")
+	r.mustCode(t, 0)
+	if v, ok := decodeOne(t, r.stdout)["value"].([]any); !ok || len(v) != 0 {
+		t.Errorf("repos_root --json: %s, want an empty array as value", r.stdout)
+	}
+	r = h.run("config", "get", "repos_depth", "--json")
+	r.mustCode(t, 0)
+	if v := decodeOne(t, r.stdout)["value"]; v != 1.0 {
+		t.Errorf("repos_depth --json: value %#v, want the number 1", v)
+	}
+}
+
+func TestConfigStringForAListKey(t *testing.T) {
+	h := newHarness(t)
+	file := h.userConfig("repos_root = \"~/GIT\"\n")
+	r := h.run("config", "list")
+	r.mustCode(t, 1)
+	for _, want := range []string{"repos_root", file, `["~/GIT"]`} {
+		if !strings.Contains(r.stderr, want) {
+			t.Errorf("stderr %q does not contain %q", r.stderr, want)
+		}
+	}
+}
+
+func TestConfigRepositorySetsReposRoot(t *testing.T) {
+	h := newHarness(t)
+	h.cwd = h.repo()
+	h.userConfig("repos_root = [\"~/GIT\"]\n")
+	h.sb.WriteFile(filepath.Join(h.cwd, ".wt.toml"), "repos_root = [\"/tmp\"]\n")
+	r := h.run("config", "get", "repos_root")
+	r.mustCode(t, 0)
+	if r.stdout != "~/GIT\n" {
+		t.Errorf("repos_root = %q, want ~/GIT", r.stdout)
+	}
+	if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "repos_root") || !strings.Contains(r.stderr, ".wt.toml") {
+		t.Errorf("stderr = %q, want a warning naming repos_root and .wt.toml", r.stderr)
+	}
+}
+
+func TestConfigTwoRoots(t *testing.T) {
+	h := newHarness(t)
+	other := otherRoot()
+	h.userConfig("repos_root = [\"~/GIT\", " + strconv.Quote(other) + "]\n")
+
+	r := h.run("config", "get", "repos_root")
+	r.mustCode(t, 0)
+	if want := "~/GIT\n" + other + "\n"; r.stdout != want {
+		t.Errorf("get: %q, want %q", r.stdout, want)
+	}
+
+	r = h.run("config", "list")
+	r.mustCode(t, 0)
+	value := `["~/GIT", ` + strconv.Quote(other) + `]`
+	line := configListLine(t, r.stdout, "repos_root")
+	if !strings.Contains(line, " "+value+" ") || !strings.HasSuffix(line, " user") {
+		t.Errorf("list line = %q, want value %s and source user", line, value)
+	}
+
+	r = h.run("config", "get", "repos_root", "--json")
+	r.mustCode(t, 0)
+	if v, _ := decodeOne(t, r.stdout)["value"].([]any); len(v) != 2 || v[0] != "~/GIT" || v[1] != other {
+		t.Errorf("--json: %s", r.stdout)
+	}
+}
+
+func TestConfigRelativeRoot(t *testing.T) {
+	h := newHarness(t)
+	file := h.userConfig("repos_root = [\"GIT\"]\n")
+	r := h.run("config", "list")
+	r.mustCode(t, 1)
+	for _, want := range []string{"repos_root", `"GIT"`, file} {
+		if !strings.Contains(r.stderr, want) {
+			t.Errorf("stderr %q does not contain %q", r.stderr, want)
+		}
+	}
+}
+
+func TestConfigListInTheEnvironment(t *testing.T) {
+	h := newHarness(t)
+	var value, want string
+	if runtime.GOOS == "windows" {
+		value, want = `C:\Repos;D:\Work`, "C:\\Repos\nD:\\Work\n"
+	} else {
+		value, want = "~/GIT:/Volumes/x", "~/GIT\n/Volumes/x\n"
+	}
+	h.sb.Setenv("WT_REPOS_ROOT", value)
+
+	r := h.run("config", "get", "repos_root")
+	r.mustCode(t, 0)
+	if r.stdout != want {
+		t.Errorf("WT_REPOS_ROOT=%s: get %q, want %q", value, r.stdout, want)
+	}
+	r = h.run("config", "list")
+	r.mustCode(t, 0)
+	if line := configListLine(t, r.stdout, "repos_root"); !strings.HasSuffix(line, " env") {
+		t.Errorf("list line = %q, want source env", line)
+	}
+}
+
+func TestConfigPathWithoutADriveOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip(`\Repos is a path without a drive only on Windows`)
+	}
+	h := newHarness(t)
+	h.userConfig("repos_root = [\"\\\\Repos\"]\n")
+	r := h.run("config", "list")
+	r.mustCode(t, 1)
+	for _, want := range []string{"repos_root", `\Repos`} {
+		if !strings.Contains(r.stderr, want) {
+			t.Errorf("stderr %q does not contain %q", r.stderr, want)
+		}
+	}
+}
+
+// Scenarios "Depth from the file", "Out of range" and "Integer in the
+// environment".
+func TestConfigReposDepth(t *testing.T) {
+	h := newHarness(t)
+	h.userConfig("repos_depth = 2\n")
+	if r := h.run("config", "get", "repos_depth"); r.code != 0 || r.stdout != "2\n" {
+		t.Errorf("repos_depth = 2: exit %d, stdout %q", r.code, r.stdout)
+	}
+
+	file := h.userConfig("repos_depth = 4\n")
+	r := h.run("config", "list")
+	r.mustCode(t, 1)
+	if !strings.Contains(r.stderr, "repos_depth") || !strings.Contains(r.stderr, file) {
+		t.Errorf("repos_depth = 4: stderr %q does not name repos_depth and %s", r.stderr, file)
+	}
+
+	h.userConfig("")
+	h.sb.Setenv("WT_REPOS_DEPTH", "3")
+	if r := h.run("config", "get", "repos_depth"); r.code != 0 || r.stdout != "3\n" {
+		t.Errorf("WT_REPOS_DEPTH=3: exit %d, stdout %q", r.code, r.stdout)
+	}
+	if f := configLine(t, h.run("config", "list").stdout, "repos_depth"); len(f) != 3 || f[1] != "3" || f[2] != "env" {
+		t.Errorf("WT_REPOS_DEPTH=3: list line %q", f)
+	}
 }

@@ -43,7 +43,7 @@ func TestLoadKeepsTypesForValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Resolve(Keys(), *layer); err == nil || !strings.Contains(err.Error(), "integer") {
+	if _, err := Resolve(Keys("darwin"), *layer); err == nil || !strings.Contains(err.Error(), "integer") {
 		t.Errorf("Resolve of an integer default_base = %v, want a type error", err)
 	}
 }

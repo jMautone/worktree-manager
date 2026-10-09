@@ -9,7 +9,7 @@ import (
 // testRegistry adds a key that repository files may not set, which the real
 // registry of this change does not have.
 func testRegistry() Registry {
-	return append(Keys(), Key{
+	return append(Keys("darwin"), Key{
 		Name:     "secret_cmd",
 		Type:     "string",
 		Default:  "none",
@@ -49,7 +49,7 @@ func TestResolveDefaults(t *testing.T) {
 	assertValue(t, cfg, "branch_prefix", "", SourceDefault)
 	assertValue(t, cfg, "fetch_before_create", true, SourceDefault)
 	assertValue(t, cfg, "create_cd", true, SourceDefault)
-	if len(cfg.Values) != 6 || cfg.Values[0].Key != "default_base" || cfg.Values[5].Key != "secret_cmd" {
+	if len(cfg.Values) != 8 || cfg.Values[0].Key != "default_base" || cfg.Values[7].Key != "secret_cmd" {
 		t.Errorf("values not in registry order: %+v", cfg.Values)
 	}
 	if len(cfg.Warnings) != 0 {
@@ -163,7 +163,7 @@ func TestResolveInvalidValueInEnvNamesTheVariable(t *testing.T) {
 }
 
 func TestResolveBooleansFromTheEnvironment(t *testing.T) {
-	reg := Keys()
+	reg := Keys("darwin")
 	for _, tc := range []struct {
 		value string
 		want  bool
@@ -184,18 +184,18 @@ func TestResolveBooleansFromTheEnvironment(t *testing.T) {
 // boolean.
 func TestResolveStringForABooleanInAFile(t *testing.T) {
 	user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{"create_cd": "false"}}
-	_, err := Resolve(Keys(), user)
+	_, err := Resolve(Keys("darwin"), user)
 	if err == nil || !strings.Contains(err.Error(), `"create_cd"`) || !strings.Contains(err.Error(), "/u/config.toml") {
 		t.Errorf("error %v, want one naming create_cd and the file", err)
 	}
 
 	user.Values["create_cd"] = false
-	assertValue(t, mustResolve(t, Keys(), user), "create_cd", false, SourceUser)
+	assertValue(t, mustResolve(t, Keys("darwin"), user), "create_cd", false, SourceUser)
 }
 
 func TestResolveRepositoryMayNotSetCreateCd(t *testing.T) {
 	repo := Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{"create_cd": false, "fetch_before_create": false}}
-	cfg := mustResolve(t, Keys(), repo)
+	cfg := mustResolve(t, Keys("darwin"), repo)
 	assertValue(t, cfg, "create_cd", true, SourceDefault)
 	assertValue(t, cfg, "fetch_before_create", false, SourceRepo)
 	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"create_cd"`) || !strings.Contains(cfg.Warnings[0], ".wt.toml") {
@@ -212,10 +212,10 @@ func TestResolveInvalidTemplateNamesKeyOriginAndPart(t *testing.T) {
 			[]string{`"worktree_path"`, "/u/config.toml", "nope"}},
 		{Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{"worktree_path": "{repo_parent}/{name|upper}"}},
 			[]string{`"worktree_path"`, "/r/.wt.toml", "upper"}},
-		{EnvLayer(Keys(), env(map[string]string{"WT_WORKTREE_PATH": "{repo_parent/x"})),
+		{EnvLayer(Keys("darwin"), env(map[string]string{"WT_WORKTREE_PATH": "{repo_parent/x"})),
 			[]string{`"worktree_path"`, "WT_WORKTREE_PATH", "{repo_parent/x"}},
 	} {
-		_, err := Resolve(Keys(), tc.layer)
+		_, err := Resolve(Keys("darwin"), tc.layer)
 		for _, w := range tc.want {
 			if err == nil || !strings.Contains(err.Error(), w) {
 				t.Errorf("error %v does not name %q", err, w)

@@ -695,3 +695,35 @@ func TestShellRemove(t *testing.T) {
 		e.mustNoLeftovers(t, d)
 	})
 }
+
+// wt cd <repo> through the function, from a directory in no repository:
+// with two roots in WT_REPOS_ROOT, joined as PATH is on each OS, a prefix
+// lands in the repository and wt cd - goes back.
+func TestShellCdToARepository(t *testing.T) {
+	forEachShell(t, func(t *testing.T, d dialect) {
+		e := newShellEnv(t)
+		empty, root := e.sb.Path("empty"), e.sb.Path("root")
+		web := filepath.Join(root, "web")
+		e.sb.InitRepo(web)
+		e.sb.InitRepo(filepath.Join(root, "api"))
+		outside := e.sb.Path("outside")
+		for _, dir := range []string{empty, outside} {
+			if err := os.Mkdir(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e.env = append(e.env, "WT_REPOS_ROOT="+empty+string(os.PathListSeparator)+root)
+
+		r := e.run(t, d, outside, lines(
+			d.load,
+			"wt cd we", d.rep("repo"),
+			"wt cd -", d.rep("back"),
+		))
+		mustMark(t, r, "repo", "0", web)
+		mustMark(t, r, "back", "0", outside)
+		if r.stderr != "" {
+			t.Errorf("stderr = %q", r.stderr)
+		}
+		e.mustNoLeftovers(t, d)
+	})
+}

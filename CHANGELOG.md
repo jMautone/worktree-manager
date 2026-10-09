@@ -7,6 +7,32 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+### Added
+
+- `wt repos`: lists the repositories found under the roots in `repos_root`,
+  ordered by name ignoring case, with `@` on the repository of the working
+  directory; `--json` uses `wt.repos.v1`. A linked worktree is never a
+  repository; one with the `.bare` layout or a separate git directory is. A
+  root that does not exist is a warning, not an error.
+- Configuration keys `repos_root`, a list of roots that are absolute or start
+  with `~`, and `repos_depth`, how many levels below each root to search (1 to
+  3, default 1), with the environment variables `WT_REPOS_ROOT` (split at `:`,
+  or at `;` on Windows) and `WT_REPOS_DEPTH`. `wt config get` prints a list
+  one element per line, and `wt config list` as a TOML array.
+- `wt cd <name>` jumps to a repository under the roots from any directory,
+  when the current repository has no worktree or branch with that name: by
+  exact name, then ignoring letter case, then by a unique prefix ignoring case
+  (`wt cd trend` → `TrendFisher`). A name that matches more than one
+  repository is exit 4, with a hint per candidate.
+- Completions of `wt cd` offer the names of the repositories under the roots,
+  also outside a repository.
+
+### Changed
+
+- When `wt cd <name>` finds nothing, its message says whether it looked for a
+  worktree, a repository or both; outside a repository with no roots
+  configured, a hint suggests setting `repos_root`.
+
 ## [0.1.0] — 2026-10-07
 
 v1 is a from-scratch rewrite in Go, with macOS and Windows as first-class
