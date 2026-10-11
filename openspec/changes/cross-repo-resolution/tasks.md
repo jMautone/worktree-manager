@@ -96,7 +96,7 @@ Los tests de fish y pwsh corren en macOS solo si están instalados; si no, se ci
 - [ ] 9.3 **[Windows]** Escribir los escenarios in-process de Windows, salteados fuera de Windows: "Backslash on Windows" y "Forward slashes on Windows" de `cross-repo-resolution`, y "Native path on Windows" de `navigate` (`wt path`). Correr en `windows-latest` los tests de 2.2, 3.2, 4.1, 5.1, 6.1 y 8.1 (en pwsh). Verificar en el CI de Windows.
 - [x] 9.4 Actualizar en `docs/design/product.md` §7 la fila de `cross-repo-resolution` de la tabla "M2, desglosado en changes", sumando `wt create <repo>:<name>`. Verificar que la fila nombra `create` y que `openspec validate --all --strict` sigue en verde.
 - [x] 9.5 Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` y la cross-compilación de los 5 targets. Verificar sin salida de gofmt ni fallos.
-- [ ] 9.6 Integrar el change:
+- [x] 9.6 Integrar el change:
   - Sumar sus líneas bajo `## [Unreleased]` en `CHANGELOG.md`: la forma `<repo>:<name>` con el sufijo para homónimos; `wt cd` hacia worktrees de otros repos; `wt path` con `wt.path.v1`; `remove`, `lock`, `unlock` y `create` en otros repos; `wt list --all-repos` con `repo`, `repo_path` y `unreadable`; las completions del workspace con descripciones; y en *Changed*, los mensajes de exit 3 y los hints de exit 4 que cambian, y la capa de repo de la config cuando se opera sobre otro repo.
   - Abrir el PR titulado `feat(cross-repo-resolution): resolve worktrees across repositories [v0.2.0-alpha.2]`.
 
