@@ -15,7 +15,7 @@ func TestHelpListsCommands(t *testing.T) {
 	for _, args := range [][]string{{}, {"help"}, {"-h"}, {"--help"}} {
 		r := h.run(args...)
 		r.mustCode(t, 0)
-		for _, cmd := range []string{"list", "cd", "config", "shell", "version"} {
+		for _, cmd := range []string{"list", "cd", "path", "config", "shell", "version"} {
 			if !regexp.MustCompile(`(?m)^\s+` + cmd + `\s`).MatchString(r.stdout) {
 				t.Errorf("wt %v: help does not list %q:\n%s", args, cmd, r.stdout)
 			}

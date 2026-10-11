@@ -2,7 +2,6 @@ package cli
 
 import (
 	"bytes"
-	"fmt"
 
 	"github.com/spf13/cobra"
 
@@ -43,20 +42,10 @@ func (a *app) reposCommand() *cobra.Command {
 				return err
 			}
 			if len(reposRoot(cfg)) == 0 {
-				userFile, _ := a.userFile()
-				return &Error{
-					Code:  ExitError,
-					Msg:   "no repository roots configured",
-					Hints: []string{fmt.Sprintf(`set repos_root in %s, e.g. repos_root = ["~/src"]`, userFile)},
-				}
+				return a.noRootsError()
 			}
 			repos := a.discoverRepos(cfg, a.warn)
-			current := -1
-			if main := repo.main(); main != nil {
-				if id, err := workspace.IDOf(main.Path); err == nil {
-					current = workspace.Current(repos, id)
-				}
-			}
+			current := currentRepo(repo, repos)
 			if a.json {
 				return a.writeJSON(reposDocument(repos, current))
 			}

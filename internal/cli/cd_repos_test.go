@@ -145,8 +145,8 @@ func TestCdRepositoryAmbiguity(t *testing.T) {
 		t.Errorf("first line = %q", got)
 	}
 	for _, p := range []string{backend, front} {
-		if !strings.Contains(r.stderr, "\nhint: "+p+"\n") {
-			t.Errorf("stderr has no hint with %s:\n%s", p, r.stderr)
+		if !strings.Contains(r.stderr, "\nhint: "+filepath.Base(p)+":  "+p+"\n") {
+			t.Errorf("stderr has no hint with %s: and %s:\n%s", filepath.Base(p), p, r.stderr)
 		}
 	}
 	if r.stdout != "" || readDirective(t, d) != "" {
@@ -157,7 +157,7 @@ func TestCdRepositoryAmbiguity(t *testing.T) {
 	r.mustCode(t, 4)
 	doc := decodeOne(t, r.stderr)
 	if r.stdout != "" || doc["schema"] != "wt.error.v1" || doc["code"] != 4.0 ||
-		!reflect.DeepEqual(doc["hints"], []any{backend, front}) {
+		!reflect.DeepEqual(doc["hints"], []any{"cv-scorer-backend:  " + backend, "cv-scorer-front:  " + front}) {
 		t.Errorf("--json: stdout %q, error %v", r.stdout, doc)
 	}
 
@@ -171,38 +171,43 @@ func TestCdRepositoryAmbiguity(t *testing.T) {
 		if got := firstLine(r.stderr); got != `wt: "api" matches more than one repository` {
 			t.Errorf("first line = %q", got)
 		}
+		for _, want := range []string{
+			"hint: oss/api:  " + filepath.Join(other, "oss", "api") + "\n",
+			"hint: work/api:  " + filepath.Join(other, "work", "api") + "\n",
+		} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr has no %q:\n%s", want, r.stderr)
+			}
+		}
 	})
 }
 
-// Scenarios "No worktree or repository" and "No repository".
+// Scenarios "No worktree or repository" and "No repository": with roots,
+// inside a repository or not, the message names both and so do the hints.
 func TestCdNoRepository(t *testing.T) {
 	h := newHarness(t)
 	cdWorkspace(h)
 
-	d := h.activate()
-	r := h.run("cd", "nope")
-	r.mustCode(t, 3)
-	if got := firstLine(r.stderr); got != `wt: no repository named "nope"` {
-		t.Errorf("outside: first line = %q", got)
-	}
-	if !strings.Contains(r.stderr, "\nhint: ") || !strings.Contains(r.stderr, "wt repos") || strings.Contains(r.stderr, "wt list") {
-		t.Errorf("outside: stderr = %q, want only a hint naming wt repos", r.stderr)
-	}
-	if readDirective(t, d) != "" {
-		t.Error("the directive was written")
-	}
-
-	h.cwd = h.repo()
-	r = h.run("cd", "nope")
-	r.mustCode(t, 3)
-	if got := firstLine(r.stderr); got != `wt: no worktree or repository named "nope"` {
-		t.Errorf("inside: first line = %q", got)
-	}
-	for _, want := range []string{"hint: run 'wt list'", "hint: run 'wt repos'"} {
-		if !strings.Contains(r.stderr, want) {
-			t.Errorf("inside: stderr = %q, want %q", r.stderr, want)
+	check := func(where string) {
+		t.Helper()
+		d := h.activate()
+		r := h.run("cd", "nope")
+		r.mustCode(t, 3)
+		if got := firstLine(r.stderr); got != `wt: no worktree or repository named "nope"` {
+			t.Errorf("%s: first line = %q", where, got)
+		}
+		for _, want := range []string{"hint: run 'wt list --all-repos'", "hint: run 'wt repos'"} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("%s: stderr = %q, want %q", where, r.stderr, want)
+			}
+		}
+		if readDirective(t, d) != "" {
+			t.Errorf("%s: the directive was written", where)
 		}
 	}
+	check("outside")
+	h.cwd = h.repo()
+	check("inside")
 
 	// An empty name matches no repository.
 	h.run("cd", "").mustCode(t, 3)

@@ -26,12 +26,55 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   repository is exit 4, with a hint per candidate.
 - Completions of `wt cd` offer the names of the repositories under the roots,
   also outside a repository.
+- The qualified form `<repo>:<name>` names the worktree `<name>` of the
+  repository `<repo>` from anywhere, in `wt cd`, `wt path`, `wt remove`,
+  `wt lock`, `wt unlock` and `wt create`. `<repo>` matches as in `wt cd
+  <repo>`, or, with a `/` (also `\` on Windows), as the end of the
+  repository's path, which tells repositories with the same name apart
+  (`GIT/api:feat`). `api:` is the repository itself, and `api:^` its main
+  worktree. Hints and completions name such repositories by the shortest
+  path suffix that is unique.
+- `wt cd <name>` also reaches the linked worktrees of the other repositories
+  under the roots, by name and then by branch, when neither the current
+  repository nor a repository name matched. A name found in more than one
+  repository is exit 4, with a hint per candidate in its qualified form.
+- `wt path <target>` prints the path `wt cd <target>` would move to, without
+  the shell integration; `--json` uses `wt.path.v1`.
+- `wt remove`, `wt lock` and `wt unlock` resolve a name in the current
+  repository and then among the linked worktrees of the other repositories,
+  also outside a repository; `wt create <repo>:<name>` creates the worktree
+  in that repository, with its branches, remotes and default branch.
+- `wt list --all-repos` lists the worktrees of every repository under the
+  roots in one table with a `REPO` column; with `--json`, each element of
+  `wt.list.v1` adds `repo` and `repo_path`, and the document an `unreadable`
+  array. A repository git cannot read is skipped with a warning.
+- Completions of `wt cd`, `wt path`, `wt remove`, `wt lock` and `wt unlock`
+  offer the worktrees of every repository under the roots, and `<repo>:` the
+  worktrees of that repository; each candidate carries a description of where
+  it comes from. `wt create` offers `<repo>:` for `<name>`, and `--base` the
+  branches of the repository it names.
 
 ### Changed
 
 - When `wt cd <name>` finds nothing, its message says whether it looked for a
   worktree, a repository or both; outside a repository with no roots
   configured, a hint suggests setting `repos_root`.
+- With roots configured, `wt cd <name>` that finds nothing outside a
+  repository says `no worktree or repository named "<name>"`, and its hints
+  name `wt list --all-repos` and `wt repos`. The hints of an exit 4 among
+  repositories now give each candidate's qualified form with its path.
+- Outside a repository with roots configured, `wt list` and `wt create
+  <name>` add a hint that names `wt list --all-repos` and `<repo>:<name>`.
+- When a command operates on a worktree of another repository, the
+  repository layer of the configuration is that repository's `.wt.toml`, in
+  its main worktree, not the working directory's: `wt remove api:feat` judges
+  whether the branch is merged with `api`'s `default_base`.
+
+### Removed
+
+- A worktree or repository whose name contains `:` is no longer reached by
+  its bare name, which is now a qualified target; a worktree is still reached
+  as `<repo>:<name>`. Only macOS and Linux allow `:` in a directory name.
 
 ## [0.1.0] — 2026-10-07
 

@@ -516,8 +516,7 @@ func completionScript(t *testing.T, d dialect, line string) string {
 			// function, and the test calls __start_wt directly.
 			`[[ $(type -t compopt) == builtin ]] && compopt() { :; }`,
 			"COMP_LINE="+quote(line)+"; COMP_POINT=${#COMP_LINE}; COMP_TYPE=9",
-			"read -ra COMP_WORDS <<< \"$COMP_LINE\"",
-			`[[ $COMP_LINE == *' ' ]] && COMP_WORDS+=('')`,
+			"COMP_WORDS=("+strings.Join(quoteAll(bashWords(line)), " ")+")",
 			"COMP_CWORD=$(( ${#COMP_WORDS[@]} - 1 ))",
 			"__start_wt",
 			`for c in "${COMPREPLY[@]}"; do echo `+reply+`; done`,
@@ -538,13 +537,51 @@ func completionScript(t *testing.T, d dialect, line string) string {
 	return ""
 }
 
+// bashWords splits line into words as bash does for COMP_WORDS, with the
+// : that COMP_WORDBREAKS holds by default as a word of its own: "wt cd
+// api:" is wt, cd, api and :. A line that ends in a space has an empty
+// word last.
+func bashWords(line string) []string {
+	var words []string
+	for _, f := range strings.Fields(line) {
+		for {
+			before, after, ok := strings.Cut(f, ":")
+			if before != "" {
+				words = append(words, before)
+			}
+			if !ok {
+				break
+			}
+			words = append(words, ":")
+			f = after
+		}
+	}
+	if strings.HasSuffix(line, " ") {
+		words = append(words, "")
+	}
+	return words
+}
+
+func quoteAll(ss []string) []string {
+	out := make([]string, len(ss))
+	for i, s := range ss {
+		out[i] = quote(s)
+	}
+	return out
+}
+
 // replies returns the values a completion script offered, without
-// descriptions.
+// descriptions: after a tab, or, in PowerShell's Complete mode with more
+// than one value, after two spaces and between parentheses, as cobra's
+// script writes them.
 func replies(r result) []string {
 	var out []string
 	for _, l := range strings.Split(strings.ReplaceAll(r.stdout, "\r\n", "\n"), "\n") {
 		if v, ok := strings.CutPrefix(l, "@@ reply "); ok {
 			v, _, _ = strings.Cut(v, "\t")
+			if strings.HasSuffix(v, ")") {
+				v, _, _ = strings.Cut(v, "  (")
+			}
 			out = append(out, strings.TrimSpace(v))
 		}
 	}
@@ -725,5 +762,57 @@ func TestShellCdToARepository(t *testing.T) {
 			t.Errorf("stderr = %q", r.stderr)
 		}
 		e.mustNoLeftovers(t, d)
+	})
+}
+
+// Scenarios of cross-repo-resolution through the function: from a
+// directory in no repository, wt cd reaches a worktree of a repository
+// under the roots by its name and by its qualified form, and the completion
+// of a qualified word offers that repository's worktrees.
+func TestShellCdAcrossRepositories(t *testing.T) {
+	forEachShell(t, func(t *testing.T, d dialect) {
+		e := newShellEnv(t)
+		root := e.sb.Path("root")
+		api := filepath.Join(root, "api")
+		e.sb.InitRepo(api)
+		e.sb.InitRepo(filepath.Join(root, "web"))
+		feat := filepath.Join(root, "api.worktrees", "feat")
+		e.sb.AddWorktree(api, feat, "feat")
+		outside := e.sb.Path("outside")
+		if err := os.Mkdir(outside, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		e.env = append(e.env, "WT_REPOS_ROOT="+root)
+
+		r := e.run(t, d, outside, lines(
+			d.load,
+			"wt cd feat", d.rep("name"),
+			"cd "+quote(outside),
+			"wt cd api:feat", d.rep("qualified"),
+		))
+		mustMark(t, r, "name", "0", feat)
+		mustMark(t, r, "qualified", "0", feat)
+		if r.stderr != "" {
+			t.Errorf("stderr = %q", r.stderr)
+		}
+		e.mustNoLeftovers(t, d)
+
+		if d.name == "zsh" {
+			// The completion function needs the line editor; see
+			// TestShellCompletions.
+			return
+		}
+		r = e.run(t, d, outside, completionScript(t, d, "wt cd api:"))
+		got := replies(r)
+		if d.name == "bash" {
+			// bash replaces the word after the last : of the line, so
+			// cobra's script leaves out what comes before it.
+			for i, v := range got {
+				got[i] = "api:" + v
+			}
+		}
+		if !slices.Equal(got, []string{"api:feat"}) || r.stderr != "" {
+			t.Errorf("wt cd api: offered %q, want [api:feat]\nstdout:\n%s\nstderr:\n%s", got, r.stdout, r.stderr)
+		}
 	})
 }

@@ -11,16 +11,20 @@ import (
 	"github.com/jMautone/worktree-manager/internal/worktree"
 )
 
-const lockLong = `Lock a worktree of the current repository, with an optional reason.
+const lockLong = `Lock a worktree, with an optional reason.
 
-<target> is resolved as in "wt cd". A locked worktree is not removed by
+<target> is resolved as in "wt remove": a worktree of the current
+repository or, if none matches, of another repository under the roots in
+repos_root; <repo>:<name> names one of a given repository. A locked worktree is not removed by
 "wt remove", even with --force, and not forgotten by "wt prune", even when
 its directory is gone: lock a worktree on a drive that is not always
 mounted. "wt unlock" unlocks it.`
 
-const unlockLong = `Unlock a worktree of the current repository locked with "wt lock".
+const unlockLong = `Unlock a worktree locked with "wt lock".
 
-<target> is resolved as in "wt cd".`
+<target> is resolved as in "wt remove": a worktree of the current
+repository or, if none matches, of another repository under the roots in
+repos_root; <repo>:<name> names one of a given repository.`
 
 func (a *app) lockCommand() *cobra.Command {
 	return &cobra.Command{
@@ -34,7 +38,7 @@ func (a *app) lockCommand() *cobra.Command {
 			return exactArgs("target")(cmd, args[:min(len(args), 1)])
 		},
 		// The second argument, the reason, is free text: nothing is offered.
-		ValidArgsFunction: a.completeNames(func(w worktree.Worktree) bool { return !w.Main && !w.Locked }),
+		ValidArgsFunction: a.completeTargets(modeWorktree, canRemove),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			var reason string
 			if len(args) > 1 {
@@ -51,7 +55,7 @@ func (a *app) unlockCommand() *cobra.Command {
 		Short:             "Unlock a worktree",
 		Long:              unlockLong,
 		Args:              exactArgs("target"),
-		ValidArgsFunction: a.completeNames(func(w worktree.Worktree) bool { return w.Locked }),
+		ValidArgsFunction: a.completeTargets(modeWorktree, isLocked),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			return a.changeLock(cmd.Context(), args[0], false, "")
 		}),
@@ -65,17 +69,11 @@ func (a *app) changeLock(ctx context.Context, target string, lock bool, reason s
 	if err != nil {
 		return err
 	}
-	repo, err := a.requireRepository(ctx, dir)
+	res, _, err := a.resolve(ctx, dir, target, modeWorktree)
 	if err != nil {
 		return err
 	}
-	if _, err := a.loadConfig(repo.root()); err != nil {
-		return err
-	}
-	w, err := a.resolveTarget(repo, target)
-	if err != nil {
-		return err
-	}
+	w := *res.Worktree
 	verb, check := "unlock", worktree.CheckUnlockable
 	if lock {
 		verb, check = "lock", worktree.CheckLockable
@@ -86,9 +84,9 @@ func (a *app) changeLock(ctx context.Context, target string, lock bool, reason s
 
 	if !a.dryRun {
 		if lock {
-			err = git.LockWorktree(ctx, a.git, dir, w.Path, reason)
+			err = git.LockWorktree(ctx, a.git, res.GitDir, w.Path, reason)
 		} else {
-			err = git.UnlockWorktree(ctx, a.git, dir, w.Path)
+			err = git.UnlockWorktree(ctx, a.git, res.GitDir, w.Path)
 		}
 		if err != nil {
 			return gitError(err)

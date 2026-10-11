@@ -14,11 +14,17 @@ import (
 	"github.com/jMautone/worktree-manager/internal/process"
 	"github.com/jMautone/worktree-manager/internal/shell"
 	"github.com/jMautone/worktree-manager/internal/template"
+	"github.com/jMautone/worktree-manager/internal/workspace"
 	"github.com/jMautone/worktree-manager/internal/worktree"
 )
 
 const createLong = `Create a worktree of the current repository on a new branch, and move the
 shell into it.
+
+<repo>:<name> creates it in the repository <repo> under the roots in
+repos_root instead, from anywhere, as if wt create <name> had started in
+its main worktree: its branches, its remotes, its default branch and its
+.wt.toml. <repo> is matched as in "wt cd <repo>:".
 
 The branch is <name> after branch_prefix, or the value of -b as given. It
 starts at --base, else at default_base, else at the repository's default
@@ -68,20 +74,20 @@ func (a *app) createCommand() *cobra.Command {
 		Short: "Create a worktree on a new branch and move the shell into it",
 		Long:  createLong,
 		Args:  exactArgs("name"),
-		// A name is new: there is nothing to offer, and never a file.
-		ValidArgsFunction: cobra.NoFileCompletions,
+		// A name is new: only the repositories of <repo>:<name> are offered.
+		ValidArgsFunction: a.completeCreateName,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			if err := f.validate(cmd, args[0], a.json); err != nil {
 				return err
 			}
-			plan, err := a.planCreate(cmd, args[0], f)
+			plan, dir, err := a.planCreate(cmd, args[0], f)
 			if err != nil {
 				return err
 			}
 			if a.dryRun {
 				return a.previewCreate(plan)
 			}
-			return a.create(cmd.Context(), plan)
+			return a.create(cmd.Context(), plan, dir)
 		}),
 	}
 	fs := cmd.Flags()
@@ -102,6 +108,12 @@ func (a *app) createCommand() *cobra.Command {
 // validate rejects the usage errors that need neither the repository nor
 // the configuration.
 func (f createFlags) validate(cmd *cobra.Command, name string, asJSON bool) error {
+	if repo, rest, qualified := workspace.SplitQualified(name); qualified {
+		if repo == "" {
+			return qualifiedUsage(name, repo, rest)
+		}
+		name = rest
+	}
 	if err := worktree.ValidateName(name); err != nil {
 		return &Error{Code: ExitUsage, Msg: err.Error()}
 	}
@@ -118,21 +130,55 @@ func (f createFlags) validate(cmd *cobra.Command, name string, asJSON bool) erro
 
 // planCreate reads everything wt create needs and decides what it would
 // do. It only reads, except for the fetch (not under --dry-run); every
-// check that can fail happens here, before anything is created.
-func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktree.CreatePlan, error) {
+// check that can fail happens here, before anything is created. It also
+// returns the directory git runs in for the target repository.
+//
+// <repo>:<name> creates the worktree in the repository <repo> names, as if
+// wt create <name> had started there: from here on, dir and repo are that
+// repository's, and its main worktree's .wt.toml is the repository layer.
+func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktree.CreatePlan, string, error) {
 	ctx := cmd.Context()
 	goos := a.env.GOOS
 	dir, err := a.workdir()
 	if err != nil {
-		return worktree.CreatePlan{}, err
+		return worktree.CreatePlan{}, "", err
 	}
-	repo, err := a.requireRepository(ctx, dir)
-	if err != nil {
-		return worktree.CreatePlan{}, err
+	repoSide, nameSide, qualified := workspace.SplitQualified(name)
+	repo, err := a.loadRepository(ctx, dir)
+	var notRepo *git.NotRepoError
+	switch {
+	case err != nil && !errors.As(err, &notRepo):
+		return worktree.CreatePlan{}, "", gitError(err)
+	case notRepo != nil && !qualified:
+		e := gitError(notRepo).(*Error)
+		if base, err := a.loadConfigQuiet(""); err == nil && len(reposRoot(base)) > 0 {
+			e.Hints = append(e.Hints, fmt.Sprintf("run 'wt create <repo>:%s' to create it in a repository under repos_root", name))
+		}
+		return worktree.CreatePlan{}, "", e
 	}
-	cfg, err := a.loadConfig(repo.root())
+	root := repo.root()
+	if qualified {
+		name = nameSide
+		base, err := a.loadConfigQuiet("")
+		if err != nil {
+			return worktree.CreatePlan{}, "", err
+		}
+		r, names, err := a.matchRepo(base, repoSide)
+		if err != nil {
+			return worktree.CreatePlan{}, "", err
+		}
+		target, gitDir, other, err := a.readRepo(ctx, dir, repo, names.repos, r)
+		if err != nil {
+			return worktree.CreatePlan{}, "", err
+		}
+		if other {
+			root = otherRoot(target)
+		}
+		repo, dir = target, gitDir
+	}
+	cfg, err := a.loadConfig(root)
 	if err != nil {
-		return worktree.CreatePlan{}, err
+		return worktree.CreatePlan{}, "", err
 	}
 	var main worktree.Worktree
 	for _, w := range repo.worktrees {
@@ -151,37 +197,37 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 	if err := git.CheckBranchName(ctx, a.git, dir, branch); err != nil {
 		var ibe *git.InvalidBranchError
 		if !errors.As(err, &ibe) {
-			return worktree.CreatePlan{}, gitError(err)
+			return worktree.CreatePlan{}, "", gitError(err)
 		}
 		e := &Error{Code: ExitUsage, Msg: ibe.Error()}
 		if prefix != "" && !explicit {
 			e.Hints = []string{fmt.Sprintf("it is branch_prefix (%q) followed by <name>", prefix)}
 		}
-		return worktree.CreatePlan{}, e
+		return worktree.CreatePlan{}, "", e
 	}
 
 	// The path.
 	tmpl, err := template.Parse(configString(cfg, "worktree_path"), template.WorktreePathVars)
 	if err != nil {
-		return worktree.CreatePlan{}, err
+		return worktree.CreatePlan{}, "", err
 	}
 	rendered := tmpl.Render(worktree.PathVars(main, name, branch, goos))
 	path, err := worktree.ResolvePath(rendered, main.Path, a.home(), goos)
 	if err != nil {
-		return worktree.CreatePlan{}, &Error{Code: ExitUsage, Msg: err.Error()}
+		return worktree.CreatePlan{}, "", &Error{Code: ExitUsage, Msg: err.Error()}
 	}
 	if err := worktree.CheckWindowsPath(path, goos); err != nil {
-		return worktree.CreatePlan{}, &Error{
+		return worktree.CreatePlan{}, "", &Error{
 			Code:  ExitUsage,
 			Msg:   err.Error(),
 			Hints: []string{"apply the sanitize filter in worktree_path, as in {name|sanitize}"},
 		}
 	}
 	if _, err := os.Lstat(path); err == nil {
-		return worktree.CreatePlan{}, &Error{Code: ExitBlocked, Msg: "path already exists: " + path}
+		return worktree.CreatePlan{}, "", &Error{Code: ExitBlocked, Msg: "path already exists: " + path}
 	}
 	if _, ok := worktree.RegisteredAt(repo.worktrees, path, goos); ok {
-		return worktree.CreatePlan{}, &Error{
+		return worktree.CreatePlan{}, "", &Error{
 			Code:  ExitBlocked,
 			Msg:   fmt.Sprintf("a worktree is registered at %s, but its directory is missing", path),
 			Hints: []string{"run 'git worktree prune' to forget it"},
@@ -191,10 +237,10 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 	// A local branch is checked before touching the network.
 	refs, err := git.Refs(ctx, a.git, dir, "refs/heads/"+branch)
 	if err != nil {
-		return worktree.CreatePlan{}, gitError(err)
+		return worktree.CreatePlan{}, "", gitError(err)
 	}
 	if err := worktree.BranchTaken(branch, refs, nil, repo.worktrees); err != nil {
-		return worktree.CreatePlan{}, branchExistsError(err)
+		return worktree.CreatePlan{}, "", branchExistsError(err)
 	}
 
 	// The base, fetched first when it is on a remote.
@@ -204,12 +250,12 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 	}
 	if base == "" {
 		if base, err = a.defaultBranch(ctx, dir, main); err != nil {
-			return worktree.CreatePlan{}, err
+			return worktree.CreatePlan{}, "", err
 		}
 	}
 	remotes, err := git.Remotes(ctx, a.git, dir)
 	if err != nil {
-		return worktree.CreatePlan{}, gitError(err)
+		return worktree.CreatePlan{}, "", gitError(err)
 	}
 	var fetch string
 	if configBool(cfg, "fetch_before_create") {
@@ -222,10 +268,10 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 	}
 	head, err := git.ResolveCommit(ctx, a.git, dir, base)
 	if errors.Is(err, git.ErrNoRevision) {
-		return worktree.CreatePlan{}, &Error{Code: ExitNotFound, Msg: "base not found: " + base}
+		return worktree.CreatePlan{}, "", &Error{Code: ExitNotFound, Msg: "base not found: " + base}
 	}
 	if err != nil {
-		return worktree.CreatePlan{}, gitError(err)
+		return worktree.CreatePlan{}, "", gitError(err)
 	}
 
 	// Remote-tracking branches, after the fetch, to see what was just pushed.
@@ -235,10 +281,10 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 			patterns[i] = "refs/remotes/" + r + "/" + branch
 		}
 		if refs, err = git.Refs(ctx, a.git, dir, patterns...); err != nil {
-			return worktree.CreatePlan{}, gitError(err)
+			return worktree.CreatePlan{}, "", gitError(err)
 		}
 		if err := worktree.BranchTaken(branch, refs, remotes, repo.worktrees); err != nil {
-			return worktree.CreatePlan{}, branchExistsError(err)
+			return worktree.CreatePlan{}, "", branchExistsError(err)
 		}
 	}
 
@@ -251,7 +297,7 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 		Fetch:  fetch,
 		CD:     f.cd || configBool(cfg, "create_cd") && !f.noCD,
 		Exec:   f.exec,
-	}, nil
+	}, dir, nil
 }
 
 // readDefaultBranch reads what DefaultBranch decides with: origin/HEAD and,
@@ -336,13 +382,9 @@ func (a *app) previewCreate(plan worktree.CreatePlan) error {
 	return err
 }
 
-// create carries out the plan: the branch, then the worktree, then the
-// shell, then -x.
-func (a *app) create(ctx context.Context, plan worktree.CreatePlan) error {
-	dir, err := a.workdir()
-	if err != nil {
-		return err
-	}
+// create carries out the plan, with git running in dir: the branch, then
+// the worktree, then the shell, then -x.
+func (a *app) create(ctx context.Context, plan worktree.CreatePlan, dir string) error {
 	// Two steps, not worktree add -b: git branch fails when the branch
 	// exists, so a branch it created is wt's to delete if the worktree
 	// cannot be added. The branch starts at the resolved commit, which is
@@ -404,13 +446,50 @@ func createDocument(plan worktree.CreatePlan) createJSON {
 	return createJSON{"wt.create.v1", plan.Name, plan.Path, plan.Branch, plan.Base, plan.Head}
 }
 
+// completeCreateName offers, for <name>, "<display name>:" for every
+// repository under the roots whose display name starts with the word,
+// ignoring case, with no space after it: the rest is a new name, which
+// nothing can complete. A word with ":" is past the repository.
+func (a *app) completeCreateName(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+	if len(args) > 0 || strings.Contains(toComplete, ":") {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	base, err := a.loadConfigQuiet("")
+	if err != nil || len(reposRoot(base)) == 0 {
+		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	repos := a.discoverRepos(base, func(string) {})
+	var offered []cobra.Completion
+	for _, name := range workspace.DisplayNames(repos, a.env.GOOS) {
+		if workspace.HasPrefixFold(name, toComplete) {
+			offered = append(offered, name+":")
+		}
+	}
+	return offered, cobra.ShellCompDirectiveNoSpace | cobra.ShellCompDirectiveNoFileComp
+}
+
 // completeBases offers the local and remote-tracking branches for --base,
-// without <remote>/HEAD. Like wt cd, it loads no configuration, and any
-// error offers nothing.
+// without <remote>/HEAD, of the repository <name> designates when it is
+// <repo>:<name>, and otherwise of the working directory's. Any error
+// offers nothing.
 func (a *app) completeBases(cmd *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
 	dir, err := a.workdir()
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
+	}
+	if len(args) > 0 {
+		if side, _, qualified := workspace.SplitQualified(args[0]); qualified {
+			base, err := a.loadConfigQuiet("")
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			repos := a.discoverRepos(base, func(string) {})
+			r, err := workspace.MatchSide(repos, side, a.env.GOOS)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			dir = r.Path
+		}
 	}
 	// Full names, shortened here: git's refname:short writes origin/HEAD
 	// as origin, and a branch that is also a tag as heads/<branch>.

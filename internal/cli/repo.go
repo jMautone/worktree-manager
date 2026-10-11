@@ -70,12 +70,38 @@ func (r *repository) main() *worktree.Worktree {
 
 // loadRepository lists the worktrees of the repository associated with dir.
 // It returns git's errors unchanged; gitError maps them to exit codes.
-//
-// Symbolic links are resolved here, at the edge, in dir and in every path git
-// reports, so that worktree.Build can compare paths purely: on macOS the
-// working directory may be /var/... while git reports /private/var/.... A
-// path that no longer exists (prunable) is used as reported.
 func (a *app) loadRepository(ctx context.Context, dir string) (*repository, error) {
+	cwdReal := dir
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		cwdReal = real
+	}
+	ws, err := a.listWorktrees(ctx, dir, cwdReal)
+	if err != nil {
+		return nil, err
+	}
+	return newRepository(ws), nil
+}
+
+// newRepository wraps the worktrees of a repository, as Build returns them.
+func newRepository(ws []worktree.Worktree) *repository {
+	repo := &repository{worktrees: ws}
+	for i := range repo.worktrees {
+		if repo.worktrees[i].Current {
+			repo.current = &repo.worktrees[i]
+		}
+	}
+	return repo
+}
+
+// listWorktrees lists the worktrees of the repository associated with dir,
+// with the one that contains cwdReal as current; "" makes none current.
+//
+// Symbolic links are resolved here, at the edge, in every path git reports
+// (cwdReal comes resolved), so that worktree.Build can compare paths
+// purely: on macOS the working directory may be /var/... while git reports
+// /private/var/.... A path that no longer exists (prunable) is used as
+// reported.
+func (a *app) listWorktrees(ctx context.Context, dir, cwdReal string) ([]worktree.Worktree, error) {
 	entries, err := git.ListWorktrees(ctx, a.git, dir)
 	if err != nil {
 		return nil, err
@@ -85,17 +111,7 @@ func (a *app) loadRepository(ctx context.Context, dir string) (*repository, erro
 			entries[i].Path = real
 		}
 	}
-	cwdReal := dir
-	if real, err := filepath.EvalSymlinks(dir); err == nil {
-		cwdReal = real
-	}
-	repo := &repository{worktrees: worktree.Build(entries, cwdReal, a.env.GOOS)}
-	for i := range repo.worktrees {
-		if repo.worktrees[i].Current {
-			repo.current = &repo.worktrees[i]
-		}
-	}
-	return repo, nil
+	return worktree.Build(entries, cwdReal, a.env.GOOS), nil
 }
 
 // requireRepository is loadRepository for commands that need a repository.

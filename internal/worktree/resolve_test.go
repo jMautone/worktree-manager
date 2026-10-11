@@ -128,3 +128,63 @@ func isAmbiguous(paths ...string) func(error) bool {
 		return true
 	}
 }
+
+func TestResolveOthers(t *testing.T) {
+	api := Build([]git.WorktreeEntry{
+		{Path: "/r/api", Head: head, Branch: "main"},
+		{Path: "/r/api.worktrees/feat", Head: head, Branch: "feat"},
+		{Path: "/r/api.worktrees/fix", Head: head, Branch: "fix-1"},
+		{Path: "/r/api.worktrees/gone", Head: head, Branch: "gone", Prunable: true, PrunableReason: "gitdir file points to non-existent location"},
+	}, "", "linux")
+	web := Build([]git.WorktreeEntry{
+		{Path: "/r/web", Head: head, Branch: "trunk"},
+		{Path: "/r/web.worktrees/x", Head: head, Branch: "fix"},
+		{Path: "/r/web.worktrees/feat", Head: head, Branch: "web/feat"},
+		{Path: "/r/web.worktrees/abc", Head: head, Branch: "feature/abc1"},
+	}, "", "linux")
+	bare := Build([]git.WorktreeEntry{
+		{Path: "/r/proj/.bare", Bare: true},
+		{Path: "/r/proj/dev", Head: head, Branch: "develop"},
+	}, "", "linux")
+	groups := [][]Worktree{api, web, bare}
+
+	for _, tc := range []struct {
+		name, target string
+		group        int
+		want         string
+	}{
+		{"name in one group", "fix", 0, "/r/api.worktrees/fix"},
+		{"branch in another", "feature/abc1", 1, "/r/web.worktrees/abc"},
+		{"name before branch across groups", "fix", 0, "/r/api.worktrees/fix"},
+		{"linked worktree of a bare repository", "dev", 2, "/r/proj/dev"},
+		{"directory gone", "gone", 0, "/r/api.worktrees/gone"},
+	} {
+		hit, err := ResolveOthers(groups, tc.target)
+		if err != nil || hit.Group != tc.group || hit.Worktree.Path != tc.want {
+			t.Errorf("%s: ResolveOthers(%q) = %d %s, %v; want %d %s", tc.name, tc.target, hit.Group, hit.Worktree.Path, err, tc.group, tc.want)
+		}
+	}
+
+	// Main worktrees and bare repositories are not candidates, whatever
+	// their name or branch.
+	for _, target := range []string{"api", "main", "web", "trunk", ".bare", "", "Feat"} {
+		if hit, err := ResolveOthers(groups, target); !isNotFound(target)(err) {
+			t.Errorf("ResolveOthers(%q) = %+v, %v; want not found", target, hit, err)
+		}
+	}
+
+	_, err := ResolveOthers(groups, "feat")
+	var amb *OthersAmbiguousError
+	if !errors.As(err, &amb) || amb.Target != "feat" || len(amb.Hits) != 2 ||
+		amb.Hits[0].Group != 0 || amb.Hits[0].Worktree.Path != "/r/api.worktrees/feat" ||
+		amb.Hits[1].Group != 1 || amb.Hits[1].Worktree.Path != "/r/web.worktrees/feat" {
+		t.Errorf("ResolveOthers(feat) error = %+v, want an ambiguity between api and web", err)
+	}
+	if got := amb.Error(); got != `"feat" matches more than one worktree` {
+		t.Errorf("message %q", got)
+	}
+
+	if _, err := ResolveOthers(nil, "feat"); !isNotFound("feat")(err) {
+		t.Errorf("ResolveOthers among no groups = %v, want not found", err)
+	}
+}
