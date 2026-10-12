@@ -273,3 +273,19 @@ func TestSandboxCreatesLinks(t *testing.T) {
 		t.Errorf("Lstat(link) = %v, %v; want a link, not a directory", info, err)
 	}
 }
+
+func TestSandboxBreakHEAD(t *testing.T) {
+	sb := New(t)
+	repo := sb.Path("broken")
+	sb.InitRepo(repo)
+	sb.BreakHEAD(repo)
+	cmd := exec.Command("git", "worktree", "list", "--porcelain")
+	cmd.Dir = repo
+	cmd.Env = sb.Environ()
+	if out, err := cmd.CombinedOutput(); err == nil {
+		t.Errorf("git read the broken repository:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git")); err != nil {
+		t.Errorf("the .git directory is gone: %v", err)
+	}
+}

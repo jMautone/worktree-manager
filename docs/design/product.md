@@ -269,7 +269,7 @@ Tres cortes, uno por capability de M2, cada uno usable de punta a punta.
 | Change | Entrega | Por qué en ese orden |
 |---|---|---|
 | `workspace-discovery` | `repos_root` y `repos_depth` (con `WT_REPOS_ROOT` y `WT_REPOS_DEPTH`), `wt repos` con `wt.repos.v1`, y `wt cd <repo>` desde cualquier directorio (nombre exacto, sin mayúsculas, prefijo único), con los repos en la completion de `wt cd`. | Es el salto de todos los días y lo que todavía hace volver a v0.9. El primer corte ya se usa entero, no es solo un listado. Lee el filesystem y no corre git, así que no agrega costo a lo que ya resolvía el repo actual. |
-| `cross-repo-resolution` | `wt cd <worktree>` de otro repo o desde fuera de todos, la forma calificada `<repo>:<name>`, `wt list --all-repos`, y `path`, `remove`, `lock` y `unlock` que resuelven en otros repos. | Necesita un `git worktree list` por repo descubierto: su costo y su ambigüedad merecen un diseño propio, sobre un descubrimiento ya probado. |
+| `cross-repo-resolution` | `wt cd <worktree>` de otro repo o desde fuera de todos, la forma calificada `<repo>:<name>`, `wt list --all-repos`, `path`, `remove`, `lock` y `unlock` que resuelven en otros repos, y `wt create <repo>:<name>` que crea en otro repo. | Necesita un `git worktree list` por repo descubierto: su costo y su ambigüedad merecen un diseño propio, sobre un descubrimiento ya probado. |
 | `batch-execution` | `wt exec <name> -- <cmd>` y `wt each -- <cmd>` sobre los worktrees de uno o de todos los repos. | Itera sobre el conjunto que resuelven los dos anteriores; sin ellos no hay sobre qué iterar. |
 
 ### Definición de "listo" por milestone

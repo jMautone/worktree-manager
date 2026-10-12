@@ -16,12 +16,15 @@ import (
 	"github.com/jMautone/worktree-manager/internal/worktree"
 )
 
-const removeLong = `Remove a worktree of the current repository, and its branch when it is
-merged.
+const removeLong = `Remove a worktree, and its branch when it is merged.
 
-<target> is resolved as in "wt cd": the worktree with that NAME or, if none
-has it, the one with that branch checked out; @ is the current worktree.
-The main worktree is never removed.
+<target> is resolved as in "wt cd", among worktrees only: the worktree of
+the current repository with that NAME or, if none has it, with that branch
+checked out; if neither exists, or outside a repository, the linked
+worktree of another repository under the roots in repos_root with that
+NAME or branch. <repo>:<name> names the worktree <name> of the repository
+<repo>, as in "wt cd". @ is the current worktree. The main worktree is
+never removed.
 
 Nothing is removed while the worktree has modified or untracked files
 (-f removes it with them), is locked (see "wt unlock"), or contains another
@@ -30,7 +33,8 @@ are not checked: they are deleted with the worktree, as git does.
 
 The branch is deleted when it is merged: when its last commit is in the
 base (default_base, else the repository's default branch, as in "wt
-create") or in the branch's upstream. Only the references already here
+create") or in the branch's upstream. For a worktree of another
+repository, default_base is read from that repository's .wt.toml. Only the references already here
 count; nothing is fetched. A squash merge does not count, because the
 branch's commits are not in the base: such a branch is kept, and -D deletes
 it. A branch pushed to its upstream counts as merged even while its pull
@@ -59,7 +63,7 @@ func (a *app) removeCommand() *cobra.Command {
 		Args:  exactArgs("target"),
 		// The worktrees that could be removed, including those whose
 		// directory is gone.
-		ValidArgsFunction: a.completeNames(func(w worktree.Worktree) bool { return !w.Main && !w.Locked }),
+		ValidArgsFunction: a.completeTargets(modeWorktree, canRemove),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			if f.keepBranch && f.forceDelete {
 				return usageError(cmd, "--keep-branch and -D cannot be used together")
@@ -84,26 +88,19 @@ func (a *app) removeCommand() *cobra.Command {
 // planRemove reads everything wt remove needs and decides what it would do.
 // It only reads: every check that can fail by the state of the repository
 // happens here, before anything is removed. It also returns the main
-// worktree, where the effects run.
+// worktree of the target's repository, where the effects run.
 func (a *app) planRemove(ctx context.Context, target string, f removeFlags) (worktree.RemovePlan, worktree.Worktree, error) {
 	var plan worktree.RemovePlan
 	dir, err := a.workdir()
 	if err != nil {
 		return plan, worktree.Worktree{}, err
 	}
-	repo, err := a.requireRepository(ctx, dir)
+	res, cfg, err := a.resolve(ctx, dir, target, modeWorktree)
 	if err != nil {
 		return plan, worktree.Worktree{}, err
 	}
-	cfg, err := a.loadConfig(repo.root())
-	if err != nil {
-		return plan, worktree.Worktree{}, err
-	}
-	w, err := a.resolveTarget(repo, target)
-	if err != nil {
-		return plan, worktree.Worktree{}, err
-	}
-	if err := removeBlocked(worktree.CheckRemovable(w, repo.worktrees, a.env.GOOS)); err != nil {
+	w := *res.Worktree
+	if err := removeBlocked(worktree.CheckRemovable(w, res.Repo.worktrees, a.env.GOOS)); err != nil {
 		return plan, worktree.Worktree{}, err
 	}
 	if info, err := os.Stat(w.Path); err == nil && info.IsDir() && !f.force {
@@ -122,11 +119,11 @@ func (a *app) planRemove(ctx context.Context, target string, f removeFlags) (wor
 			}
 		}
 	}
-	main := mainWorktree(repo)
+	main := mainWorktree(res.Repo)
 
 	var m worktree.Merged
 	if w.Branch != "" && !f.keepBranch && !f.forceDelete {
-		if m, err = a.readMerged(ctx, dir, cfg, main, w); err != nil {
+		if m, err = a.readMerged(ctx, res.GitDir, cfg, main, w); err != nil {
 			return plan, worktree.Worktree{}, err
 		}
 	}

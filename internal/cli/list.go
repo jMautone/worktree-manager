@@ -2,28 +2,51 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
+	"github.com/jMautone/worktree-manager/internal/git"
 	"github.com/jMautone/worktree-manager/internal/worktree"
 )
 
+const listLong = `List every worktree of the repository that contains the working directory.
+
+The first column marks the current worktree with @ and the main one with ^.
+
+--all-repos lists, from anywhere, the worktrees of every repository under
+the roots in repos_root (as in "wt repos"), with the REPO column naming
+each one's repository as "wt cd <repo>:<name>" takes it. A repository
+that git cannot read is left out with a warning.`
+
 func (a *app) listCommand() *cobra.Command {
-	return &cobra.Command{
+	var allRepos bool
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List the worktrees of the current repository",
-		Long: `List every worktree of the repository that contains the working directory.
-
-The first column marks the current worktree with @ and the main one with ^.`,
-		Args: noArgs,
+		Long:  listLong,
+		Args:  noArgs,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			dir, err := a.workdir()
 			if err != nil {
 				return err
 			}
-			repo, err := a.requireRepository(cmd.Context(), dir)
+			if allRepos {
+				return a.listAll(cmd.Context(), dir)
+			}
+			repo, err := a.loadRepository(cmd.Context(), dir)
+			var notRepo *git.NotRepoError
+			if errors.As(err, &notRepo) {
+				e := gitError(err).(*Error)
+				if base, err := a.loadConfigQuiet(""); err == nil && len(reposRoot(base)) > 0 {
+					e.Hints = append(e.Hints, hintListAll)
+				}
+				return e
+			}
 			if err != nil {
-				return err
+				return gitError(err)
 			}
 			if _, err := a.loadConfig(repo.root()); err != nil {
 				return err
@@ -31,28 +54,79 @@ The first column marks the current worktree with @ and the main one with ^.`,
 			if a.json {
 				return a.writeJSON(listDocument(repo.worktrees))
 			}
-			var buf bytes.Buffer
-			if err := renderTable(&buf, listRows(repo.worktrees), a.color()); err != nil {
-				return err
-			}
-			_, err = a.env.Stdout.Write(buf.Bytes())
-			return err
+			return a.writeTable(listRows(repo.worktrees, nil))
 		}),
 	}
+	cmd.Flags().BoolVar(&allRepos, "all-repos", false, "list the worktrees of every repository under the roots")
+	return cmd
+}
+
+// listAll is wt list --all-repos: the worktrees of every repository under
+// the roots, which need no current repository. The configuration has no
+// repository layer: the roots never come from one.
+func (a *app) listAll(ctx context.Context, dir string) error {
+	repo, _ := a.loadRepository(ctx, dir)
+	cfg, err := a.loadConfig("")
+	if err != nil {
+		return err
+	}
+	if len(reposRoot(cfg)) == 0 {
+		return a.noRootsError()
+	}
+	repos := a.discoverRepos(cfg, a.warn)
+	cwdReal := dir
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		cwdReal = real
+	}
+	scanned, err := a.scanWorktrees(ctx, repos, currentRepo(repo, repos), cwdReal)
+	if err != nil {
+		return gitError(err)
+	}
+	names := newWorkspaceNames(repos, a.env.GOOS)
+	a.readable(scanned, names, a.warn)
+	if a.json {
+		return a.writeJSON(listAllDocument(scanned))
+	}
+	var ws []worktree.Worktree
+	var repoNames []string
+	for i, s := range scanned {
+		for _, w := range s.Worktrees {
+			ws = append(ws, w)
+			repoNames = append(repoNames, names.names[i])
+		}
+	}
+	if len(ws) == 0 {
+		return nil
+	}
+	return a.writeTable(listRows(ws, repoNames))
+}
+
+// writeTable writes rows to stdout as an aligned table.
+func (a *app) writeTable(rows [][]cell) error {
+	var buf bytes.Buffer
+	if err := renderTable(&buf, rows, a.color()); err != nil {
+		return err
+	}
+	_, err := a.env.Stdout.Write(buf.Bytes())
+	return err
 }
 
 // listRows builds the table of `wt list`: markers, NAME, BRANCH, HEAD,
-// STATE, PATH.
-func listRows(ws []worktree.Worktree) [][]cell {
-	rows := [][]cell{{
-		{},
+// STATE, PATH. With repos, the REPO of each worktree, aligned with ws, it
+// is the table of --all-repos, with REPO after the markers.
+func listRows(ws []worktree.Worktree, repos []string) [][]cell {
+	header := []cell{{}}
+	if repos != nil {
+		header = append(header, cell{text: "REPO", style: styleBold})
+	}
+	rows := [][]cell{append(header, []cell{
 		{text: "NAME", style: styleBold},
 		{text: "BRANCH", style: styleBold},
 		{text: "HEAD", style: styleBold},
 		{text: "STATE", style: styleBold},
 		{text: "PATH", style: styleBold},
-	}}
-	for _, w := range ws {
+	}...)}
+	for i, w := range ws {
 		markers := cell{}
 		switch {
 		case w.Current && w.Main:
@@ -91,7 +165,11 @@ func listRows(ws []worktree.Worktree) [][]cell {
 			state = cell{text: "prunable", style: styleError}
 		}
 
-		rows = append(rows, []cell{markers, name, branch, head, state, {text: w.Path}})
+		row := []cell{markers}
+		if repos != nil {
+			row = append(row, cell{text: repos[i]})
+		}
+		rows = append(rows, append(row, name, branch, head, state, cell{text: w.Path}))
 	}
 	return rows
 }
@@ -120,20 +198,58 @@ type worktreeJSON struct {
 func listDocument(ws []worktree.Worktree) listJSON {
 	doc := listJSON{Schema: "wt.list.v1", Worktrees: make([]worktreeJSON, 0, len(ws))}
 	for _, w := range ws {
-		doc.Worktrees = append(doc.Worktrees, worktreeJSON{
-			Name:           w.Name,
-			Path:           w.Path,
-			Branch:         nullable(w.Branch),
-			Head:           nullable(w.Head),
-			Detached:       w.Detached,
-			Bare:           w.Bare,
-			Main:           w.Main,
-			Current:        w.Current,
-			Locked:         w.Locked,
-			LockedReason:   nullable(w.LockedReason),
-			Prunable:       w.Prunable,
-			PrunableReason: nullable(w.PrunableReason),
-		})
+		doc.Worktrees = append(doc.Worktrees, toWorktreeJSON(w))
+	}
+	return doc
+}
+
+func toWorktreeJSON(w worktree.Worktree) worktreeJSON {
+	return worktreeJSON{
+		Name:           w.Name,
+		Path:           w.Path,
+		Branch:         nullable(w.Branch),
+		Head:           nullable(w.Head),
+		Detached:       w.Detached,
+		Bare:           w.Bare,
+		Main:           w.Main,
+		Current:        w.Current,
+		Locked:         w.Locked,
+		LockedReason:   nullable(w.LockedReason),
+		Prunable:       w.Prunable,
+		PrunableReason: nullable(w.PrunableReason),
+	}
+}
+
+// listAllJSON is the wt.list.v1 document of --all-repos: a separate type,
+// so that the fields it adds never reach wt list --json.
+type listAllJSON struct {
+	Schema     string            `json:"schema"`
+	Worktrees  []worktreeAllJSON `json:"worktrees"`
+	Unreadable []unreadableJSON  `json:"unreadable"`
+}
+
+type worktreeAllJSON struct {
+	worktreeJSON
+	Repo     string `json:"repo"`      // the repository's name, as in wt repos
+	RepoPath string `json:"repo_path"` // the repository's path, as in wt repos
+}
+
+type unreadableJSON struct {
+	Repo    string `json:"repo"`
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
+func listAllDocument(scanned []repoWorktrees) listAllJSON {
+	doc := listAllJSON{Schema: "wt.list.v1", Worktrees: []worktreeAllJSON{}, Unreadable: []unreadableJSON{}}
+	for _, s := range scanned {
+		if s.Err != nil {
+			doc.Unreadable = append(doc.Unreadable, unreadableJSON{s.Repo.Name, s.Repo.Path, oneLine(gitMessage(s.Err))})
+			continue
+		}
+		for _, w := range s.Worktrees {
+			doc.Worktrees = append(doc.Worktrees, worktreeAllJSON{toWorktreeJSON(w), s.Repo.Name, s.Repo.Path})
+		}
 	}
 	return doc
 }

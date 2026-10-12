@@ -196,6 +196,7 @@ func TestRemoveResolutionErrors(t *testing.T) {
 	if got, want := firstLine(r.stderr), "wt: not a git repository: "+h.cwd; got != want {
 		t.Errorf("first line = %q, want %q", got, want)
 	}
+	mustHint(t, r, "repos_root")
 }
 
 func TestRemoveBareMainWorktree(t *testing.T) {

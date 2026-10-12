@@ -1,43 +1,51 @@
 package cli
 
 import (
-	"errors"
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
-	"github.com/jMautone/worktree-manager/internal/git"
 	"github.com/jMautone/worktree-manager/internal/shell"
-	"github.com/jMautone/worktree-manager/internal/workspace"
-	"github.com/jMautone/worktree-manager/internal/worktree"
 )
 
-const cdLong = `Move the shell to a worktree of the current repository, or to one of
-the repositories under the roots in repos_root.
+const cdLong = `Move the shell to a worktree or a repository, from anywhere.
 
 <target> is one of:
 
-  <name>   the worktree with that NAME (as in "wt list") or, if none has
-           it, the worktree with that branch checked out; if neither
-           exists, or outside a repository, the repository with that name
-           under the roots in repos_root (as in "wt repos")
-  ^        the main worktree
-  @        the root of the current worktree
-  -        the directory the shell was in before the last jump of wt
+  <name>          the worktree of the current repository with that NAME
+                  (as in "wt list") or, if none has it, with that branch
+                  checked out; if neither exists, or outside a repository,
+                  the repository with that name under the roots in
+                  repos_root (as in "wt repos"); if none, the linked
+                  worktree of another repository with that NAME or branch
+                  (as in "wt list --all-repos")
+  <repo>:<name>   the worktree <name> of the repository <repo>, searched
+                  nowhere else: api:feat, api:^ for its main worktree, and
+                  api: for the repository itself
+  ^               the main worktree
+  @               the root of the current worktree
+  -               the directory the shell was in before the last jump of wt
 
 Worktree names and branches match exactly. A repository name is matched
 in three steps, each only if the previous one found nothing: the exact
 name; the name ignoring letter case; the names that start with <name>,
 ignoring letter case. A step that finds more than one is an error that
-lists them (exit 4). Scripts should use full names: a prefix that is
-unique today may not be after the next clone.
+lists them (exit 4), each in the qualified form that names it. Scripts
+should use full names: a prefix that is unique today may not be after the
+next clone.
+
+When two repositories have the same name, write <repo> as the end of its
+path, as in GIT/api:feat; the hints of the error name each one this way.
 
 A binary cannot change the working directory of its shell, so wt cd only
-works through the wt shell function; see "wt shell init --help".
+works through the wt shell function; see "wt shell init --help". "wt path"
+prints the destination instead.
 
 In zsh with the EXTENDED_GLOB option set, ^ is a glob operator: quote it,
-as in wt cd '^'. In PowerShell, @ is an operator: quote it, as in wt cd '@'.`
+as in wt cd '^' and wt cd 'api:^'. In PowerShell, @ is an operator: quote
+it, as in wt cd '@'.`
 
 func (a *app) cdCommand() *cobra.Command {
 	return &cobra.Command{
@@ -45,7 +53,7 @@ func (a *app) cdCommand() *cobra.Command {
 		Short:             "Move the shell to a worktree or a repository",
 		Long:              cdLong,
 		Args:              exactArgs("target"),
-		ValidArgsFunction: a.completeCdTargets,
+		ValidArgsFunction: a.completeTargets(modeNavigate, canEnter),
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			dir, err := a.workdir()
 			if err != nil {
@@ -58,12 +66,12 @@ func (a *app) cdCommand() *cobra.Command {
 					Hints: []string{"load it with the line for your shell from 'wt shell init --help'"},
 				}
 			}
-			dest, err := a.cdDestination(cmd, dir, args[0])
+			dest, err := a.cdDestination(cmd.Context(), dir, args[0])
 			if err != nil {
 				return err
 			}
-			if info, err := os.Stat(dest); err != nil || !info.IsDir() {
-				return &Error{Code: ExitNotFound, Msg: "directory does not exist: " + dest}
+			if err := mustExist(dest); err != nil {
+				return err
 			}
 			switch {
 			case a.dryRun && !a.json:
@@ -87,12 +95,8 @@ func (a *app) cdCommand() *cobra.Command {
 
 // cdDestination resolves target to a directory. `-` is the shell session's
 // previous directory and needs no repository, so -C does not change it.
-//
-// Any other target is resolved in the current repository first, exactly as
-// in a repository alone; only when that finds nothing, or there is no
-// current repository, is a name looked for among the repositories under the
-// roots. `^` and `@` are never looked for there.
-func (a *app) cdDestination(cmd *cobra.Command, dir, target string) (string, error) {
+// Anything else is resolved as resolve does in modeNavigate.
+func (a *app) cdDestination(ctx context.Context, dir, target string) (string, error) {
 	if target == "-" {
 		if _, err := a.loadConfig(""); err != nil {
 			return "", err
@@ -103,44 +107,15 @@ func (a *app) cdDestination(cmd *cobra.Command, dir, target string) (string, err
 		}
 		return prev, nil
 	}
-	repo, err := a.loadRepository(cmd.Context(), dir)
-	var notRepo *git.NotRepoError
-	if err != nil && !errors.As(err, &notRepo) {
-		return "", gitError(err)
+	res, _, err := a.resolve(ctx, dir, target, modeNavigate)
+	return res.Path, err
+}
+
+// mustExist fails with exit 3 when dest is not a directory: a worktree
+// whose directory was deleted is still listed by git.
+func mustExist(dest string) error {
+	if info, err := os.Stat(dest); err != nil || !info.IsDir() {
+		return &Error{Code: ExitNotFound, Msg: "directory does not exist: " + dest}
 	}
-	cfg, err := a.loadConfig(repo.root())
-	if err != nil {
-		return "", err
-	}
-	var local error // why the current repository did not resolve target
-	if repo != nil {
-		w, err := worktree.Resolve(repo.worktrees, target)
-		var amb *worktree.AmbiguousError
-		switch {
-		case err == nil:
-			return w.Path, nil
-		case errors.As(err, &amb):
-			// An ambiguity among the worktrees is not resolved elsewhere.
-			return "", worktreeError(err)
-		}
-		local = err
-	}
-	if target == "^" || target == "@" {
-		if repo == nil {
-			return "", gitError(notRepo)
-		}
-		return "", worktreeError(local)
-	}
-	if len(reposRoot(cfg)) == 0 {
-		return "", nameNotFound(target, notRepo, false)
-	}
-	r, err := workspace.Match(a.discoverRepos(cfg, a.warn), target)
-	var amb *workspace.AmbiguousError
-	switch {
-	case err == nil:
-		return r.Path, nil
-	case errors.As(err, &amb):
-		return "", repoAmbiguity(amb)
-	}
-	return "", nameNotFound(target, notRepo, true)
+	return nil
 }

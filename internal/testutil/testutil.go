@@ -192,6 +192,14 @@ func (s *Sandbox) InitSeparateGitDir(dir, gitdir string) {
 	s.Git(dir, "commit", "-q", "--allow-empty", "-m", "initial commit")
 }
 
+// BreakHEAD writes garbage into the HEAD of the repository whose working
+// tree is repo, a regular clone with a .git directory. The directory still
+// looks like a repository, but git refuses to read it.
+func (s *Sandbox) BreakHEAD(repo string) {
+	s.t.Helper()
+	s.WriteFile(filepath.Join(repo, ".git", "HEAD"), "garbage\n")
+}
+
 // Symlink creates a symbolic link at link that points to target. On Windows
 // creating one needs a privilege the CI runner may not have; tests that use
 // it run on macOS and Linux.

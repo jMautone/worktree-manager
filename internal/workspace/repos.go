@@ -1,7 +1,6 @@
 package workspace
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 	"unicode"
@@ -92,7 +91,7 @@ type NotFoundError struct {
 	Target string
 }
 
-func (e *NotFoundError) Error() string { return fmt.Sprintf("no repository named %q", e.Target) }
+func (e *NotFoundError) Error() string { return "no repository named " + quote(e.Target) }
 
 // AmbiguousError means more than one repository matched the target in the
 // step that matched. Candidates are in the order of List.
@@ -102,8 +101,12 @@ type AmbiguousError struct {
 }
 
 func (e *AmbiguousError) Error() string {
-	return fmt.Sprintf("%q matches more than one repository", e.Target)
+	return quote(e.Target) + " matches more than one repository"
 }
+
+// quote puts s between double quotes as typed: unlike %q, it does not
+// escape the \ of a repository side such as GIT\api.
+func quote(s string) string { return `"` + s + `"` }
 
 // Match resolves target among repos, as List returns them, in three steps,
 // each only when the previous one matched none: the name equals target;

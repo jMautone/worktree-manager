@@ -416,7 +416,7 @@ func TestCdDryRun(t *testing.T) {
 func TestCdHelp(t *testing.T) {
 	r := newHarness(t).run("cd", "-h")
 	r.mustCode(t, 0)
-	for _, want := range []string{"wt cd <target>", "EXTENDED_GLOB", "wt cd '^'", "wt cd '@'", "wt shell init", "repos_root", "wt repos", "full names"} {
+	for _, want := range []string{"wt cd <target>", "EXTENDED_GLOB", "wt cd '^'", "wt cd '@'", "wt shell init", "repos_root", "wt repos", "full names", "<repo>:<name>", "wt list --all-repos", "GIT/api:feat", "'api:^'", "wt path"} {
 		if !strings.Contains(r.stdout, want) {
 			t.Errorf("help does not contain %q:\n%s", want, r.stdout)
 		}
