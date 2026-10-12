@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/jMautone/worktree-manager/internal/testutil"
 )
 
 // crossWorkspace creates under <sandbox>/root the repositories api, with
@@ -101,8 +103,8 @@ func TestCdSameWorktreeNameInTwoRepositories(t *testing.T) {
 	h.sb.AddWorktree(filepath.Join(root, "web"), webFeat, "web-feat")
 
 	r := mustFail(t, h, 4, `wt: "feat" matches more than one worktree`, "cd", "feat")
-	mustHint(t, r, "api:feat", feat)
-	mustHint(t, r, "web:feat", webFeat)
+	mustHint(t, r, "api:feat", testutil.Comparable(t, feat))
+	mustHint(t, r, "web:feat", testutil.Comparable(t, webFeat))
 	if strings.Contains(r.stderr, "warning") {
 		t.Errorf("stderr = %q, want no warning", r.stderr)
 	}
