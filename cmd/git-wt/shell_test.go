@@ -816,3 +816,85 @@ func TestShellCdAcrossRepositories(t *testing.T) {
 		}
 	})
 }
+
+// wt each through the function (batch-execution): with or without --, which
+// PowerShell drops, the command runs in every worktree; the shell stays
+// where it was; and the commands do not see the protocol variables.
+func TestShellEach(t *testing.T) {
+	forEachShell(t, func(t *testing.T, d dialect) {
+		e := newShellEnv(t)
+		record := e.sb.Path("env.txt")
+		dump := "env >> " + record
+		if runtime.GOOS == "windows" {
+			dump = "set >> " + record
+		}
+		// After a jump the previous directory is not empty, so a leak of
+		// either variable would show.
+		r := e.run(t, d, e.sub, lines(
+			d.load,
+			"wt cd feat", d.rep("cd"),
+			"wt each -- git rev-parse --show-toplevel", d.rep("dash"),
+			"wt each git rev-parse --show-toplevel", d.rep("plain"),
+			"wt each git status", d.rep("status"),
+			"wt each "+quote(dump), d.rep("rec"),
+		))
+		mustMark(t, r, "cd", "0", e.feat)
+		// "Through the function in PowerShell", and the same elsewhere.
+		mustMark(t, r, "dash", "0", e.feat)
+		mustMark(t, r, "plain", "0", e.feat)
+		var tops []string
+		for _, l := range strings.Split(strings.ReplaceAll(r.stdout, "\r\n", "\n"), "\n") {
+			if l != "" && !strings.HasPrefix(l, "@@ ") && !strings.HasPrefix(l, "==> ") && filepath.IsAbs(filepath.FromSlash(l)) {
+				tops = append(tops, testutil.Comparable(t, l))
+			}
+		}
+		want := []string{testutil.Comparable(t, e.repo), testutil.Comparable(t, e.feat)}
+		if !slices.Equal(tops, append(slices.Clone(want), want...)) {
+			t.Errorf("git rev-parse --show-toplevel printed %q, want %q twice\nstdout:\n%s\nstderr:\n%s", tops, want, r.stdout, r.stderr)
+		}
+		// "Shell stays where it is".
+		mustMark(t, r, "status", "0", e.feat)
+		// "Protocol variables not passed".
+		mustMark(t, r, "rec", "0", e.feat)
+		b, err := os.ReadFile(record)
+		if err != nil {
+			t.Fatalf("the command did not record its environment: %v\nstderr:\n%s", err, r.stderr)
+		}
+		if n := strings.Count("\n"+strings.ToUpper(string(b)), "\nPATH="); n != 2 {
+			t.Errorf("%d environments recorded, want 2:\n%s", n, b)
+		}
+		if env := strings.ToUpper(string(b)); strings.Contains(env, "WT_DIRECTIVE_CD_FILE") || strings.Contains(env, "WT_PREVIOUS_DIR") {
+			t.Errorf("the commands saw the protocol variables:\n%s", b)
+		}
+		if r.stderr != "" {
+			t.Errorf("stderr = %q", r.stderr)
+		}
+		e.mustNoLeftovers(t, d)
+	})
+}
+
+// Scenarios "Double dash (zsh, bash, fish)", "Double dash (PowerShell)" and
+// "Quoted double dash (PowerShell)" of shell-integration: PowerShell drops
+// a -- without quotes before the function gets its arguments.
+func TestShellDoubleDash(t *testing.T) {
+	forEachShell(t, func(t *testing.T, d dialect) {
+		e := newShellEnv(t)
+		r := e.run(t, d, e.sub, lines(d.load, "wt config get -- --x", d.rep("dash")))
+		mustMark(t, r, "dash", "2", "")
+		want := `unknown configuration key "--x"`
+		if d.name == "pwsh" {
+			want = "unknown flag: --x"
+		}
+		if !strings.Contains(r.stderr, want) {
+			t.Errorf("wt config get -- --x: stderr %q does not contain %q", r.stderr, want)
+		}
+		if d.name != "pwsh" {
+			return
+		}
+		r = e.run(t, d, e.sub, lines(d.load, "wt config get '--' --x", d.rep("quoted")))
+		mustMark(t, r, "quoted", "2", "")
+		if want := `unknown configuration key "--x"`; !strings.Contains(r.stderr, want) {
+			t.Errorf("wt config get '--' --x: stderr %q does not contain %q", r.stderr, want)
+		}
+	})
+}

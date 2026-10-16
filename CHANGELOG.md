@@ -53,6 +53,22 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   worktrees of that repository; each candidate carries a description of where
   it comes from. `wt create` offers `<repo>:` for `<name>`, and `--base` the
   branches of the repository it names.
+- `wt each [--all-repos] [--] <cmd>...` runs a command in every worktree of
+  the current repository, main worktree included, or with `--all-repos` in
+  every worktree `wt list --all-repos` lists, in that order: one at a time,
+  in the root of each worktree, with the terminal. The command starts at the
+  first word that is not a flag of `wt`, so `--` is optional, and every word
+  after it is the command's (`wt each npm test --json`). A single word is
+  the command line as written, run by `sh -c` or `cmd.exe` as `-x` is
+  (`wt each 'npm ci && npm test'`); several words reach the program each one
+  whole (`wt each git commit -m "fix bug"`). Before each command, a line
+  `==> <worktree>  <path>` names the worktree as `wt cd` takes it. When a
+  command fails, the next one still runs, and at the end a summary lists the
+  failed ones and `wt each` exits with 1. A bare repository is skipped, and
+  so is, with a warning, a worktree whose directory does not exist.
+  `--dry-run` prints `would run <line> in <path>` for each worktree. Ctrl-C
+  reaches the running command; once it ends, `wt each` runs no other and
+  exits with 130, a new exit code that means the same on every OS.
 
 ### Changed
 
@@ -69,6 +85,10 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   repository layer of the configuration is that repository's `.wt.toml`, in
   its main worktree, not the working directory's: `wt remove api:feat` judges
   whether the branch is merged with `api`'s `default_base`.
+- In PowerShell, a `--` without quotes never reaches `wt`: PowerShell drops
+  it before the function gets its arguments, so `wt config get -- --x` reads
+  `--x` as a flag. `'--'`, in quotes, does reach it, and no command of `wt`
+  needs a `--`.
 
 ### Removed
 

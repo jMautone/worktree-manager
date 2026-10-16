@@ -13,6 +13,10 @@ const (
 	ExitConflict        = 6 // git conflict
 	ExitHookFailed      = 7 // a hook failed
 	ExitHookNotApproved = 8 // a repository hook has not been approved
+	// ExitInterrupted means an interrupt from the terminal (Ctrl-C) stopped
+	// the command before it finished. It is 130 on every OS, as Unix shells
+	// report SIGINT: wt sets it, not a signal.
+	ExitInterrupted = 130
 )
 
 // Error is a failure with its exit code and optional hints for the user. Every

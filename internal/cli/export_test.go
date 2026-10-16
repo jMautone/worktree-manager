@@ -17,6 +17,18 @@ func FailToStart(err error) (restore func()) {
 	return func() { runCommand = saved }
 }
 
+// RecordRuns records the directory of every command -x or wt each runs,
+// and still runs it, until restore is called.
+func RecordRuns() (dirs *[]string, restore func()) {
+	saved := runCommand
+	dirs = new([]string)
+	runCommand = func(dir, cmdline string, env []string, stdin io.Reader, stdout, stderr io.Writer) (int, error) {
+		*dirs = append(*dirs, dir)
+		return saved(dir, cmdline, env, stdin, stdout, stderr)
+	}
+	return dirs, func() { runCommand = saved }
+}
+
 // recorder is a git.Runner that records the arguments of every command.
 type recorder struct {
 	git.Runner

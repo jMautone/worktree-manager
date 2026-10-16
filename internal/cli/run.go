@@ -91,13 +91,25 @@ func Run(ctx context.Context, env Env) int {
 
 // jsonRequested reports whether --json appears in args, for errors raised
 // before the flag could be parsed (an unknown flag earlier in the line).
+// It stops at --, and after "each" at the first word of the command, from
+// which on every argument is the command's: in wt each --bogus npm test
+// --json, the --json is npm's.
 func jsonRequested(args []string) bool {
-	for _, arg := range args {
-		if arg == "--" {
+	command, each := "", false
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		switch {
+		case arg == "--":
 			return false
-		}
-		if arg == "--json" || arg == "--json=true" {
+		case arg == "--json" || arg == "--json=true":
 			return true
+		case arg == "-C":
+			i++ // its value, the only global flag with one
+		case strings.HasPrefix(arg, "-") && arg != "-":
+		case each:
+			return false
+		case command == "":
+			command, each = arg, arg == "each"
 		}
 	}
 	return false
@@ -142,7 +154,7 @@ func (a *app) rootCommand() *cobra.Command {
 	root.Flags().BoolVar(&a.version, "version", false, "print the version")
 
 	root.SetHelpCommand(a.helpCommand())
-	root.AddCommand(a.listCommand(), a.cdCommand(), a.pathCommand(), a.reposCommand(), a.createCommand(), a.removeCommand(), a.lockCommand(), a.unlockCommand(), a.pruneCommand(), a.configCommand(), a.shellCommand(), a.versionCommand())
+	root.AddCommand(a.listCommand(), a.cdCommand(), a.pathCommand(), a.reposCommand(), a.createCommand(), a.removeCommand(), a.lockCommand(), a.unlockCommand(), a.pruneCommand(), a.eachCommand(), a.configCommand(), a.shellCommand(), a.versionCommand())
 	return root
 }
 
