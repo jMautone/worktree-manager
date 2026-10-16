@@ -122,7 +122,7 @@ Los tests de fish y pwsh corren en macOS solo si están instalados. Si no, se ci
 
   Verificar que `grep -n 'wt exec' docs/design/product.md` ya no encuentra la fila del comando y que `openspec validate --all --strict` sigue en verde.
 - [x] 6.3 Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` y la cross-compilación de los 5 targets. Verificar que gofmt no imprime nada y que no hay fallos.
-- [ ] 6.4 Integrar el change:
+- [x] 6.4 Integrar el change:
   - Sumar sus líneas bajo `## [Unreleased]` en `CHANGELOG.md`:
     - en *Added*: `wt each` con `--all-repos`, el `--` opcional, la línea de una o varias palabras, las cabeceras, el resumen con exit 1, lo que se saltea, `--dry-run` y el exit code 130 con Ctrl-C;
     - en *Changed*: la nota de que en PowerShell un `--` sin comillas no llega a `wt`.
