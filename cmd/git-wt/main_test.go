@@ -55,8 +55,9 @@ func exe(name string) string {
 }
 
 // Directories with testdata/fakeprog built as git and as wt, to put first on
-// the PATH; realGit is the git they stand in front of.
-var fakeGitDir, fakeWtDir, realGit string
+// the PATH; realGit is the git they stand in front of. printArgs and
+// sleeper are testdata/fakeprog built as printargs and as sleeper.
+var fakeGitDir, fakeWtDir, realGit, printArgs, sleeper string
 
 func buildFakes(dir string) error {
 	git, err := exec.LookPath("git")
@@ -65,7 +66,9 @@ func buildFakes(dir string) error {
 	}
 	realGit = git
 	fakeGitDir, fakeWtDir = filepath.Join(dir, "fakegit"), filepath.Join(dir, "fakewt")
-	for _, out := range []string{filepath.Join(fakeGitDir, exe("git")), filepath.Join(fakeWtDir, exe("wt"))} {
+	printArgs = filepath.Join(dir, "printargs", exe("printargs"))
+	sleeper = filepath.Join(dir, "sleeper", exe("sleeper"))
+	for _, out := range []string{filepath.Join(fakeGitDir, exe("git")), filepath.Join(fakeWtDir, exe("wt")), printArgs, sleeper} {
 		build := exec.Command("go", "build", "-o", out, "./testdata/fakeprog")
 		if b, err := build.CombinedOutput(); err != nil {
 			return fmt.Errorf("building %s: %v\n%s", out, err, b)
@@ -201,4 +204,9 @@ func TestRemoveFromInside(t *testing.T) {
 	if !strings.Contains(r.stderr, "shell integration is not active") {
 		t.Errorf("stderr = %q", r.stderr)
 	}
+}
+
+func fileExists(p string) bool {
+	_, err := os.Stat(p)
+	return err == nil
 }

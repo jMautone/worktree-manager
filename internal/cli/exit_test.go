@@ -22,6 +22,7 @@ func TestExitCodesMatchContract(t *testing.T) {
 		{"ExitConflict", ExitConflict, 6},
 		{"ExitHookFailed", ExitHookFailed, 7},
 		{"ExitHookNotApproved", ExitHookNotApproved, 8},
+		{"ExitInterrupted", ExitInterrupted, 130},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %d, want %d", tc.name, tc.got, tc.want)
