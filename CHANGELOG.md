@@ -7,6 +7,8 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-10-19
+
 ### Added
 
 - `wt repos`: lists the repositories found under the roots in `repos_root`,
