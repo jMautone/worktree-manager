@@ -91,7 +91,7 @@ Los tests de fish y pwsh corren en macOS solo si están instalados. Si no, se ci
 
 ## 5. Windows
 
-- [ ] 5.1 **[Windows]** Escribir los escenarios de Windows, salteados fuera de Windows:
+- [x] 5.1 **[Windows]** Escribir los escenarios de Windows, salteados fuera de Windows:
   - "Interpreter operators in a single word (Windows)" y "Line shown by a dry run (Windows)", in-process;
   - "Words kept whole (Windows)" y "Environment variable reference (Windows)", e2e con `printargs`.
 
