@@ -78,8 +78,7 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 |---|---|
 | `wt repos [--json]` | Lista los repos descubiertos bajo las raíces configuradas. |
 | `wt cd <repo>` | Salta al repo principal. Mismo verbo que para worktrees; la resolución decide. |
-| `wt each [--all] [--repo <r>] -- <cmd>` | Corre un comando en cada worktree. |
-| `wt exec <name> -- <cmd>` | Corre un comando en uno, sin moverte. |
+| `wt each [--all-repos] [--] <cmd>...` | Corre un comando en cada worktree del repo actual o, con `--all-repos`, en cada uno de `wt list --all-repos`: en serie, en tu terminal, con una cabecera por worktree, y sigue cuando uno falla. Para uno solo alcanza `wt path` (`git -C "$(wt path x)" …`). |
 
 ### Extensión y estado
 
@@ -112,8 +111,9 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 | 6 | Conflicto de git (rebase/merge) |
 | 7 | Hook falló |
 | 8 | Hook del repo no aprobado |
+| 130 | Interrumpido con Ctrl-C antes de terminar, en los tres OS |
 
-Con `-x`, el exit code del comando ejecutado se propaga tal cual y desplaza a estos.
+Con `-x`, el exit code del comando ejecutado se propaga tal cual y desplaza a estos. `wt each` no propaga el de sus comandos: sale con 1 si alguno falló y con 130 si lo interrumpiste.
 
 ### Lo que NO existe (y no va a existir)
 
@@ -270,7 +270,7 @@ Tres cortes, uno por capability de M2, cada uno usable de punta a punta.
 |---|---|---|
 | `workspace-discovery` | `repos_root` y `repos_depth` (con `WT_REPOS_ROOT` y `WT_REPOS_DEPTH`), `wt repos` con `wt.repos.v1`, y `wt cd <repo>` desde cualquier directorio (nombre exacto, sin mayúsculas, prefijo único), con los repos en la completion de `wt cd`. | Es el salto de todos los días y lo que todavía hace volver a v0.9. El primer corte ya se usa entero, no es solo un listado. Lee el filesystem y no corre git, así que no agrega costo a lo que ya resolvía el repo actual. |
 | `cross-repo-resolution` | `wt cd <worktree>` de otro repo o desde fuera de todos, la forma calificada `<repo>:<name>`, `wt list --all-repos`, `path`, `remove`, `lock` y `unlock` que resuelven en otros repos, y `wt create <repo>:<name>` que crea en otro repo. | Necesita un `git worktree list` por repo descubierto: su costo y su ambigüedad merecen un diseño propio, sobre un descubrimiento ya probado. |
-| `batch-execution` | `wt exec <name> -- <cmd>` y `wt each -- <cmd>` sobre los worktrees de uno o de todos los repos. | Itera sobre el conjunto que resuelven los dos anteriores; sin ellos no hay sobre qué iterar. |
+| `batch-execution` | `wt each [--all-repos] [--] <cmd>...` sobre los worktrees del repo actual o de todos: en serie, sin cortar cuando uno falla, con resumen y exit 1, y exit 130 con Ctrl-C. `wt exec` no se hace: lo cubre `wt path`. | Itera sobre el conjunto que resuelven los dos anteriores; sin ellos no hay sobre qué iterar. |
 
 ### Definición de "listo" por milestone
 

@@ -62,28 +62,12 @@ func (a *app) listCommand() *cobra.Command {
 }
 
 // listAll is wt list --all-repos: the worktrees of every repository under
-// the roots, which need no current repository. The configuration has no
-// repository layer: the roots never come from one.
+// the roots, which need no current repository.
 func (a *app) listAll(ctx context.Context, dir string) error {
-	repo, _ := a.loadRepository(ctx, dir)
-	cfg, err := a.loadConfig("")
+	scanned, names, err := a.workspaceWorktrees(ctx, dir)
 	if err != nil {
 		return err
 	}
-	if len(reposRoot(cfg)) == 0 {
-		return a.noRootsError()
-	}
-	repos := a.discoverRepos(cfg, a.warn)
-	cwdReal := dir
-	if real, err := filepath.EvalSymlinks(dir); err == nil {
-		cwdReal = real
-	}
-	scanned, err := a.scanWorktrees(ctx, repos, currentRepo(repo, repos), cwdReal)
-	if err != nil {
-		return gitError(err)
-	}
-	names := newWorkspaceNames(repos, a.env.GOOS)
-	a.readable(scanned, names, a.warn)
 	if a.json {
 		return a.writeJSON(listAllDocument(scanned))
 	}
@@ -99,6 +83,34 @@ func (a *app) listAll(ctx context.Context, dir string) error {
 		return nil
 	}
 	return a.writeTable(listRows(ws, repoNames))
+}
+
+// workspaceWorktrees reads the worktrees of every repository under the
+// roots, as wt list --all-repos lists them, with the repository of dir
+// marking its current worktree. It warns about each repository git cannot
+// read, which keeps its error in Err. The configuration has no repository
+// layer: the roots never come from one.
+func (a *app) workspaceWorktrees(ctx context.Context, dir string) ([]repoWorktrees, workspaceNames, error) {
+	repo, _ := a.loadRepository(ctx, dir)
+	cfg, err := a.loadConfig("")
+	if err != nil {
+		return nil, workspaceNames{}, err
+	}
+	if len(reposRoot(cfg)) == 0 {
+		return nil, workspaceNames{}, a.noRootsError()
+	}
+	repos := a.discoverRepos(cfg, a.warn)
+	cwdReal := dir
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		cwdReal = real
+	}
+	scanned, err := a.scanWorktrees(ctx, repos, currentRepo(repo, repos), cwdReal)
+	if err != nil {
+		return nil, workspaceNames{}, gitError(err)
+	}
+	names := newWorkspaceNames(repos, a.env.GOOS)
+	a.readable(scanned, names, a.warn)
+	return scanned, names, nil
 }
 
 // writeTable writes rows to stdout as an aligned table.
