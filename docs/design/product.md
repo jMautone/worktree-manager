@@ -66,7 +66,7 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 | `wt cd [<name>\|-\|^\|@]` | Salta a un worktree, a un repo, al anterior (`-`), al principal (`^`) o al actual (`@`). Sin argumento, abre el picker. |
 | `wt list [--full] [--all-repos] [--json]` | Una sola tabla con todo el estado. Reemplaza al `status` de v0.9. |
 | `wt remove <name> [--keep-branch] [-D] [-f]` | Borra el worktree y, por defecto, su rama si está mergeada (en la base o en su upstream). `--keep-branch` la conserva; `-D` la borra aunque no lo esté; `-f` borra el worktree con archivos sin commitear. Los hooks `pre-remove`/`post-remove` llegan con `hooks`, en M3. |
-| `wt merge [<target>] [--squash] [--no-rebase] [--no-remove]` | Cierra el ciclo: commit pendiente → rebase → `pre-merge` → fast-forward → remove. |
+| `wt merge [<target>] [--squash] [--no-rebase] [--no-remove]` | Cierra el ciclo: commit pendiente → rebase → `pre-merge` → fast-forward → remove. El commit pendiente y `--squash` llegan con `merge-steps`, en M4; hasta entonces, un worktree sucio frena con exit 5. |
 | `wt step commit\|squash\|rebase\|push [<target>]` | Corre un paso suelto del pipeline de `merge`, con sus mismos hooks. Para cuando querés el rebase sin mergear, o el squash sin borrar. |
 | `wt sync [<name>...] [--all]` | Rebase de uno o varios worktrees sobre su base. Nunca stashea; el conflicto se reporta y se sigue. |
 | `wt path <name>` | Imprime la ruta. Para scripts. |
@@ -237,14 +237,15 @@ El orden es **vertical**, no por capas. La tentación en greenfield es construir
        workspace-discovery, cross-repo-resolution, batch-execution
          |
   M3  CERRAR EL CICLO       objetivo: un worktree se abre y se cierra solo
-       hooks, sync-worktrees, merge-worktree
+       hooks, project-hooks-approval, sync-worktrees,
+       merge-worktree
          |
   M4  RIQUEZA               objetivo: una sola vista dice todo
-       list-worktrees (completo), branch-state, picker,
-       statusline, merge-steps
+       list-worktrees (completo, detecta squash-merges),
+       branch-state, picker, statusline, merge-steps
          |
   M5  EXTENSION             objetivo: adaptable sin tocar el codigo
-       launchers, aliases-plugins, project-hooks-approval, doctor
+       launchers, aliases-plugins, doctor
          |
   M6  PRODUCTO              objetivo: que lo instale alguien mas
        dashboard, agent-integrations, distribution,
@@ -271,6 +272,22 @@ Tres cortes, uno por capability de M2, cada uno usable de punta a punta.
 | `workspace-discovery` | `repos_root` y `repos_depth` (con `WT_REPOS_ROOT` y `WT_REPOS_DEPTH`), `wt repos` con `wt.repos.v1`, y `wt cd <repo>` desde cualquier directorio (nombre exacto, sin mayúsculas, prefijo único), con los repos en la completion de `wt cd`. | Es el salto de todos los días y lo que todavía hace volver a v0.9. El primer corte ya se usa entero, no es solo un listado. Lee el filesystem y no corre git, así que no agrega costo a lo que ya resolvía el repo actual. |
 | `cross-repo-resolution` | `wt cd <worktree>` de otro repo o desde fuera de todos, la forma calificada `<repo>:<name>`, `wt list --all-repos`, `path`, `remove`, `lock` y `unlock` que resuelven en otros repos, y `wt create <repo>:<name>` que crea en otro repo. | Necesita un `git worktree list` por repo descubierto: su costo y su ambigüedad merecen un diseño propio, sobre un descubrimiento ya probado. |
 | `batch-execution` | `wt each [--all-repos] [--] <cmd>...` sobre los worktrees del repo actual o de todos: en serie, sin cortar cuando uno falla, con resumen y exit 1, y exit 130 con Ctrl-C. `wt exec` no se hace: lo cubre `wt path`. | Itera sobre el conjunto que resuelven los dos anteriores; sin ellos no hay sobre qué iterar. |
+
+### M3, desglosado en changes
+
+Cuatro cortes: las tres capabilities de M3 y `project-hooks-approval`, que se adelanta de M5 porque sin ella los hooks son los mismos para todos los repos.
+
+| Change | Entrega | Por qué en ese orden |
+|---|---|---|
+| `hooks` | `[hooks]` en la config del usuario, con los eventos `pre`/`post` de `create`, `cd` y `remove`. Los `pre-*` bloquean y fallan con exit 7; los `post-*` corren en background, con la salida en `.git/wt/logs/`. Mismo intérprete que `-x`, y `{path}` y `{base}` en el motor de plantillas. | `post-create` (copiar el `.env`, `npm ci`) es la fricción diaria más grande, y los `post-*` en background son el riesgo multiplataforma de M3: un proceso que sobrevive a `wt` en Windows. Como `shell-integration` en M1, lo querés roto temprano. Y `merge` lo necesita. |
+| `project-hooks-approval` | `hooks` en la lista blanca de `.wt.toml`, con aprobación por hash del comando guardada del lado del usuario, `wt hook list`, `wt hook approve` y exit 8 cuando un hook del repo no está aprobado. | Sin ella los hooks son globales: un `post-create = ["npm ci"]` corre también en un repo de Go, y los tests de `pre-merge` no pueden ser por repo. Va antes de `merge` para que sus tests sean del repo desde el primer día. |
+| `sync-worktrees` | `wt sync [<name>...] [--all]`: rebase sobre la base con un solo fetch. Nunca stashea (el worktree sucio se saltea), el conflicto se reporta y se sigue, y termina con un resumen y un exit code. | El rebase y la política de conflicto se prueban solos, sin hooks, fast-forward ni borrado. `merge` reusa ese rebase. |
+| `merge-worktree` | `wt merge [<target>] [--no-rebase] [--no-remove]` desde adentro del worktree: limpio o exit 5, rebase (exit 6), `pre-merge` (exit 7 u 8), fast-forward del target, `remove` con sus hooks y `post-merge`. | Compone los tres anteriores: es el único que depende de todos. |
+
+Dos reglas del corte:
+
+- **Cada evento de hook llega con el comando que lo dispara**: `create`, `cd` y `remove` con `hooks`; `merge` con `merge-worktree`; `commit` con `merge-steps`, en M4.
+- **`merge` no escribe commits en M3**: solo mueve los que hay (rebase y fast-forward). El commit pendiente y `--squash` comparten el problema del mensaje (editor, `-m`, los mensajes de la rama, `llm-commits` en M6), y se diseñan una sola vez, con `merge-steps`. Tampoco detecta ramas squash-mergeadas: después del fast-forward la rama ya cuenta como mergeada. Esa detección la necesitan `remove` y la vista completa de `list`, y llega con `list-worktrees` en M4.
 
 ### Definición de "listo" por milestone
 
