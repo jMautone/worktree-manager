@@ -22,6 +22,12 @@ func TestRegistryDeclaresTheKeysOfThisChange(t *testing.T) {
 		{"create_cd", true, false},
 		{"repos_root", []string{}, false},
 		{"repos_depth", 1, false},
+		{"hooks.pre-create", []string{}, false},
+		{"hooks.post-create", []string{}, false},
+		{"hooks.pre-cd", []string{}, false},
+		{"hooks.post-cd", []string{}, false},
+		{"hooks.pre-remove", []string{}, false},
+		{"hooks.post-remove", []string{}, false},
 	} {
 		k, ok := reg.Lookup(tc.name)
 		if !ok {
@@ -35,8 +41,13 @@ func TestRegistryDeclaresTheKeysOfThisChange(t *testing.T) {
 			t.Errorf("%s: its own default validates to %#v, %v", tc.name, v, err)
 		}
 	}
-	if len(reg) != 7 {
-		t.Errorf("registry has %d keys, want exactly 7", len(reg))
+	if len(reg) != 13 {
+		t.Errorf("registry has %d keys, want exactly 13", len(reg))
+	}
+	for _, k := range reg {
+		if got, want := k.NoEnv, strings.HasPrefix(k.Name, "hooks."); got != want {
+			t.Errorf("%s: NoEnv %v, want %v", k.Name, got, want)
+		}
 	}
 	if _, ok := reg.Lookup("nope"); ok {
 		t.Error("Lookup found an unknown key")
@@ -76,6 +87,46 @@ func TestKeyValidation(t *testing.T) {
 			t.Errorf("%s = %#v: unexpected error %v", tc.key, tc.value, err)
 		case tc.wantErr == "" && got != tc.value:
 			t.Errorf("%s = %#v: validated to %#v", tc.key, tc.value, got)
+		case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
+			t.Errorf("%s = %#v: error %v, want one containing %q", tc.key, tc.value, err, tc.wantErr)
+		}
+	}
+}
+
+// Scenarios of "Hook commands": what the value of hooks.<event> may be.
+func TestCommandsValidation(t *testing.T) {
+	reg := Keys("darwin")
+	for _, tc := range []struct {
+		key     string
+		value   any
+		want    []string
+		wantErr string
+	}{
+		{"hooks.post-create", []any{"npm ci", "npm run build"}, []string{"npm ci", "npm run build"}, ""},
+		{"hooks.post-create", []any{}, []string{}, ""},
+		{"hooks.post-create", []string{}, []string{}, ""},
+		{"hooks.post-create", []any{`cp "{repo_path}/.env" .env`}, []string{`cp "{repo_path}/.env" .env`}, ""},
+		{"hooks.pre-create", []any{"echo {base} {path}"}, []string{"echo {base} {path}"}, ""},
+		{"hooks.post-cd", []any{"awk '{{print $1}}'"}, []string{"awk '{{print $1}}'"}, ""},
+		{"hooks.post-create", "npm ci", nil, `write it as ["npm ci"]`},
+		{"hooks.post-create", int64(1), nil, "expected an array of strings, got an integer"},
+		{"hooks.post-create", map[string]any{}, nil, "expected an array of strings, got a table"},
+		{"hooks.post-create", []any{"a", true}, nil, "element 2 is a boolean"},
+		{"hooks.pre-remove", []any{"  "}, nil, "element 1 is empty"},
+		{"hooks.pre-remove", []any{"ok", ""}, nil, "element 2 is empty"},
+		{"hooks.post-create", []any{"echo {nope}"}, nil, `unknown variable "nope"`},
+		{"hooks.pre-remove", []any{"echo {base}"}, nil, `unknown variable "base"`},
+		{"hooks.post-remove", []any{"echo {base}"}, nil, `unknown variable "base"`},
+		{"hooks.pre-cd", []any{"echo {name|upper}"}, nil, `unknown filter "upper"`},
+		{"hooks.pre-cd", []any{"awk '{print $1}'"}, nil, "element 1"},
+	} {
+		k, _ := reg.Lookup(tc.key)
+		got, err := k.Validate(tc.value)
+		switch {
+		case tc.wantErr == "" && err != nil:
+			t.Errorf("%s = %#v: unexpected error %v", tc.key, tc.value, err)
+		case tc.wantErr == "" && !reflect.DeepEqual(got, tc.want):
+			t.Errorf("%s = %#v: validated to %#v, want %#v", tc.key, tc.value, got, tc.want)
 		case tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr)):
 			t.Errorf("%s = %#v: error %v, want one containing %q", tc.key, tc.value, err, tc.wantErr)
 		}

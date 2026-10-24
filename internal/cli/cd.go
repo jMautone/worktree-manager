@@ -2,12 +2,18 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/jMautone/worktree-manager/internal/config"
+	"github.com/jMautone/worktree-manager/internal/git"
+	"github.com/jMautone/worktree-manager/internal/hook"
 	"github.com/jMautone/worktree-manager/internal/shell"
+	"github.com/jMautone/worktree-manager/internal/worktree"
 )
 
 const cdLong = `Move the shell to a worktree or a repository, from anywhere.
@@ -45,10 +51,19 @@ prints the destination instead.
 
 In zsh with the EXTENDED_GLOB option set, ^ is a glob operator: quote it,
 as in wt cd '^' and wt cd 'api:^'. In PowerShell, @ is an operator: quote
-it, as in wt cd '@'.`
+it, as in wt cd '@'.
+
+Hooks: wt cd runs the commands of pre-cd at the root of the destination's
+worktree, and waits for them, before the shell moves; when one fails, the
+shell stays and wt exits with 7. Once the shell moves, it starts those of
+post-cd in the background and does not wait for them: their output goes to
+a log under the repository's .git/wt/logs, whose path wt prints. A
+destination inside no worktree runs neither, and --no-hooks runs neither;
+see "wt config --help" for how to set them.`
 
 func (a *app) cdCommand() *cobra.Command {
-	return &cobra.Command{
+	var noHooks bool
+	cmd := &cobra.Command{
 		Use:               "cd <target>",
 		Short:             "Move the shell to a worktree or a repository",
 		Long:              cdLong,
@@ -66,49 +81,114 @@ func (a *app) cdCommand() *cobra.Command {
 					Hints: []string{"load it with the line for your shell from 'wt shell init --help'"},
 				}
 			}
-			dest, err := a.cdDestination(cmd.Context(), dir, args[0])
+			t, err := a.cdDestination(cmd.Context(), dir, args[0])
 			if err != nil {
 				return err
 			}
-			if err := mustExist(dest); err != nil {
+			if err := mustExist(t.dest); err != nil {
+				return err
+			}
+			pre, post, err := a.planCD(&hookPlanner{a: a, ctx: cmd.Context(), cfg: t.cfg, noHooks: noHooks}, t)
+			if err != nil {
 				return err
 			}
 			switch {
 			case a.dryRun && !a.json:
-				_, err := fmt.Fprintf(a.env.Stdout, "would change directory to %s\n", dest)
+				var b strings.Builder
+				previewHook(&b, pre)
+				fmt.Fprintf(&b, "would change directory to %s\n", t.dest)
+				previewHook(&b, post)
+				_, err := a.env.Stdout.Write([]byte(b.String()))
 				return err
 			case !a.dryRun:
-				if err := shell.WriteDirective(a.env.Getenv(shell.DirectiveVar), dest); err != nil {
+				if err := a.runBlocking(pre); err != nil {
+					return err
+				}
+				if err := shell.WriteDirective(a.env.Getenv(shell.DirectiveVar), t.dest); err != nil {
 					return &Error{Code: ExitError, Msg: fmt.Sprintf("cannot write the directive file: %v", err)}
 				}
 			}
 			if a.json {
-				return a.writeJSON(struct {
+				if err := a.writeJSON(struct {
 					Schema string `json:"schema"`
 					Path   string `json:"path"`
-				}{"wt.cd.v1", dest})
+				}{"wt.cd.v1", t.dest}); err != nil {
+					return err
+				}
+			}
+			if !a.dryRun {
+				a.background(post)
 			}
 			return nil
 		}),
 	}
+	cmd.Flags().BoolVar(&noHooks, "no-hooks", false, "run no hook")
+	return cmd
+}
+
+// cdTarget is where wt cd goes: the directory, the configuration, and,
+// when resolving the target already read them, the worktree it is and its
+// repository.
+type cdTarget struct {
+	dest string
+	cfg  *config.Config
+	w    *worktree.Worktree // nil when the target is a repository or -
+	repo *repository        // w's repository
 }
 
 // cdDestination resolves target to a directory. `-` is the shell session's
 // previous directory and needs no repository, so -C does not change it.
 // Anything else is resolved as resolve does in modeNavigate.
-func (a *app) cdDestination(ctx context.Context, dir, target string) (string, error) {
+func (a *app) cdDestination(ctx context.Context, dir, target string) (cdTarget, error) {
 	if target == "-" {
-		if _, err := a.loadConfig(""); err != nil {
-			return "", err
+		cfg, err := a.loadConfig("")
+		if err != nil {
+			return cdTarget{}, err
 		}
 		prev := a.env.Getenv(shell.PreviousVar)
 		if prev == "" {
-			return "", &Error{Code: ExitNotFound, Msg: "no previous directory"}
+			return cdTarget{}, &Error{Code: ExitNotFound, Msg: "no previous directory"}
 		}
-		return prev, nil
+		return cdTarget{dest: prev, cfg: cfg}, nil
 	}
-	res, _, err := a.resolve(ctx, dir, target, modeNavigate)
-	return res.Path, err
+	res, cfg, err := a.resolve(ctx, dir, target, modeNavigate)
+	return cdTarget{dest: res.Path, cfg: cfg, w: res.Worktree, repo: res.Repo}, err
+}
+
+// planCD decides the events of wt cd, which run at the root of the
+// worktree that contains the destination: none when no cd hook would run,
+// or when the destination is inside no worktree, as the previous directory
+// of wt cd - can be. Only when a cd hook would run does it read the
+// repository of a destination that resolving did not read.
+func (a *app) planCD(hooks *hookPlanner, t cdTarget) (pre, post hook.Run, err error) {
+	pre, post = hook.Run{Event: hook.PreCD}, hook.Run{Event: hook.PostCD}
+	if !hooks.configured(hook.PreCD, hook.PostCD) {
+		return pre, post, nil
+	}
+	w, repo := t.w, t.repo
+	if w == nil {
+		r, err := a.loadRepository(hooks.ctx, t.dest)
+		var notRepo *git.NotRepoError
+		switch {
+		case errors.As(err, &notRepo):
+			return pre, post, nil
+		case err != nil:
+			return pre, post, gitError(err)
+		case r.current == nil:
+			return pre, post, nil
+		}
+		w, repo = r.current, r
+	}
+	main := repo.main()
+	hooks.gitDir = main.Path
+	values := worktree.HookVars(*main, *w, "", a.env.GOOS)
+	if pre, err = hooks.plan(hook.PreCD, values, w.Path); err != nil {
+		return pre, post, err
+	}
+	if post, err = hooks.plan(hook.PostCD, values, w.Path); err != nil {
+		return pre, post, err
+	}
+	return pre, post, nil
 }
 
 // mustExist fails with exit 3 when dest is not a directory: a worktree

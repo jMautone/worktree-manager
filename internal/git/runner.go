@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -85,4 +86,22 @@ func ListWorktrees(ctx context.Context, r Runner, dir string) ([]WorktreeEntry, 
 		return nil, err
 	}
 	return ParseWorktreeList(out)
+}
+
+// CommonDir returns the repository's common git directory, the one all its
+// worktrees share, as a clean native absolute path: the .git directory of
+// the main worktree, or the bare repository itself. git reports it relative
+// to dir in some cases (.git at the main worktree's root, . in a bare
+// repository); it is resolved here rather than with --path-format=absolute,
+// which needs git 2.31.
+func CommonDir(ctx context.Context, r Runner, dir string) (string, error) {
+	out, err := r.Run(ctx, dir, "rev-parse", "--git-common-dir")
+	if err != nil {
+		return "", err
+	}
+	p := filepath.FromSlash(strings.TrimRight(string(out), "\r\n"))
+	if !filepath.IsAbs(p) {
+		p = filepath.Join(dir, p)
+	}
+	return filepath.Clean(p), nil
 }

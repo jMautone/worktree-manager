@@ -46,15 +46,20 @@ type part struct {
 //
 // Syntax: literal text with expressions {variable} or
 // {variable|filter|filter...}. Whitespace around names inside the braces is
-// ignored. There is no way to write a literal { or }.
+// ignored. {{ is a literal { and }} a literal }, read from left to right, so
+// {{{name}}} is a literal {, the expression {name} and a literal }.
 func Parse(src string, vars []string) (*Template, error) {
 	t := &Template{}
-	lit := 0 // start of the current literal text
+	var lit strings.Builder // the current literal text, with braces unescaped
+	start := 0              // where the current literal text starts in src
 	for i := 0; i < len(src); i++ {
-		switch src[i] {
-		case '}':
-			return nil, syntaxError(src[lit:i+1], "} without { in %q")
-		case '{':
+		switch c := src[i]; {
+		case (c == '{' || c == '}') && i+1 < len(src) && src[i+1] == c:
+			lit.WriteByte(c)
+			i++
+		case c == '}':
+			return nil, syntaxError(src[start:i+1], "} without { in %q")
+		case c == '{':
 			end := strings.IndexAny(src[i+1:], "{}")
 			if end < 0 || src[i+1+end] == '{' {
 				stop := len(src)
@@ -64,8 +69,9 @@ func Parse(src string, vars []string) (*Template, error) {
 				return nil, syntaxError(src[i:stop], "{ without } in %q")
 			}
 			end += i + 1
-			if lit < i {
-				t.parts = append(t.parts, part{literal: src[lit:i]})
+			if lit.Len() > 0 {
+				t.parts = append(t.parts, part{literal: lit.String()})
+				lit.Reset()
 			}
 			p, err := parseExpr(src[i:end+1], vars)
 			if err != nil {
@@ -73,11 +79,13 @@ func Parse(src string, vars []string) (*Template, error) {
 			}
 			t.parts = append(t.parts, p)
 			i = end
-			lit = end + 1
+			start = end + 1
+		default:
+			lit.WriteByte(c)
 		}
 	}
-	if lit < len(src) {
-		t.parts = append(t.parts, part{literal: src[lit:]})
+	if lit.Len() > 0 {
+		t.parts = append(t.parts, part{literal: lit.String()})
 	}
 	return t, nil
 }

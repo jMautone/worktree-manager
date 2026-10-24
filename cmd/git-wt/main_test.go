@@ -55,9 +55,10 @@ func exe(name string) string {
 }
 
 // Directories with testdata/fakeprog built as git and as wt, to put first on
-// the PATH; realGit is the git they stand in front of. printArgs and
-// sleeper are testdata/fakeprog built as printargs and as sleeper.
-var fakeGitDir, fakeWtDir, realGit, printArgs, sleeper string
+// the PATH; realGit is the git they stand in front of. printArgs, sleeper
+// and recordEnv are testdata/fakeprog built as printargs, sleeper and
+// recordenv.
+var fakeGitDir, fakeWtDir, realGit, printArgs, sleeper, recordEnv string
 
 func buildFakes(dir string) error {
 	git, err := exec.LookPath("git")
@@ -68,7 +69,8 @@ func buildFakes(dir string) error {
 	fakeGitDir, fakeWtDir = filepath.Join(dir, "fakegit"), filepath.Join(dir, "fakewt")
 	printArgs = filepath.Join(dir, "printargs", exe("printargs"))
 	sleeper = filepath.Join(dir, "sleeper", exe("sleeper"))
-	for _, out := range []string{filepath.Join(fakeGitDir, exe("git")), filepath.Join(fakeWtDir, exe("wt")), printArgs, sleeper} {
+	recordEnv = filepath.Join(dir, "recordenv", exe("recordenv"))
+	for _, out := range []string{filepath.Join(fakeGitDir, exe("git")), filepath.Join(fakeWtDir, exe("wt")), printArgs, sleeper, recordEnv} {
 		build := exec.Command("go", "build", "-o", out, "./testdata/fakeprog")
 		if b, err := build.CombinedOutput(); err != nil {
 			return fmt.Errorf("building %s: %v\n%s", out, err, b)

@@ -135,7 +135,7 @@ func TestConfigListSources(t *testing.T) {
 	r.mustCode(t, 0)
 	doc := decodeOne(t, r.stdout)
 	keys, _ := doc["keys"].([]any)
-	if doc["schema"] != "wt.config.list.v1" || len(keys) != 7 {
+	if doc["schema"] != "wt.config.list.v1" || len(keys) != 13 {
 		t.Fatalf("document = %v", doc)
 	}
 	first, _ := keys[0].(map[string]any)
@@ -353,8 +353,9 @@ func TestConfigBooleanAsJSON(t *testing.T) {
 	}
 }
 
-// Scenarios "Unknown variable", "Unknown filter" and "Unclosed brace" of
-// path-templates: an invalid template is an invalid value.
+// Scenarios "Unknown variable", "Unknown filter", "Unclosed brace" and
+// "Lone closing brace after a literal one" of path-templates: an invalid
+// template is an invalid value.
 func TestConfigInvalidTemplate(t *testing.T) {
 	t.Run("unknown variable in the user file", func(t *testing.T) {
 		h := newHarness(t)
@@ -378,6 +379,16 @@ func TestConfigInvalidTemplate(t *testing.T) {
 			if !strings.Contains(r.stderr, want) {
 				t.Errorf("stderr %q does not name %q", r.stderr, want)
 			}
+		}
+	})
+	t.Run("lone closing brace after a literal one", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		h.userConfig("worktree_path = '{repo_parent}/x}}}'\n")
+		r := h.run("config", "list")
+		r.mustCode(t, 1)
+		if !strings.Contains(r.stderr, "worktree_path") {
+			t.Errorf("stderr %q does not name worktree_path", r.stderr)
 		}
 	})
 	t.Run("unclosed brace in the environment", func(t *testing.T) {
@@ -426,6 +437,13 @@ func TestConfigDefaultsOfTheWorkspace(t *testing.T) {
 		"create_cd":     "true\n",
 		"repos_depth":   "1\n",
 		"repos_root":    "",
+		// Every hook event, with none configured, is an empty list.
+		"hooks.pre-create":  "",
+		"hooks.post-create": "",
+		"hooks.pre-cd":      "",
+		"hooks.post-cd":     "",
+		"hooks.pre-remove":  "",
+		"hooks.post-remove": "",
 	} {
 		r := h.run("config", "get", key)
 		r.mustCode(t, 0)
@@ -578,4 +596,137 @@ func TestConfigReposDepth(t *testing.T) {
 	if f := configLine(t, h.run("config", "list").stdout, "repos_depth"); len(f) != 3 || f[1] != "3" || f[2] != "env" {
 		t.Errorf("WT_REPOS_DEPTH=3: list line %q", f)
 	}
+}
+
+// Scenarios "Key of a table" and "Two commands" of config-layers.
+func TestConfigKeyOfATable(t *testing.T) {
+	h := newHarness(t)
+	h.userConfig("[hooks]\npost-create = [\"npm ci\"]\n")
+	if r := h.run("config", "get", "hooks.post-create"); r.code != 0 || r.stdout != "npm ci\n" || r.stderr != "" {
+		t.Errorf("get: exit %d, stdout %q, stderr %q", r.code, r.stdout, r.stderr)
+	}
+	r := h.run("config", "list")
+	r.mustCode(t, 0)
+	if line := configListLine(t, r.stdout, "hooks.post-create"); !strings.HasSuffix(line, " user") {
+		t.Errorf("list line = %q, want source user", line)
+	}
+
+	h.userConfig("[hooks]\npost-create = [\"npm ci\", \"npm run build\"]\n")
+	if r := h.run("config", "get", "hooks.post-create"); r.stdout != "npm ci\nnpm run build\n" {
+		t.Errorf("get: %q", r.stdout)
+	}
+	r = h.run("config", "list")
+	line := configListLine(t, r.stdout, "hooks.post-create")
+	if !strings.Contains(line, ` ["npm ci", "npm run build"] `) || !strings.HasSuffix(line, " user") {
+		t.Errorf("list line = %q", line)
+	}
+	r = h.run("config", "get", "hooks.post-create", "--json")
+	if v, _ := decodeOne(t, r.stdout)["value"].([]any); len(v) != 2 || v[0] != "npm ci" || v[1] != "npm run build" {
+		t.Errorf("--json: %s", r.stdout)
+	}
+}
+
+// Scenario "No environment variable for hooks".
+func TestConfigNoEnvironmentVariableForHooks(t *testing.T) {
+	h := newHarness(t)
+	h.sb.Setenv("WT_HOOKS_POST_CREATE", "npm ci")
+	if r := h.run("config", "get", "hooks.post-create"); r.code != 0 || r.stdout != "" {
+		t.Errorf("get: exit %d, stdout %q", r.code, r.stdout)
+	}
+	r := h.run("config", "list")
+	r.mustCode(t, 0)
+	if line := configListLine(t, r.stdout, "hooks.post-create"); strings.Join(strings.Fields(line), " ") != "hooks.post-create [] default" {
+		t.Errorf("list line = %q", line)
+	}
+}
+
+// Scenarios of "Hook commands" that fail, warn, or show a value.
+func TestConfigHookCommands(t *testing.T) {
+	t.Run("string for a command list", func(t *testing.T) {
+		h := newHarness(t)
+		file := h.userConfig("[hooks]\npost-create = \"npm ci\"\n")
+		r := h.run("config", "list")
+		r.mustCode(t, 1)
+		for _, want := range []string{"hooks.post-create", file, `["npm ci"]`} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not contain %q", r.stderr, want)
+			}
+		}
+	})
+	t.Run("hooks that is not a table", func(t *testing.T) {
+		h := newHarness(t)
+		file := h.userConfig("hooks = [\"npm ci\"]\n")
+		r := h.run("config", "list")
+		r.mustCode(t, 1)
+		for _, want := range []string{`"hooks"`, file} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not contain %q", r.stderr, want)
+			}
+		}
+	})
+	t.Run("event that does not exist", func(t *testing.T) {
+		h := newHarness(t)
+		h.userConfig("[hooks]\npost-merge = [\"npm test\"]\n")
+		r := h.run("config", "list")
+		r.mustCode(t, 0)
+		if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "hooks.post-merge") {
+			t.Errorf("stderr = %q, want a warning naming hooks.post-merge", r.stderr)
+		}
+	})
+	t.Run("empty command", func(t *testing.T) {
+		h := newHarness(t)
+		file := h.userConfig("[hooks]\npre-remove = [\"  \"]\n")
+		r := h.run("config", "list")
+		r.mustCode(t, 1)
+		for _, want := range []string{"hooks.pre-remove", file} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not contain %q", r.stderr, want)
+			}
+		}
+	})
+	t.Run("unknown variable in a command", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		file := h.userConfig("[hooks]\npost-create = [\"echo {nope}\"]\n")
+		r := h.run("list")
+		r.mustCode(t, 1)
+		for _, want := range []string{"hooks.post-create", file, "nope"} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not contain %q", r.stderr, want)
+			}
+		}
+	})
+	// Scenario "Base outside a create event" of hooks.
+	t.Run("base outside a create event", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		file := h.userConfig("[hooks]\npre-remove = [\"echo {base}\"]\n")
+		r := h.run("list")
+		r.mustCode(t, 1)
+		for _, want := range []string{"hooks.pre-remove", file, "base"} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not contain %q", r.stderr, want)
+			}
+		}
+	})
+	t.Run("repository sets hooks", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		h.sb.WriteFile(filepath.Join(h.cwd, ".wt.toml"), "[hooks]\npost-create = [\"npm ci\"]\n")
+		r := h.run("config", "get", "hooks.post-create")
+		r.mustCode(t, 0)
+		if r.stdout != "" {
+			t.Errorf("hooks.post-create = %q, want nothing", r.stdout)
+		}
+		if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "hooks.post-create") || !strings.Contains(r.stderr, ".wt.toml") {
+			t.Errorf("stderr = %q, want a warning naming hooks.post-create and .wt.toml", r.stderr)
+		}
+	})
+	t.Run("command list as JSON", func(t *testing.T) {
+		r := newHarness(t).run("config", "get", "hooks.pre-cd", "--json")
+		r.mustCode(t, 0)
+		if v, ok := decodeOne(t, r.stdout)["value"].([]any); !ok || len(v) != 0 {
+			t.Errorf("--json: %s, want an empty array as value", r.stdout)
+		}
+	})
 }

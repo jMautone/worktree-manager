@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/jMautone/worktree-manager/internal/hook"
 	"github.com/jMautone/worktree-manager/internal/template"
 )
 
@@ -20,6 +21,9 @@ type CreatePlan struct {
 	Fetch  string // remote fetched before resolving the base; "" for none
 	CD     bool   // move the shell into the new worktree
 	Exec   string // the -x command; "" for none
+
+	PreHook  hook.Run // pre-create, in the main worktree
+	PostHook hook.Run // post-create, in the new worktree
 }
 
 // InvalidNameError means <name> is empty or escapes its directory.
@@ -73,6 +77,23 @@ func PathVars(main Worktree, name, branch, goos string) map[string]string {
 		"name":        name,
 		"branch":      branch,
 	}
+}
+
+// HookVars are the values of the variables of a hook's commands, for the
+// worktree w of the repository whose main worktree is main, both as Build
+// returns them, with native paths. name is w's NAME, the last component of
+// w.Path, and not the <name> given to wt create; so for a worktree not
+// created yet, w needs only its Path and Branch. base is the base of the
+// new branch, for the events of wt create, and "" for the others.
+func HookVars(main, w Worktree, base, goos string) map[string]string {
+	branch := w.Branch
+	if w.Detached || w.Bare {
+		branch = ""
+	}
+	vars := PathVars(main, nameOf(w.Path, goos), branch, goos)
+	vars["path"] = w.Path
+	vars["base"] = base
+	return vars
 }
 
 // splitLast splits a native absolute path into its parent and its last

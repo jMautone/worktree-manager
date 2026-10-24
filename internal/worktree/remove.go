@@ -1,6 +1,10 @@
 package worktree
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/jMautone/worktree-manager/internal/hook"
+)
 
 // RemovePlan is everything wt remove decided, before any effect. The same
 // plan feeds --dry-run, --json and the removal itself.
@@ -11,6 +15,9 @@ type RemovePlan struct {
 	DeleteBranch bool
 	KeepReason   string // "" or "not merged into origin/main"
 	CD           string // the main worktree's path when the shell moves; "" when not
+
+	PreHook  hook.Run // pre-remove, in the worktree, or the main one when its directory is gone
+	PostHook hook.Run // post-remove, in the main worktree
 }
 
 // MainWorktreeError means a command that changes a linked worktree was

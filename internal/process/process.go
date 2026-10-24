@@ -1,7 +1,9 @@
-// Package process runs the command a user gives wt with -x: in the
-// foreground, with wt's own terminal, through the OS's command interpreter.
+// Package process runs the commands a user gives wt, with -x and in hooks:
+// in the foreground, with wt's own terminal, through the OS's command
+// interpreter; and starts the process that runs background hooks, detached
+// from the terminal.
 //
-// The interpreter is fixed per OS, the same one hooks will use: sh -c on
+// The interpreter is fixed per OS, the same for -x and hooks: sh -c on
 // macOS and Linux, cmd.exe on Windows. Never the user's interactive shell:
 // a command must behave the same whoever runs it.
 package process

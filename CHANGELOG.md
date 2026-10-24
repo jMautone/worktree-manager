@@ -7,6 +7,51 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## [Unreleased]
 
+### Added
+
+- Hooks: a `[hooks]` table in the user configuration file sets, for each of
+  the events `pre-create`, `post-create`, `pre-cd`, `post-cd`, `pre-remove`
+  and `post-remove`, a list of commands that run in order, with `sh -c` on
+  macOS and Linux and `cmd.exe` on Windows, as `-x`; the first that fails
+  stops the rest. Each event is fired only by its command: `wt create`,
+  `wt cd` or `wt remove`. A repository's `.wt.toml` cannot set hooks yet: its
+  `[hooks]` is ignored with a warning. The keys `hooks.<event>` have no
+  environment variable, and `wt config get` prints one command per line.
+- `pre-create`, `post-create`, `pre-cd` and `pre-remove` block: `wt` waits
+  for them, writes `==> <event>  <command>` before each command, and sends
+  their output to stderr, so that stdout stays `wt`'s own. `post-create`
+  runs in the new worktree before the shell moves and before `-x`, so that
+  `-x` starts in a tree that is ready.
+- `post-cd` and `post-remove` run in the background, detached from the
+  terminal: they outlive `wt`, Ctrl-C and closing the terminal, on every OS.
+  `wt` prints where their log is, `<git common dir>/wt/logs/<name>/<event>.log`,
+  which has a header, the output and the exit code of each command, and is
+  replaced on every run. Their outcome never changes `wt`'s exit code.
+- Hook commands are templates with `{repo}`, `{repo_parent}`, `{repo_path}`,
+  `{name}` (the worktree's NAME, as in `wt list`), `{branch}`, `{path}`, and
+  `{base}` in the events of `wt create`. Values are inserted as they are;
+  the quotes are the user's to write. An invalid template is invalid
+  configuration, exit 1.
+- `--no-hooks` on `wt create`, `wt cd` and `wt remove` runs no hook.
+- A blocking hook that fails ends the command with exit 7, a code that was
+  reserved: a `pre-*` leaves nothing done, and a failed `post-create` leaves
+  the worktree created and moves the shell into it, but does not run `-x`.
+  Ctrl-C while a blocking hook runs reaches the hook; once it ends, `wt`
+  stops the operation the same way and exits with 130.
+- `--dry-run` prints `would run <event> hook: <command>`, or `would run
+  <event> hook in the background: <command>`, with the commands rendered,
+  in the order they would run. With `--json`, blocking hooks write to their
+  log instead of stderr, and a failed one is a `wt.error.v1` with code 7 or
+  130 whose hints name the log.
+
+### Changed
+
+- In every template, `worktree_path` included, `{{` is a literal `{` and
+  `}}` a literal `}`, as in `awk '{{print $1}}'`. Both were errors before,
+  so no valid template changes meaning.
+- `wt create` prints its `created worktree` line after `post-create`, and
+  after writing the directive: when either fails, stdout stays empty.
+
 ## [0.2.0] — 2026-10-19
 
 ### Added

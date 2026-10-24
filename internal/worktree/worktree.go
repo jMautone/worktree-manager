@@ -52,12 +52,8 @@ func Build(entries []git.WorktreeEntry, cwdReal, goos string) []Worktree {
 	for i, e := range entries {
 		path := native(e.Path, goos)
 		parts := components(path, goos)
-		name := path
-		if len(parts) > 0 {
-			name = parts[len(parts)-1]
-		}
 		ws = append(ws, Worktree{
-			Name:           name,
+			Name:           nameOf(path, goos),
 			Path:           path,
 			Branch:         e.Branch,
 			Head:           e.Head,
@@ -97,6 +93,16 @@ func native(p, goos string) string {
 		return strings.ReplaceAll(p, "/", `\`)
 	}
 	return p
+}
+
+// nameOf is the NAME of the worktree at the native path p: its last
+// component, or p itself when it has none.
+func nameOf(p, goos string) string {
+	parts := components(p, goos)
+	if len(parts) == 0 {
+		return p
+	}
+	return parts[len(parts)-1]
 }
 
 // components splits a native path into its non-empty components.

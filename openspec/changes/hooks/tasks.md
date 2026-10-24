@@ -6,7 +6,7 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
 
 ## 1. Plantillas, eventos y config (puro)
 
-- [ ] 1.1 Implementar el escape `{{`/`}}` en `template.Parse` según D3. Verificar:
+- [x] 1.1 Implementar el escape `{{`/`}}` en `template.Parse` según D3. Verificar:
   - con tests de tabla:
     - `{{x}}` da `{x}`;
     - `{{{name}}}` da `{`, la expresión y `}`;
@@ -14,7 +14,7 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
     - `x}}}` y `{{name}` dan error, con la parte ofensiva en `SyntaxError.Part`;
     - toda plantilla de los tests actuales renderiza igual;
   - in-process, los escenarios de `path-templates` "Literal braces", "Literal brace around an expression" y "Lone closing brace after a literal one".
-- [ ] 1.2 Crear `internal/hook` según D1: `Event`, `Events`, `Background`, `Key`, `Vars`, `Plan`, `LogPath`, `Header` y `PreviewLines`, con su `doc.go`. Verificar con tests de tabla:
+- [x] 1.2 Crear `internal/hook` según D1: `Event`, `Events`, `Background`, `Key`, `Vars`, `Plan`, `LogPath`, `Header` y `PreviewLines`, con su `doc.go`. Verificar con tests de tabla:
   - `Vars` incluye `base` solo en `pre-create` y `post-create`;
   - `Background` es verdadero solo en `post-cd` y `post-remove`;
   - `Plan` renderiza en orden y devuelve error con `{base}` en `pre-remove`;
@@ -22,13 +22,13 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
   - `LogPath` da `<common>/wt/logs/<name|sanitize>/<event>.log` en darwin, linux y windows, con separadores nativos, y aplica `sanitize` (`a:b` → `a-b`);
   - `Header` da `==> post-create  npm ci`;
   - `PreviewLines` da `would run pre-create hook: …` para los bloqueantes y `would run post-cd hook in the background: …` para los de background.
-- [ ] 1.3 Implementar `worktree.HookVars(main, w, base, goos)` según D1, reusando `PathVars`. Verificar con tests de tabla:
+- [x] 1.3 Implementar `worktree.HookVars(main, w, base, goos)` según D1, reusando `PathVars`. Verificar con tests de tabla:
   - `name` es el NAME (último componente de `w.Path`), no el `<name>` tipeado;
   - `branch` es vacío con HEAD separado y en un bare;
   - `repo` de un bare va sin `.git`;
   - `path` y `repo_path` van en forma nativa para darwin y windows;
   - `base` pasa tal cual.
-- [ ] 1.4 Sumar a `internal/config`, según D2:
+- [x] 1.4 Sumar a `internal/config`, según D2:
   - `Key.NoEnv` y su uso en `EnvLayer`;
   - las seis claves `hooks.*`, con `validateCommands(event)`;
   - el aplanado de tablas en `Resolve`, con el error de `hooks` que no es tabla.
@@ -49,17 +49,17 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
 
 ## 2. Efectos de base
 
-- [ ] 2.1 Implementar `git.CommonDir(ctx, r, dir)` según D7. Verificar contra repos reales del sandbox:
+- [x] 2.1 Implementar `git.CommonDir(ctx, r, dir)` según D7. Verificar contra repos reales del sandbox:
   - desde la raíz del principal da `<main>/.git` absoluto;
   - desde un subdirectorio y desde un worktree enlazado da el mismo;
   - en un bare da el propio repo;
   - con el layout `.bare` da `<root>/.bare`;
   - con `InitSeparateGitDir` da el directorio git separado.
-- [ ] 2.2 Implementar `process.StartDetached(path, args, dir, env, out)` según D6, con `process_unix.go` (`Setsid`) y `process_windows.go` (`CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB`, con reintento sin breakaway ante `ERROR_ACCESS_DENIED`). Verificar:
+- [x] 2.2 Implementar `process.StartDetached(path, args, dir, env, out)` según D6, con `process_unix.go` (`Setsid`) y `process_windows.go` (`CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB`, con reintento sin breakaway ante `ERROR_ACCESS_DENIED`). Verificar:
   - en Unix, con `fakeprog`: el hijo escribe en `out`, `StartDetached` vuelve antes de que el hijo termine, y el hijo corre en otra sesión (`getsid` distinto al del test);
   - en todos los OS, que un ejecutable inexistente devuelve error;
   - con un test puro de la elección de flags: con breakaway primero, y sin él después de `ERROR_ACCESS_DENIED`.
-- [ ] 2.3 Crear el comando oculto `__run-hooks` según D6: `Hidden: true`, `SetInterspersed(false)`, `--event` y `--dir`, y el bucle que escribe la cabecera, corre con `process.Run` contra su propio stdout y escribe el pie. Verificar in-process:
+- [x] 2.3 Crear el comando oculto `__run-hooks` según D6: `Hidden: true`, `SetInterspersed(false)`, `--event` y `--dir`, y el bucle que escribe la cabecera, corre con `process.Run` contra su propio stdout y escribe el pie. Verificar in-process:
   - el log con dos comandos que salen con 0 tiene las seis líneas en orden;
   - el primero que sale con 1 corta, y el segundo no corre;
   - un comando que no arranca deja `==> could not start: …`;
@@ -67,7 +67,7 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
 
 ## 3. Hooks en los comandos
 
-- [ ] 3.1 Implementar en `internal/cli`, según D5, D6 y D8:
+- [x] 3.1 Implementar en `internal/cli`, según D5, D6 y D8:
   - `runBlocking`, con la variable `runHook`;
   - `startBackground` como variable, con la versión síncrona para tests;
   - la apertura del log (`MkdirAll` + `O_TRUNC`);
@@ -80,7 +80,7 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
   - el hint con el log bajo `--json`;
   - el código 7 o 130 según el caso;
   - el warning cuando `startBackground` falla.
-- [ ] 3.2 Integrar los hooks en `wt create` según D4: `--no-hooks`, `PreHook` y `PostHook` en `CreatePlan`, el nuevo orden, la salida después de `post-create`, la directiva cuando falla `post-create`, `-x` salteado, y las líneas de `--dry-run`. Verificar in-process:
+- [x] 3.2 Integrar los hooks en `wt create` según D4: `--no-hooks`, `PreHook` y `PostHook` en `CreatePlan`, el nuevo orden, la salida después de `post-create`, la directiva cuando falla `post-create`, `-x` salteado, y las líneas de `--dry-run`. Verificar in-process:
   - de `hooks`:
     - "Order of the create events", "Worktree of another repository", "Values of a create event", "Name made by worktree_path" y "Literal braces";
     - "In order", "First failure stops the event", "Interpreter operators (macOS, Linux)", "Output on stderr" y "The command waits (macOS, Linux)";
@@ -90,12 +90,12 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
   - de `create-worktree`: "Line after the post-create hook", "Not run when a hook fails" y "Preview with hooks";
   - de `cli-contract`: "Report after a hook";
   - los tests actuales de `wt create` en verde.
-- [ ] 3.3 Integrar los hooks en `wt remove` según D4: `--no-hooks`, `pre-remove` antes del `Chdir`, y `post-remove` después de la salida, también cuando falla el borrado de la rama. Verificar in-process:
+- [x] 3.3 Integrar los hooks en `wt remove` según D4: `--no-hooks`, `pre-remove` antes del `Chdir`, y `post-remove` después de la salida, también cuando falla el borrado de la rama. Verificar in-process:
   - de `remove-worktree`: "Remove without hooks", "Hooks around the removal", "No post-remove when the removal fails (macOS, Linux)" y "Preview with hooks";
   - de `hooks`: "pre-remove fails", "A failure does not change the exit code", "Log of post-remove" y "Bare repository";
   - `pre-remove` corre en el principal cuando el directorio del worktree ya no existe;
   - los tests actuales de `wt remove` en verde.
-- [ ] 3.4 Integrar los hooks en `wt cd` según D4:
+- [x] 3.4 Integrar los hooks en `wt cd` según D4:
   - `--no-hooks`;
   - `cdDestination` devuelve el worktree;
   - `loadRepository(dest)` para `-`, solo con hooks de cd configurados;
@@ -111,19 +111,19 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
     - "Command without hooks";
   - que sin hooks configurados `wt cd -` no corre ningún `git` de más (con el runner que cuenta comandos de los tests);
   - los tests actuales de `wt cd` y `wt path` en verde.
-- [ ] 3.5 Actualizar el `Long` de `wt create`, `wt cd` y `wt remove`: qué hooks corre cada uno, `--no-hooks`, que `post-create` bloquea y que `post-*` de cd y remove van en background con su log. Actualizar también la ayuda de `wt config` con un ejemplo de `[hooks]` y el escape `{{`/`}}`. Verificar con tests de que `wt create -h`, `wt cd -h` y `wt remove -h` nombran `--no-hooks` y los eventos.
+- [x] 3.5 Actualizar el `Long` de `wt create`, `wt cd` y `wt remove`: qué hooks corre cada uno, `--no-hooks`, que `post-create` bloquea y que `post-*` de cd y remove van en background con su log. Actualizar también la ayuda de `wt config` con un ejemplo de `[hooks]` y el escape `{{`/`}}`. Verificar con tests de que `wt create -h`, `wt cd -h` y `wt remove -h` nombran `--no-hooks` y los eventos.
 
 ## 4. Procesos reales y shells
 
-- [ ] 4.1 Escribir e2e en `cmd/git-wt/hooks_test.go` con el binario real:
+- [x] 4.1 Escribir e2e en `cmd/git-wt/hooks_test.go` con el binario real:
   - "wt does not wait";
   - "Signals to the terminal (macOS, Linux)": `wt` en su propio grupo de procesos, y SIGHUP y SIGINT a ese grupo después de que sale;
   - "Protocol variables not passed", con un `fakeprog` que registra su entorno en `post-create` y `post-cd`;
   - que el log real de `post-remove` tiene cabecera, salida y pie.
 
   Verificar que pasan en macOS y en el CI de Linux, esperando el log con un sondeo con timeout.
-- [ ] 4.2 Escribir el e2e de Ctrl-C en `cmd/git-wt/interrupt_test.go`, "Interrupt during pre-create (macOS, Linux)": SIGINT durante un `pre-create` de `sleep 1`. Comprobar que `wt` sale después del hook, con 130, el mensaje, y sin rama ni worktree.
-- [ ] 4.3 Sumar a los tests de shell real (zsh, bash, fish, pwsh) el escenario "post-create fails" a través de la función: el shell termina en el worktree, el resultado es 7, y `ran.txt` no existe. Verificar que pasa con las cuatro shells instaladas en macOS y en el CI.
+- [x] 4.2 Escribir el e2e de Ctrl-C en `cmd/git-wt/interrupt_test.go`, "Interrupt during pre-create (macOS, Linux)": SIGINT durante un `pre-create` de `sleep 1`. Comprobar que `wt` sale después del hook, con 130, el mensaje, y sin rama ni worktree.
+- [x] 4.3 Sumar a los tests de shell real (zsh, bash, fish, pwsh) el escenario "post-create fails" a través de la función: el shell termina en el worktree, el resultado es 7, y `ran.txt` no existe. Verificar que pasa con las cuatro shells instaladas en macOS y en el CI.
 
 ## 5. Windows
 
@@ -151,9 +151,9 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
   - `wt remove x` vuelve enseguida y, cerrando la pestaña, el log termina con `done` y `==> exited with 0`;
   - `wt create y --dry-run` muestra los comandos renderizados;
   - `wt create z --no-hooks` no copia el `.env`.
-- [ ] 6.2 Actualizar `docs/design/product.md` según D9: §4 (filas de `create`, `cd` y `remove`), §5 (Hooks) y §7 (fila de `hooks`). Verificar que `grep -n 'post-\*' docs/design/product.md` ya no dice que todos los `post-*` van en background, y que `openspec validate --all --strict` sigue en verde.
-- [ ] 6.3 Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` y la cross-compilación de los 5 targets de `.goreleaser.yaml`. Verificar que gofmt no imprime nada y que no hay fallos.
-- [ ] 6.4 Integrar el change:
+- [x] 6.2 Actualizar `docs/design/product.md` según D9: §4 (filas de `create`, `cd` y `remove`), §5 (Hooks) y §7 (fila de `hooks`). Verificar que `grep -n 'post-\*' docs/design/product.md` ya no dice que todos los `post-*` van en background, y que `openspec validate --all --strict` sigue en verde.
+- [x] 6.3 Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` y la cross-compilación de los 5 targets de `.goreleaser.yaml`. Verificar que gofmt no imprime nada y que no hay fallos.
+- [x] 6.4 Integrar el change:
   - Sumar sus líneas bajo `## [Unreleased]` en `CHANGELOG.md`:
     - en *Added*:
       - la tabla `[hooks]` con los seis eventos;

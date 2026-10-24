@@ -22,7 +22,28 @@ func (a *app) configCommand() *cobra.Command {
 
 Values come from, lowest to highest precedence: defaults, the user file,
 the repository's .wt.toml (allowlisted keys only) and WT_<KEY> environment
-variables. Edit the files by hand; "wt config path" shows where they are.`,
+variables. Edit the files by hand; "wt config path" shows where they are.
+
+Hooks are commands wt runs around "wt create", "wt cd" and "wt remove".
+Only the user file sets them, with no environment variable, in the table
+[hooks], with a list of commands per event:
+
+  [hooks]
+  post-create = ['cp "{repo_path}/.env" .env', "npm ci"]
+  post-remove = ["docker rm -f {repo}-{name|sanitize}-db"]
+
+The events are pre-create, post-create, pre-cd, post-cd, pre-remove and
+post-remove. The commands of an event run in order, with sh -c on macOS
+and Linux and with cmd.exe on Windows, and the first that fails stops the
+rest. wt waits for pre-create, post-create, pre-cd and pre-remove, which
+run in the terminal; post-cd and post-remove run in the background, with
+their output in a log.
+
+A command is a template, like worktree_path, with {repo}, {repo_parent},
+{repo_path}, {name} (the worktree's NAME, as in "wt list"), {branch},
+{path}, and {base} in the events of create. Values are inserted as they
+are: write the quotes a path with spaces needs. {{ and }} write a literal
+{ and }, as in awk '{{print $1}}'.`,
 		Args: unknownSubcommand,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()

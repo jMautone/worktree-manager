@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -105,5 +106,57 @@ func TestInterruptEach(t *testing.T) {
 				t.Errorf("stderr = %q, want %q", stderr.String(), want)
 			}
 		})
+	}
+}
+
+// Scenario "Interrupt during pre-create (macOS, Linux)" of hooks. As above,
+// only git-wt gets the SIGINT: the hook keeps running, and git-wt waits for
+// it, creates nothing and exits with 130, though the hook exits with 0.
+func TestInterruptDuringPreCreate(t *testing.T) {
+	sb := testutil.New(t)
+	repo := sb.Path("repo")
+	sb.InitRepo(repo)
+	feat := sb.Path("repo.worktrees", "feat")
+	userConfig(t, sb, hooksConfig("pre-create", "touch started; sleep 1; touch finished", "touch second"))
+
+	cmd := exec.Command(filepath.Join(binDir, exeName()), "create", "feat", "--no-cd")
+	cmd.Dir = repo
+	cmd.Env = sb.Environ()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !fileExists(filepath.Join(repo, "started")) {
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("the hook did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+
+	err := cmd.Wait()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 130 {
+		t.Fatalf("git-wt: %v, want exit status 130\nstderr:\n%s", err, stderr.String())
+	}
+	if !fileExists(filepath.Join(repo, "finished")) {
+		t.Error("git-wt exited before the hook did")
+	}
+	if fileExists(filepath.Join(repo, "second")) {
+		t.Error("the second command of the event ran")
+	}
+	if !strings.Contains(stderr.String(), "wt: interrupted: pre-create hook did not finish\n") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+	if out := sb.Git(repo, "branch", "--list", "feat"); out != "" || fileExists(feat) {
+		t.Errorf("something was created: branch %q, directory there: %v", out, fileExists(feat))
+	}
+	if out := sb.Git(repo, "worktree", "list", "--porcelain"); strings.Count(out, "worktree ") != 1 {
+		t.Errorf("worktrees:\n%s", out)
 	}
 }
