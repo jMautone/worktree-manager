@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/jMautone/worktree-manager/internal/cli"
+	"github.com/jMautone/worktree-manager/internal/testutil"
 )
 
 // logLines splits a log, or anything hooks wrote, into lines, without the
@@ -332,8 +333,11 @@ func TestCreatePostCreateFails(t *testing.T) {
 		t.Errorf("stdout = %q", r.stdout)
 	}
 	last := lastLines(r.stderr, 2)
-	if last[0] != "wt: post-create hook failed: exit 2 exited with 2" || !strings.HasPrefix(last[1], "hint: ") || !strings.Contains(last[1], path) {
+	hinted, ok := strings.CutPrefix(last[1], "hint: the worktree was created anyway: ")
+	if last[0] != "wt: post-create hook failed: exit 2 exited with 2" || !ok {
 		t.Errorf("stderr ends with %q, want a hint naming %s", last, path)
+	} else {
+		mustSamePath(t, hinted, path)
 	}
 	if h.branchHead(repo, "feat") == "" || h.worktreeCount(repo) != 2 || !exists(path) {
 		t.Error("the worktree or the branch is missing")
@@ -463,11 +467,21 @@ func TestCreateHooksWithJSON(t *testing.T) {
 		if doc["schema"] != "wt.error.v1" || doc["code"] != 7.0 {
 			t.Errorf("stderr = %s", r.stderr)
 		}
-		hints := fmt.Sprint(doc["hints"])
 		path := h.sb.Path("repo.worktrees", "feat")
 		log := logPath(filepath.Join(repo, ".git"), "feat", "post-create")
-		if !strings.Contains(hints, path) || !strings.Contains(hints, log) {
-			t.Errorf("hints = %s, want %s and %s", hints, path, log)
+		// Each hint names its path as wt reports it, which may be another
+		// spelling of the same directory: compared once resolved.
+		named := map[string]string{}
+		hints, _ := doc["hints"].([]any)
+		for _, hint := range hints {
+			for _, prefix := range []string{"the worktree was created anyway: ", "the output of the hook is in "} {
+				if p, ok := strings.CutPrefix(fmt.Sprint(hint), prefix); ok {
+					named[prefix] = testutil.Comparable(t, p)
+				}
+			}
+		}
+		if named["the worktree was created anyway: "] != testutil.Comparable(t, path) || named["the output of the hook is in "] != testutil.Comparable(t, log) {
+			t.Errorf("hints = %q, want %s and %s", hints, path, log)
 		}
 		if !slices.Contains(readLog(t, log), "hello") {
 			t.Errorf("log = %q", readLog(t, log))
