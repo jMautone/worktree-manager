@@ -16,6 +16,7 @@ Defines `wt create`, the command that creates a worktree of the current reposito
 | `-x <cmd>` | a command to run in the new worktree |
 | `--cd` | move the shell into the new worktree |
 | `--no-cd` | do not move the shell |
+| `--no-hooks` | run no hook (see the `hooks` capability) |
 
 In the form `<repo>:<name>`, the text before the first `:` is the repository and the rest is the name, and the rules below for `<name>` apply to that name. These SHALL be usage errors, with exit code 2, detected before anything is fetched, created or run: a missing `<name>` or an extra argument; an empty `<name>`, including the empty name of `<repo>:`; an empty repository, as in `:feat`; a `<name>` with a component, separated by `/` or `\`, equal to `.` or `..`; `--cd` together with `--no-cd`; `-x` with an empty command; and `-x` together with `--json`.
 
@@ -241,7 +242,7 @@ The new worktree's path SHALL be the value of `worktree_path` rendered as the `p
 - **AND** the exit code is 0
 
 ### Requirement: Creating the worktree
-After every check passes, `wt create` SHALL create the branch at its base and a worktree at the path with that branch checked out, registered with git so that `wt list` shows it. Without `--json`, it SHALL print `created worktree <path> on new branch <branch> from <base>` to stdout and exit 0. When git fails while creating, the command SHALL fail with exit code 1, include git's error message, and leave behind neither the new branch nor the worktree.
+After every check passes and the `pre-create` hook succeeds (see the `hooks` capability), `wt create` SHALL create the branch at its base and a worktree at the path with that branch checked out, registered with git so that `wt list` shows it, and SHALL then run the `post-create` hook. Once that hook succeeds, without `--json`, it SHALL print `created worktree <path> on new branch <branch> from <base>` to stdout and exit 0. When git fails while creating, the command SHALL fail with exit code 1, include git's error message, leave behind neither the new branch nor the worktree, and SHALL NOT run the `post-create` hook. When a hook fails or is interrupted, the command SHALL leave done what the `hooks` capability specifies.
 
 #### Scenario: Create from the main worktree
 - **WHEN** in a repository whose main worktree is `/src/repo` and whose default branch is `origin/main` the user runs `wt create feat`
@@ -254,6 +255,10 @@ After every check passes, `wt create` SHALL create the branch at its base and a 
 - **THEN** stderr contains git's error message
 - **AND** no branch `feat` and no worktree exist afterwards
 - **AND** the exit code is 1
+
+#### Scenario: Line after the post-create hook
+- **WHEN** `hooks.post-create` is `["echo installing"]` and the user runs `wt create feat` with stdout and stderr written to the same file
+- **THEN** in that file, the line `installing` comes before the line `created worktree <path> on new branch feat from <base>`
 
 ### Requirement: Moving the shell
 `wt create` SHALL move the shell into the new worktree when `--cd` is given, or when `create_cd` is true and `--no-cd` is not given. When it moves the shell and the shell integration is active (see the `shell-integration` capability), it SHALL write the new worktree's path as the directive, so that the shell ends in the worktree's root. When it moves the shell and the shell integration is not active, it SHALL still create the worktree, SHALL write a warning stating that the shell integration is not active, and SHALL exit as it would otherwise. When it does not move the shell, it SHALL write no directive and no such warning. When the directive cannot be written, the command SHALL fail with exit code 1, and the worktree SHALL remain created.
@@ -280,7 +285,7 @@ After every check passes, `wt create` SHALL create the branch at its base and a 
 - **AND** the exit code is 0
 
 ### Requirement: Running a command
-With `-x <cmd>`, once the worktree is created and the directive written (when the shell moves), `wt create` SHALL run `<cmd>` with the new worktree's root as its working directory: as `sh -c <cmd>` on macOS and Linux, and as a command line of `cmd.exe` on Windows. The command SHALL use `wt`'s own standard input, output and error, and `wt` SHALL wait for it to exit. Once the command has started, `wt` SHALL exit with the command's exit code, unchanged, whatever its value; on macOS and Linux, a command terminated by a signal SHALL make `wt` exit with 128 plus the signal number. An interrupt from the terminal (Ctrl-C) SHALL reach the command and SHALL NOT end `wt` before the command exits. The command SHALL NOT receive `WT_DIRECTIVE_CD_FILE` or `WT_PREVIOUS_DIR` (see the `shell-integration` capability). When the command cannot be started, `wt` SHALL fail with exit code 1. When the worktree is not created, the command SHALL NOT run.
+With `-x <cmd>`, once the worktree is created, the `post-create` hook has succeeded, and the directive is written (when the shell moves), `wt create` SHALL run `<cmd>` with the new worktree's root as its working directory: as `sh -c <cmd>` on macOS and Linux, and as a command line of `cmd.exe` on Windows. The command SHALL use `wt`'s own standard input, output and error, and `wt` SHALL wait for it to exit. Once the command has started, `wt` SHALL exit with the command's exit code, unchanged, whatever its value; on macOS and Linux, a command terminated by a signal SHALL make `wt` exit with 128 plus the signal number. An interrupt from the terminal (Ctrl-C) SHALL reach the command and SHALL NOT end `wt` before the command exits. The command SHALL NOT receive `WT_DIRECTIVE_CD_FILE` or `WT_PREVIOUS_DIR` (see the `shell-integration` capability). When the command cannot be started, `wt` SHALL fail with exit code 1. When the worktree is not created, or a hook fails or is interrupted, the command SHALL NOT run.
 
 #### Scenario: Runs inside the worktree
 - **WHEN** the user runs `wt create feat -x "git branch --show-current"`
@@ -328,6 +333,12 @@ With `-x <cmd>`, once the worktree is created and the directive written (when th
 - **THEN** the exit code is 5
 - **AND** the command did not run
 
+#### Scenario: Not run when a hook fails
+- **WHEN** `hooks.post-create` is `["exit 1"]` and the user runs `wt create feat -x "echo ran> ran.txt"`
+- **THEN** the worktree `feat` exists
+- **AND** the new worktree has no file `ran.txt`
+- **AND** the exit code is 7
+
 ### Requirement: JSON output
 `wt create <name> --json` SHALL create the worktree and move the shell like `wt create <name>`, and SHALL print `{"schema":"wt.create.v1","name":...,"path":...,"branch":...,"base":...,"head":...}` instead of the `created worktree` line, where `name` is `<name>` as given, without the repository and its `:` in the form `<repo>:<name>`, `path` the new worktree's absolute path in the operating system's native form, `branch` the new branch, `base` the base as written, and `head` the full commit id the branch starts at.
 
@@ -343,14 +354,18 @@ With `-x <cmd>`, once the worktree is created and the directive written (when th
 - **AND** `path` is the path of the new worktree of `<root>/api`
 
 ### Requirement: Dry run
-`wt create --dry-run` SHALL perform every check of `wt create`, with the same errors and exit codes, and SHALL NOT fetch, create any branch, directory or worktree, write the directive, or run the `-x` command. Because nothing is fetched, the base and the remote-tracking branches SHALL be checked against the references already present. Without `--json`, on success it SHALL print to stdout, one per line and in this order: `would fetch <remote>` when it would fetch; `would create worktree <path> on new branch <branch> from <base>`; `would change directory to <path>` when it would move the shell and the shell integration is active; and `would run <cmd>` when `-x` is given. With `--json` it SHALL print the same `wt.create.v1` document as without `--dry-run`.
+`wt create --dry-run` SHALL perform every check of `wt create`, with the same errors and exit codes, and SHALL NOT fetch, create any branch, directory or worktree, write the directive, run a hook, or run the `-x` command. Because nothing is fetched, the base and the remote-tracking branches SHALL be checked against the references already present. Without `--json`, on success it SHALL print to stdout, one per line and in this order: `would fetch <remote>` when it would fetch; the lines of the `pre-create` hook; `would create worktree <path> on new branch <branch> from <base>`; the lines of the `post-create` hook; `would change directory to <path>` when it would move the shell and the shell integration is active; and `would run <cmd>` when `-x` is given. The lines of a hook SHALL be those the `hooks` capability specifies for a dry run, and there SHALL be none with `--no-hooks`. With `--json` it SHALL print the same `wt.create.v1` document as without `--dry-run`.
 
 #### Scenario: Preview
-- **WHEN** with `fetch_before_create` true, through the function, the user runs `wt create feat --dry-run -x claude` in a repository whose default branch is `origin/main`
+- **WHEN** with `fetch_before_create` true and no hooks configured, through the function, the user runs `wt create feat --dry-run -x claude` in a repository whose default branch is `origin/main`
 - **THEN** stdout is `would fetch origin`, `would create worktree <path> on new branch feat from origin/main`, `would change directory to <path>` and `would run claude`, in that order
 - **AND** no branch `feat`, no directory at `<path>` and no worktree exist afterwards
 - **AND** the shell's working directory does not change
 - **AND** the exit code is 0
+
+#### Scenario: Preview with hooks
+- **WHEN** with `fetch_before_create` false, `hooks.pre-create` is `["echo check {name}"]` and `hooks.post-create` is `["npm ci"]`, through the function, the user runs `wt create feat --dry-run -x claude`
+- **THEN** stdout is `would run pre-create hook: echo check feat`, `would create worktree <path> on new branch feat from <base>`, `would run post-create hook: npm ci`, `would change directory to <path>` and `would run claude`, in that order
 
 #### Scenario: Errors under dry run
 - **WHEN** the local branch `feat` exists and the user runs `wt create feat --dry-run`
