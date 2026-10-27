@@ -127,7 +127,7 @@ Los tests in-process de hooks bloqueantes corren comandos reales (`sh -c` o `cmd
 
 ## 5. Windows
 
-- [ ] 5.1 **[Windows]** Escribir los escenarios de Windows, salteados fuera de Windows: "Interpreter operators (Windows)" y "The command waits (Windows)" in-process, y el e2e de 4.1 de que `wt remove` no espera a `post-remove` y que su log aparece. Verificar en el CI de Windows, junto con los tests de 1.x a 4.1 que corren en todos los OS.
+- [x] 5.1 **[Windows]** Escribir los escenarios de Windows, salteados fuera de Windows: "Interpreter operators (Windows)" y "The command waits (Windows)" in-process, y el e2e de 4.1 de que `wt remove` no espera a `post-remove` y que su log aparece. Verificar en el CI de Windows, junto con los tests de 1.x a 4.1 que corren en todos los OS.
 - [ ] 5.2 **[Windows]** Escribir el e2e de Ctrl-C para Windows: `git-wt` con `CREATE_NEW_PROCESS_GROUP`, y `CTRL_BREAK_EVENT` con `GenerateConsoleCtrlEvent` mientras corre un `pre-create` que espera (`fakeprog`). Comprobar 130 y que no hay worktree. Si el runner no tiene consola, se saltea con `t.Skip`, que nombra la tarea 5.3. Verificar en el CI de Windows que pasa o que se saltea con ese motivo.
 - [ ] 5.3 **[Windows]** Verificar a mano en Windows Terminal con PowerShell 7.4. Anotar el resultado en el PR:
   - "Closing the console (Windows)": un `post-remove` de `ping -n 11 127.0.0.1 > nul& echo done`, cerrando la pestaña enseguida, termina con `==> exited with 0` en el log;
