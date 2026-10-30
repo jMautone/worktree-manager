@@ -344,6 +344,10 @@ func TestCreatePaths(t *testing.T) {
 			func(h *harness) string { return h.sb.Path("repo-feat") }},
 		{"missing parent directories", "{repo_parent}/wt/{repo}/{name|sanitize}", []string{"feat"},
 			func(h *harness) string { return h.sb.Path("wt", "repo", "feat") }},
+		{"literal braces", "{repo_parent}/{{x}}-{name}", []string{"feat"},
+			func(h *harness) string { return h.sb.Path("{x}-feat") }},
+		{"literal brace around an expression", "{repo_parent}/{{{name}}}", []string{"feat"},
+			func(h *harness) string { return h.sb.Path("{feat}") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			h := newHarness(t)

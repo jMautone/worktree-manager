@@ -26,6 +26,9 @@ type harness struct {
 	goos string
 	// chdir is Env.Chdir; nil, as in most tests, does nothing.
 	chdir func(string) error
+	// combined writes stderr to stdout, as 2>&1 does; result.stderr is
+	// then empty.
+	combined bool
 }
 
 type result struct {
@@ -50,11 +53,15 @@ func (h *harness) run(args ...string) result {
 		goos = runtime.GOOS
 	}
 	var stdout, stderr bytes.Buffer
+	var errOut io.Writer = &stderr
+	if h.combined {
+		errOut = &stdout
+	}
 	code := cli.Run(context.Background(), cli.Env{
 		Args:    args,
 		Stdin:   strings.NewReader(""),
 		Stdout:  &stdout,
-		Stderr:  &stderr,
+		Stderr:  errOut,
 		Getenv:  h.sb.Getenv,
 		Environ: h.sb.Environ(),
 		Getwd:   func() (string, error) { return h.cwd, nil },

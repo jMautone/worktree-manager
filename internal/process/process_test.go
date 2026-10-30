@@ -1,6 +1,10 @@
 package process
 
 import (
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"testing"
 )
@@ -38,5 +42,34 @@ func TestLookupEnvIgnoresCase(t *testing.T) {
 	}
 	if got := lookupEnv(env, "NOPE"); got != "" {
 		t.Errorf("NOPE = %q", got)
+	}
+}
+
+func TestDetachFlags(t *testing.T) {
+	const base = createNewProcessGroup | createNoWindow
+	if flags, ok := detachFlags(0, nil); !ok || flags != base|createBreakawayFromJob {
+		t.Errorf("first attempt: %#x, %v; want breakaway", flags, ok)
+	}
+	denied := &fs.PathError{Op: "fork/exec", Path: "git-wt.exe", Err: errorAccessDenied}
+	if flags, ok := detachFlags(1, denied); !ok || flags != base {
+		t.Errorf("after ERROR_ACCESS_DENIED: %#x, %v; want no breakaway", flags, ok)
+	}
+	if _, ok := detachFlags(1, errors.New("other")); ok {
+		t.Error("another attempt after an error that is not ERROR_ACCESS_DENIED")
+	}
+	if _, ok := detachFlags(2, denied); ok {
+		t.Error("a third attempt")
+	}
+}
+
+func TestStartDetachedMissingExecutable(t *testing.T) {
+	out, err := os.Create(filepath.Join(t.TempDir(), "log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+	missing := filepath.Join(t.TempDir(), "missing")
+	if err := StartDetached(missing, []string{missing}, t.TempDir(), os.Environ(), out); err == nil {
+		t.Error("StartDetached of a missing executable: no error")
 	}
 }

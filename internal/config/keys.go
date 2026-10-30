@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/jMautone/worktree-manager/internal/hook"
 	"github.com/jMautone/worktree-manager/internal/template"
 )
 
@@ -24,6 +25,10 @@ type Key struct {
 	// FromEnv converts the text of WT_<KEY> before Validate; nil passes the
 	// text as is. Files are not converted: in TOML a value has the key's type.
 	FromEnv func(string) (any, error)
+	// NoEnv means no environment variable sets the key. WT_HOOKS.POST-CREATE
+	// is not a variable name sh accepts, and the keys of a table are written
+	// in a file.
+	NoEnv bool
 }
 
 // Registry is the ordered set of known keys. It is passed to Resolve rather
@@ -54,7 +59,7 @@ func (r Registry) Names() []string {
 // absolute path is and how a list is split in the environment, so the rules
 // of every OS are testable from any OS.
 func Keys(goos string) Registry {
-	return Registry{
+	reg := Registry{
 		{
 			Name: "default_base",
 			Type: "string",
@@ -117,6 +122,19 @@ func Keys(goos string) Registry {
 			FromEnv:  parseIntEnv,
 		},
 	}
+	for _, e := range hook.Events {
+		reg = append(reg, Key{
+			Name:    e.Key(),
+			Type:    "command list",
+			Default: []string{},
+			// A repository's hooks run code from a clone: they wait for
+			// approval by hash, a later change.
+			InRepo:   false,
+			Validate: validateCommands(e),
+			NoEnv:    true,
+		})
+	}
+	return reg
 }
 
 func validateString(v any) (any, error) {
@@ -204,6 +222,44 @@ func validatePathList(goos string) func(any) (any, error) {
 			paths = append(paths, s)
 		}
 		return paths, nil
+	}
+}
+
+// validateCommands accepts the commands of event e: an array of strings,
+// none of them blank, each a template with the variables of e. Elements are
+// kept as written: the command that runs them renders them. The value is a
+// []string, never nil, so an empty list is [] in JSON.
+func validateCommands(e hook.Event) func(any) (any, error) {
+	return func(v any) (any, error) {
+		var elems []any
+		switch v := v.(type) {
+		case []any:
+			elems = v
+		case []string:
+			// What Validate returned, as in a key's default.
+			for _, s := range v {
+				elems = append(elems, s)
+			}
+		case string:
+			return nil, fmt.Errorf("expected an array of strings, got a string; write it as [%q]", v)
+		default:
+			return nil, fmt.Errorf("expected an array of strings, got %s", describe(v))
+		}
+		commands := make([]string, 0, len(elems))
+		for i, el := range elems {
+			s, ok := el.(string)
+			if !ok {
+				return nil, fmt.Errorf("expected an array of strings, element %d is %s", i+1, describe(el))
+			}
+			if strings.TrimSpace(s) == "" {
+				return nil, fmt.Errorf("element %d is empty", i+1)
+			}
+			if _, err := template.Parse(s, hook.Vars(e)); err != nil {
+				return nil, fmt.Errorf("element %d: %w", i+1, err)
+			}
+			commands = append(commands, s)
+		}
+		return commands, nil
 	}
 }
 

@@ -94,6 +94,53 @@ func TestParseErrorsNameTheOffendingPart(t *testing.T) {
 	}
 }
 
+// The escapes of the spec "Template syntax": {{ and }} are literal braces,
+// read from left to right.
+func TestLiteralBraces(t *testing.T) {
+	values := map[string]string{"name": "feat", "repo_parent": "/src"}
+	for _, tc := range []struct {
+		src, want string
+	}{
+		{"{{x}}", "{x}"},
+		{"{{{name}}}", "{feat}"},
+		{"a}}b", "a}b"},
+		{"{repo_parent}/{{x}}-{name}", "/src/{x}-feat"},
+		{"awk '{{print $1}}' in.txt", "awk '{print $1}' in.txt"},
+		{"${{HOME}}/{name}", "${HOME}/feat"},
+		{"{{}}", "{}"},
+		{"{{{{", "{{"},
+	} {
+		tmpl, err := Parse(tc.src, WorktreePathVars)
+		if err != nil {
+			t.Errorf("Parse(%q): %v", tc.src, err)
+			continue
+		}
+		if got := tmpl.Render(values); got != tc.want {
+			t.Errorf("Render(%q) = %q, want %q", tc.src, got, tc.want)
+		}
+	}
+	for _, tc := range []struct {
+		src, part string
+	}{
+		// x, a literal }, then a } with no {.
+		{"x}}}", "x}}}"},
+		// A literal {, name, then a } with no {.
+		{"{{name}", "{{name}"},
+		{"{repo_parent}/x}}}", "/x}}}"},
+		{"{{x}}{", "{"},
+	} {
+		_, err := Parse(tc.src, WorktreePathVars)
+		var se *SyntaxError
+		if !errors.As(err, &se) {
+			t.Errorf("Parse(%q) = %v, want a *SyntaxError", tc.src, err)
+			continue
+		}
+		if se.Part != tc.part {
+			t.Errorf("Parse(%q): Part = %q, want %q", tc.src, se.Part, tc.part)
+		}
+	}
+}
+
 func TestParseOnlyAcceptsTheGivenVariables(t *testing.T) {
 	if _, err := Parse("{name}", []string{"branch"}); err == nil {
 		t.Error("{name} parsed with only branch available")

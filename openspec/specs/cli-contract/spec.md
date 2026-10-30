@@ -106,6 +106,8 @@ On failure without `--json`, `wt` SHALL write nothing to stdout and SHALL write 
 
 `wt each` is the exception to the first rule: when it reports, after its commands ran, that one of them failed or that it was interrupted, it has already written its headers to stdout, and its commands have written to stdout and stderr whatever they wrote. Its report SHALL still be one line `wt: <message>` followed by `hint: ` lines, written to stderr after the last command's output (see the `batch-execution` capability).
 
+A command that ran blocking hooks before it failed (see the `hooks` capability) has already written to stderr the hooks' `==>` lines and whatever their commands wrote. Its stdout SHALL still be empty, and its report SHALL still be one line `wt: <message>` followed by `hint: ` lines, written to stderr after the last hook's output.
+
 #### Scenario: Error with hint
 - **WHEN** a command fails because the working directory is not in a git repository
 - **THEN** stderr's first line is `wt: not a git repository: <dir>`
@@ -116,6 +118,13 @@ On failure without `--json`, `wt` SHALL write nothing to stdout and SHALL write 
 - **THEN** stdout contains the header of the main worktree and `ok`
 - **AND** the last lines of stderr are `wt: 1 of 1 commands failed` and `hint: ^ exited with 3`
 - **AND** the exit code is 1
+
+#### Scenario: Report after a hook
+- **WHEN** `hooks.pre-create` is `["echo checking", "exit 3"]` and the user runs `wt create feat`
+- **THEN** stderr's first lines are `==> pre-create  echo checking`, `checking` and `==> pre-create  exit 3`
+- **AND** the last lines of stderr are `wt: pre-create hook failed: exit 3 exited with 3` and a `hint:` line naming `--no-hooks`
+- **AND** stdout is empty
+- **AND** the exit code is 7
 
 ### Requirement: Machine-readable output
 With `--json`, a successful command SHALL write exactly one JSON document to stdout and nothing else. The document SHALL be an object whose `schema` field names its shape as `wt.<kind>.v<version>`, and all field names SHALL be `snake_case`. A change that removes or renames a field, or changes a field's type or meaning, SHALL increment the version. On failure with `--json`, stdout SHALL be empty and stderr SHALL contain exactly one JSON document `{"schema":"wt.error.v1","code":<exit code>,"message":<text>}` (plus an optional `hints` array of strings). Warnings SHALL NOT be written to stderr when `--json` is given.

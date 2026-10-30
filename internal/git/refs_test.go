@@ -199,3 +199,51 @@ func TestAddWorktree(t *testing.T) {
 		t.Error("something was created under the file")
 	}
 }
+
+func TestCommonDir(t *testing.T) {
+	sb := testutil.New(t)
+	main := sb.Path("repo")
+	sb.InitRepo(main)
+	sub := filepath.Join(main, "sub", "dir")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linked := sb.Path("repo.worktrees", "feat")
+	sb.AddWorktree(main, linked, "feat")
+	bare := sb.Path("proj.git")
+	sb.InitBare(bare)
+	dotBare := sb.Path("proj")
+	sb.InitDotBare(dotBare)
+	sep := sb.Path("sep")
+	sepGit := sb.Path("gitdirs", "sep.git")
+	sb.InitSeparateGitDir(sep, sepGit)
+
+	for _, tc := range []struct {
+		name, dir, want string
+	}{
+		{"root of the main worktree", main, filepath.Join(main, ".git")},
+		{"subdirectory", sub, filepath.Join(main, ".git")},
+		{"linked worktree", linked, filepath.Join(main, ".git")},
+		{"bare repository", bare, bare},
+		{".bare layout", dotBare, filepath.Join(dotBare, ".bare")},
+		{"separate git directory", sep, sepGit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := git.CommonDir(ctx, runner(sb), tc.dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !filepath.IsAbs(got) || got != filepath.Clean(got) {
+				t.Errorf("CommonDir = %q, not a clean absolute path", got)
+			}
+			if testutil.Comparable(t, got) != testutil.Comparable(t, tc.want) {
+				t.Errorf("CommonDir = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	var nr *git.NotRepoError
+	if _, err := git.CommonDir(ctx, runner(sb), sb.Root); !errors.As(err, &nr) {
+		t.Errorf("outside a repository: %v, want a *NotRepoError", err)
+	}
+}

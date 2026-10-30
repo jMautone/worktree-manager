@@ -698,6 +698,29 @@ func TestShellCreate(t *testing.T) {
 	})
 }
 
+// Scenario "post-create fails" of hooks, through the function: the shell
+// ends in the new worktree, as it would have, with the hook's exit code 7,
+// and -x does not run.
+func TestShellPostCreateFails(t *testing.T) {
+	forEachShell(t, func(t *testing.T, d dialect) {
+		e := newShellEnv(t)
+		userConfig(t, e.sb, hooksConfig("post-create", "exit 2"))
+		path := e.sb.Path("repo.worktrees", "hooked")
+		r := e.run(t, d, e.sub, lines(
+			d.load,
+			"wt create hooked -x "+quote("echo ran> ran.txt"), d.rep("hooked"),
+		))
+		mustMark(t, r, "hooked", "7", path)
+		if fileExists(filepath.Join(path, "ran.txt")) {
+			t.Error("-x ran")
+		}
+		if !strings.Contains(r.stderr, "wt: post-create hook failed: exit 2 exited with 2") {
+			t.Errorf("stderr = %q", r.stderr)
+		}
+		e.mustNoLeftovers(t, d)
+	})
+}
+
 // wt remove @ through the function, from a subdirectory of the worktree: the
 // shell ends in the main worktree. On Windows this is also the proof that
 // neither git-wt nor PowerShell keeps the directory in use.

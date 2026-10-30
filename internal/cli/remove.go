@@ -12,6 +12,7 @@ import (
 
 	"github.com/jMautone/worktree-manager/internal/config"
 	"github.com/jMautone/worktree-manager/internal/git"
+	"github.com/jMautone/worktree-manager/internal/hook"
 	"github.com/jMautone/worktree-manager/internal/shell"
 	"github.com/jMautone/worktree-manager/internal/worktree"
 )
@@ -45,13 +46,22 @@ the local branch.
 and -D never removes a worktree with modified or untracked files.
 
 When the shell is inside the worktree, it ends up in the main worktree,
-through the wt shell function (see "wt shell init --help").`
+through the wt shell function (see "wt shell init --help").
+
+Hooks: wt remove runs the commands of pre-remove in the worktree, and waits
+for them, before it removes anything; when one fails, nothing is removed
+and wt exits with 7. Once the worktree is removed, it starts those of
+post-remove in the main worktree, in the background, and does not wait for
+them: their output goes to a log under the repository's .git/wt/logs,
+whose path wt prints. --no-hooks runs neither; see "wt config --help" for
+how to set them.`
 
 // removeFlags are the flags of wt remove.
 type removeFlags struct {
 	keepBranch  bool
 	forceDelete bool
 	force       bool
+	noHooks     bool
 }
 
 func (a *app) removeCommand() *cobra.Command {
@@ -82,6 +92,7 @@ func (a *app) removeCommand() *cobra.Command {
 	fs.BoolVar(&f.keepBranch, "keep-branch", false, "keep the branch, even if it is merged")
 	fs.BoolVarP(&f.forceDelete, "force-delete-branch", "D", false, "delete the branch, even if it is not merged")
 	fs.BoolVarP(&f.force, "force", "f", false, "remove the worktree even if it has modified or untracked files")
+	fs.BoolVar(&f.noHooks, "no-hooks", false, "run no hook")
 	return cmd
 }
 
@@ -143,14 +154,31 @@ func (a *app) planRemove(ctx context.Context, target string, f removeFlags) (wor
 		cd = main.Path
 	}
 
-	return worktree.RemovePlan{
+	plan = worktree.RemovePlan{
 		Worktree:     w,
 		Force:        f.force,
 		Branch:       w.Branch,
 		DeleteBranch: del,
 		KeepReason:   keepReason,
 		CD:           cd,
-	}, main, nil
+	}
+
+	// pre-remove runs in the worktree, which is still there, unless its
+	// directory is already gone; post-remove, once it is gone, in the main
+	// worktree.
+	hooks := &hookPlanner{a: a, ctx: ctx, cfg: cfg, noHooks: f.noHooks, gitDir: main.Path}
+	values := worktree.HookVars(main, w, "", a.env.GOOS)
+	preDir := main.Path
+	if info, err := os.Stat(w.Path); err == nil && info.IsDir() {
+		preDir = w.Path
+	}
+	if plan.PreHook, err = hooks.plan(hook.PreRemove, values, preDir); err != nil {
+		return worktree.RemovePlan{}, worktree.Worktree{}, err
+	}
+	if plan.PostHook, err = hooks.plan(hook.PostRemove, values, main.Path); err != nil {
+		return worktree.RemovePlan{}, worktree.Worktree{}, err
+	}
+	return plan, main, nil
 }
 
 // removeBlocked maps the errors of CheckRemovable to the exit-code
@@ -251,6 +279,7 @@ func (a *app) previewRemove(plan worktree.RemovePlan) error {
 		return a.writeJSON(removeDocument(plan))
 	}
 	var b strings.Builder
+	previewHook(&b, plan.PreHook)
 	fmt.Fprintf(&b, "would remove worktree %s\n", plan.Worktree.Path)
 	if plan.Branch != "" {
 		b.WriteString(branchLine(plan, true) + "\n")
@@ -258,6 +287,7 @@ func (a *app) previewRemove(plan worktree.RemovePlan) error {
 	if plan.CD != "" && active {
 		fmt.Fprintf(&b, "would change directory to %s\n", plan.CD)
 	}
+	previewHook(&b, plan.PostHook)
 	_, err := a.env.Stdout.Write([]byte(b.String()))
 	return err
 }
@@ -278,10 +308,16 @@ func branchLine(plan worktree.RemovePlan, dryRun bool) string {
 	return kept + " branch " + plan.Branch
 }
 
-// remove carries out the plan from the main worktree: the worktree, then
-// the branch, then the shell, and the output last, so that stdout stays
-// empty on any error. An error after the worktree is gone says so.
+// remove carries out the plan: pre-remove, then, from the main worktree,
+// the worktree, the branch, the shell, and the output, so that stdout
+// stays empty on any error; post-remove last, once the worktree is gone,
+// even when its branch could not be deleted. An error after the worktree
+// is gone says so.
 func (a *app) remove(ctx context.Context, plan worktree.RemovePlan, main worktree.Worktree) error {
+	// Before leaving the worktree: the hook runs in it.
+	if err := a.runBlocking(plan.PreHook); err != nil {
+		return err
+	}
 	path := plan.Worktree.Path
 	// On Windows a directory that is a process's working directory cannot
 	// be deleted, and wt may have started inside the worktree. Elsewhere it
@@ -316,14 +352,19 @@ func (a *app) remove(ctx context.Context, plan worktree.RemovePlan, main worktre
 			failed = &Error{Code: ExitError, Msg: fmt.Sprintf("removed worktree %s, but cannot write the directive file: %v", path, err)}
 		}
 	}
-	if failed != nil {
-		return failed
+	if failed == nil {
+		failed = a.removed(plan)
 	}
+	a.background(plan.PostHook)
+	return failed
+}
 
+// removed writes what wt remove did to stdout.
+func (a *app) removed(plan worktree.RemovePlan) error {
 	if a.json {
 		return a.writeJSON(removeDocument(plan))
 	}
-	out := fmt.Sprintf("removed worktree %s\n", path)
+	out := fmt.Sprintf("removed worktree %s\n", plan.Worktree.Path)
 	if plan.Branch != "" {
 		out += branchLine(plan, false) + "\n"
 	}

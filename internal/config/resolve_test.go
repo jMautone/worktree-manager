@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -49,7 +50,7 @@ func TestResolveDefaults(t *testing.T) {
 	assertValue(t, cfg, "branch_prefix", "", SourceDefault)
 	assertValue(t, cfg, "fetch_before_create", true, SourceDefault)
 	assertValue(t, cfg, "create_cd", true, SourceDefault)
-	if len(cfg.Values) != 8 || cfg.Values[0].Key != "default_base" || cfg.Values[7].Key != "secret_cmd" {
+	if len(cfg.Values) != 14 || cfg.Values[0].Key != "default_base" || cfg.Values[13].Key != "secret_cmd" {
 		t.Errorf("values not in registry order: %+v", cfg.Values)
 	}
 	if len(cfg.Warnings) != 0 {
@@ -221,5 +222,103 @@ func TestResolveInvalidTemplateNamesKeyOriginAndPart(t *testing.T) {
 				t.Errorf("error %v does not name %q", err, w)
 			}
 		}
+	}
+}
+
+// Scenarios "Key of a table" and "Hook commands": [hooks] is read as its
+// keys.
+func TestResolveTableOfHooks(t *testing.T) {
+	reg := Keys("darwin")
+	user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{
+		"hooks": map[string]any{"post-create": []any{"npm ci", "npm run build"}, "pre-cd": []any{}},
+	}}
+	cfg := mustResolve(t, reg, user)
+	v, _ := cfg.Get("hooks.post-create")
+	if !reflect.DeepEqual(v.Value, []string{"npm ci", "npm run build"}) || v.Source != SourceUser || v.Origin != "/u/config.toml" {
+		t.Errorf("hooks.post-create = %+v", v)
+	}
+	if v, _ := cfg.Get("hooks.pre-cd"); !reflect.DeepEqual(v.Value, []string{}) || v.Source != SourceUser {
+		t.Errorf("hooks.pre-cd = %+v", v)
+	}
+	if v, _ := cfg.Get("hooks.post-remove"); !reflect.DeepEqual(v.Value, []string{}) || v.Source != SourceDefault {
+		t.Errorf("hooks.post-remove = %+v", v)
+	}
+	if len(cfg.Warnings) != 0 {
+		t.Errorf("warnings = %q", cfg.Warnings)
+	}
+	if _, ok := user.Values["hooks"]; !ok {
+		t.Error("Resolve changed the layer's map")
+	}
+}
+
+func TestResolveHooksThatIsNotATable(t *testing.T) {
+	for _, value := range []any{[]any{"npm ci"}, "npm ci"} {
+		user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{"hooks": value}}
+		_, err := Resolve(Keys("darwin"), user)
+		if err == nil || !strings.Contains(err.Error(), `"hooks"`) || !strings.Contains(err.Error(), "/u/config.toml") ||
+			!strings.Contains(err.Error(), "expected a table") {
+			t.Errorf("hooks = %#v: error %v, want one naming hooks, the file and a table", value, err)
+		}
+	}
+}
+
+func TestResolveEventThatDoesNotExist(t *testing.T) {
+	user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{
+		"hooks": map[string]any{"post-merge": []any{"npm test"}},
+	}}
+	cfg := mustResolve(t, Keys("darwin"), user)
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"hooks.post-merge"`) || !strings.Contains(cfg.Warnings[0], "/u/config.toml") {
+		t.Errorf("warnings = %q, want one naming hooks.post-merge and the file", cfg.Warnings)
+	}
+}
+
+func TestResolveRepositoryMayNotSetHooks(t *testing.T) {
+	repo := Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{
+		"hooks": map[string]any{"post-create": []any{"echo pwned > pwned.txt"}},
+	}}
+	cfg := mustResolve(t, Keys("darwin"), repo)
+	if v, _ := cfg.Get("hooks.post-create"); !reflect.DeepEqual(v.Value, []string{}) || v.Source != SourceDefault {
+		t.Errorf("hooks.post-create = %+v", v)
+	}
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"hooks.post-create"`) || !strings.Contains(cfg.Warnings[0], ".wt.toml") {
+		t.Errorf("warnings = %q, want one naming hooks.post-create and .wt.toml", cfg.Warnings)
+	}
+}
+
+func TestResolveNoEnvironmentVariableForHooks(t *testing.T) {
+	reg := Keys("darwin")
+	e := EnvLayer(reg, env(map[string]string{
+		"WT_HOOKS_POST_CREATE": "npm ci",
+		"WT_HOOKS.POST-CREATE": "npm ci",
+	}))
+	if len(e.Values) != 0 {
+		t.Errorf("environment layer = %v, want empty", e.Values)
+	}
+	cfg := mustResolve(t, reg, e)
+	if v, _ := cfg.Get("hooks.post-create"); v.Source != SourceDefault {
+		t.Errorf("hooks.post-create = %+v", v)
+	}
+}
+
+func TestResolveInvalidHookCommands(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		hooks map[string]any
+		want  []string
+	}{
+		{"blank element", map[string]any{"pre-remove": []any{"  "}}, []string{`"hooks.pre-remove"`, "/u/config.toml", "empty"}},
+		{"single string", map[string]any{"post-create": "npm ci"}, []string{`"hooks.post-create"`, "/u/config.toml", `["npm ci"]`}},
+		{"unknown variable", map[string]any{"post-create": []any{"echo {nope}"}}, []string{`"hooks.post-create"`, "/u/config.toml", "nope"}},
+		{"base outside create", map[string]any{"pre-remove": []any{"echo {base}"}}, []string{`"hooks.pre-remove"`, "/u/config.toml", "base"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{"hooks": tc.hooks}}
+			_, err := Resolve(Keys("darwin"), user)
+			for _, w := range tc.want {
+				if err == nil || !strings.Contains(err.Error(), w) {
+					t.Errorf("error %v does not name %q", err, w)
+				}
+			}
+		})
 	}
 }

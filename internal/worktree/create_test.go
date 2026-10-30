@@ -2,6 +2,7 @@ package worktree
 
 import (
 	"errors"
+	"maps"
 	"testing"
 )
 
@@ -53,6 +54,49 @@ func TestPathVars(t *testing.T) {
 			got["name"] != "n" || got["branch"] != "b" {
 			t.Errorf("%s %+v: %v", tc.goos, tc.main, got)
 		}
+	}
+}
+
+func TestHookVars(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		goos    string
+		main, w Worktree
+		base    string
+		want    map[string]string
+	}{
+		{"name is the NAME, not the name typed", "darwin",
+			Worktree{Path: "/src/repo"},
+			Worktree{Path: "/src/repo.worktrees/jm-auth", Branch: "jm/auth"}, "origin/main",
+			map[string]string{"repo": "repo", "repo_parent": "/src", "repo_path": "/src/repo",
+				"name": "jm-auth", "branch": "jm/auth", "path": "/src/repo.worktrees/jm-auth", "base": "origin/main"}},
+		{"detached HEAD", "linux",
+			Worktree{Path: "/src/repo"},
+			Worktree{Path: "/src/repo.worktrees/x", Detached: true}, "",
+			map[string]string{"repo": "repo", "repo_parent": "/src", "repo_path": "/src/repo",
+				"name": "x", "branch": "", "path": "/src/repo.worktrees/x", "base": ""}},
+		{"bare repository", "linux",
+			Worktree{Path: "/src/proj.git", Bare: true},
+			Worktree{Path: "/src/proj.git", Bare: true, Main: true}, "",
+			map[string]string{"repo": "proj", "repo_parent": "/src", "repo_path": "/src/proj.git",
+				"name": "proj.git", "branch": "", "path": "/src/proj.git", "base": ""}},
+		{"linked worktree of a bare repository", "darwin",
+			Worktree{Path: "/src/proj/.bare", Bare: true},
+			Worktree{Path: "/src/proj/feat", Branch: "feat"}, "",
+			map[string]string{"repo": ".bare", "repo_parent": "/src/proj", "repo_path": "/src/proj/.bare",
+				"name": "feat", "branch": "feat", "path": "/src/proj/feat", "base": ""}},
+		{"native paths on windows", "windows",
+			Worktree{Path: `C:\src\repo`},
+			Worktree{Path: `C:\src\repo.worktrees\feature-x`, Branch: "feature/x"}, "HEAD~1",
+			map[string]string{"repo": "repo", "repo_parent": `C:\src`, "repo_path": `C:\src\repo`,
+				"name": "feature-x", "branch": "feature/x", "path": `C:\src\repo.worktrees\feature-x`, "base": "HEAD~1"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := HookVars(tc.main, tc.w, tc.base, tc.goos)
+			if !maps.Equal(got, tc.want) {
+				t.Errorf("HookVars = %v\nwant        %v", got, tc.want)
+			}
+		})
 	}
 }
 

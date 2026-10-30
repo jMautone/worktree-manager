@@ -11,6 +11,7 @@ import (
 
 	"github.com/jMautone/worktree-manager/internal/config"
 	"github.com/jMautone/worktree-manager/internal/git"
+	"github.com/jMautone/worktree-manager/internal/hook"
 	"github.com/jMautone/worktree-manager/internal/process"
 	"github.com/jMautone/worktree-manager/internal/shell"
 	"github.com/jMautone/worktree-manager/internal/template"
@@ -47,15 +48,24 @@ through the wt shell function (see "wt shell init --help"). --cd and
 exit code. <cmd> runs with sh -c on macOS and Linux and with cmd.exe on
 Windows, so their quoting and operators apply: && in sh, & in cmd. In
 PowerShell the line goes through pwsh first and then through cmd.exe:
-write it in single quotes, as in -x 'claude "fix it"'.`
+write it in single quotes, as in -x 'claude "fix it"'.
+
+Hooks: wt create runs the commands of pre-create in the main worktree
+before it creates anything, and those of post-create in the new worktree
+once it exists, before the shell moves and before -x. It waits for both,
+and their output goes to stderr. When a pre-create command fails, nothing
+is created; when a post-create one fails, the worktree stays and the shell
+moves into it, but -x does not run. Either way wt exits with 7.
+--no-hooks runs neither; see "wt config --help" for how to set them.`
 
 // createFlags are the flags of wt create.
 type createFlags struct {
-	branch string
-	base   string
-	exec   string
-	cd     bool
-	noCD   bool
+	branch  string
+	base    string
+	exec    string
+	cd      bool
+	noCD    bool
+	noHooks bool
 }
 
 // exitStatus ends the command with code and prints nothing: the exit code
@@ -99,6 +109,7 @@ func (a *app) createCommand() *cobra.Command {
 	fs.StringVarP(&f.exec, "-x", "x", "", "run `cmd` in the new worktree and exit with its exit code")
 	fs.BoolVar(&f.cd, "cd", false, "move the shell into the new worktree, whatever create_cd says")
 	fs.BoolVar(&f.noCD, "no-cd", false, "do not move the shell")
+	fs.BoolVar(&f.noHooks, "no-hooks", false, "run no hook")
 	_ = cmd.RegisterFlagCompletionFunc("base", a.completeBases)
 	_ = cmd.RegisterFlagCompletionFunc("branch", cobra.NoFileCompletions)
 	_ = cmd.RegisterFlagCompletionFunc("-x", cobra.NoFileCompletions)
@@ -288,7 +299,7 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 		}
 	}
 
-	return worktree.CreatePlan{
+	plan := worktree.CreatePlan{
 		Name:   name,
 		Path:   path,
 		Branch: branch,
@@ -297,7 +308,19 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 		Fetch:  fetch,
 		CD:     f.cd || configBool(cfg, "create_cd") && !f.noCD,
 		Exec:   f.exec,
-	}, dir, nil
+	}
+
+	// The hooks, with the new worktree's values: its NAME is the last
+	// component of its path, as wt list will show it.
+	hooks := &hookPlanner{a: a, ctx: ctx, cfg: cfg, noHooks: f.noHooks, gitDir: dir}
+	values := worktree.HookVars(main, worktree.Worktree{Path: path, Branch: branch}, base, goos)
+	if plan.PreHook, err = hooks.plan(hook.PreCreate, values, main.Path); err != nil {
+		return worktree.CreatePlan{}, "", err
+	}
+	if plan.PostHook, err = hooks.plan(hook.PostCreate, values, path); err != nil {
+		return worktree.CreatePlan{}, "", err
+	}
+	return plan, dir, nil
 }
 
 // readDefaultBranch reads what DefaultBranch decides with: origin/HEAD and,
@@ -371,7 +394,9 @@ func (a *app) previewCreate(plan worktree.CreatePlan) error {
 	if plan.Fetch != "" {
 		fmt.Fprintf(&b, "would fetch %s\n", plan.Fetch)
 	}
+	previewHook(&b, plan.PreHook)
 	fmt.Fprintf(&b, "would create worktree %s on new branch %s from %s\n", plan.Path, plan.Branch, plan.Base)
+	previewHook(&b, plan.PostHook)
 	if plan.CD && shell.Active(a.env.Getenv) {
 		fmt.Fprintf(&b, "would change directory to %s\n", plan.Path)
 	}
@@ -382,9 +407,14 @@ func (a *app) previewCreate(plan worktree.CreatePlan) error {
 	return err
 }
 
-// create carries out the plan, with git running in dir: the branch, then
-// the worktree, then the shell, then -x.
+// create carries out the plan, with git running in dir: pre-create, the
+// branch, the worktree, post-create, the shell, and then the output, so
+// that stdout stays empty when a hook fails; -x last.
 func (a *app) create(ctx context.Context, plan worktree.CreatePlan, dir string) error {
+	if err := a.runBlocking(plan.PreHook); err != nil {
+		return err
+	}
+
 	// Two steps, not worktree add -b: git branch fails when the branch
 	// exists, so a branch it created is wt's to delete if the worktree
 	// cannot be added. The branch starts at the resolved commit, which is
@@ -399,20 +429,24 @@ func (a *app) create(ctx context.Context, plan worktree.CreatePlan, dir string) 
 		return gitError(err)
 	}
 
+	if err := a.runBlocking(plan.PostHook); err != nil {
+		// The worktree is there, ready or not: the shell moves into it as
+		// it would have, so the user can finish what the hook did not.
+		if derr := a.moveIntoCreated(plan); derr != nil {
+			a.warn(derr.Error())
+		}
+		return err
+	}
+	if err := a.moveIntoCreated(plan); err != nil {
+		return err
+	}
+
 	if a.json {
 		if err := a.writeJSON(createDocument(plan)); err != nil {
 			return err
 		}
 	} else if _, err := fmt.Fprintf(a.env.Stdout, "created worktree %s on new branch %s from %s\n", plan.Path, plan.Branch, plan.Base); err != nil {
 		return err
-	}
-
-	if plan.CD {
-		if !shell.Active(a.env.Getenv) {
-			a.warnShellStays()
-		} else if err := shell.WriteDirective(a.env.Getenv(shell.DirectiveVar), plan.Path); err != nil {
-			return &Error{Code: ExitError, Msg: fmt.Sprintf("cannot write the directive file: %v", err)}
-		}
 	}
 
 	if plan.Exec == "" {
@@ -424,6 +458,22 @@ func (a *app) create(ctx context.Context, plan worktree.CreatePlan, dir string) 
 	}
 	if code != 0 {
 		return &exitStatus{code: code}
+	}
+	return nil
+}
+
+// moveIntoCreated writes the new worktree as the directive, when the plan
+// moves the shell and the shell integration is active.
+func (a *app) moveIntoCreated(plan worktree.CreatePlan) error {
+	if !plan.CD {
+		return nil
+	}
+	if !shell.Active(a.env.Getenv) {
+		a.warnShellStays()
+		return nil
+	}
+	if err := shell.WriteDirective(a.env.Getenv(shell.DirectiveVar), plan.Path); err != nil {
+		return &Error{Code: ExitError, Msg: fmt.Sprintf("cannot write the directive file: %v", err)}
 	}
 	return nil
 }

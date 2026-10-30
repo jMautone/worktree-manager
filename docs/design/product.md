@@ -62,10 +62,10 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 
 | Comando | Qué hace |
 |---|---|
-| `wt create <name> [-b <branch>] [--base <ref>] [-x <cmd>] [--cd\|--no-cd] [--detach]` | Crea el worktree sobre una rama nueva, corre `post-create`, te deja parado adentro. Con `-x` corre el comando ahí, en foreground. `--cd`/`--no-cd` pisan `create_cd`. `--detach` (lanzar en un tab nuevo) llega con los launchers, en M5. |
-| `wt cd [<name>\|-\|^\|@]` | Salta a un worktree, a un repo, al anterior (`-`), al principal (`^`) o al actual (`@`). Sin argumento, abre el picker. |
+| `wt create <name> [-b <branch>] [--base <ref>] [-x <cmd>] [--cd\|--no-cd] [--no-hooks] [--detach]` | Crea el worktree sobre una rama nueva, entre `pre-create` y `post-create` (los dos bloquean), y te deja parado adentro. Con `-x` corre el comando ahí, en foreground, después de `post-create`. `--cd`/`--no-cd` pisan `create_cd`; `--no-hooks` no corre ningún hook. `--detach` (lanzar en un tab nuevo) llega con los launchers, en M5. |
+| `wt cd [<name>\|-\|^\|@] [--no-hooks]` | Salta a un worktree, a un repo, al anterior (`-`), al principal (`^`) o al actual (`@`). Corre `pre-cd` antes del salto y `post-cd` en background después, en el worktree destino; `--no-hooks` no corre ninguno. Sin argumento, abre el picker. |
 | `wt list [--full] [--all-repos] [--json]` | Una sola tabla con todo el estado. Reemplaza al `status` de v0.9. |
-| `wt remove <name> [--keep-branch] [-D] [-f]` | Borra el worktree y, por defecto, su rama si está mergeada (en la base o en su upstream). `--keep-branch` la conserva; `-D` la borra aunque no lo esté; `-f` borra el worktree con archivos sin commitear. Los hooks `pre-remove`/`post-remove` llegan con `hooks`, en M3. |
+| `wt remove <name> [--keep-branch] [-D] [-f] [--no-hooks]` | Borra el worktree y, por defecto, su rama si está mergeada (en la base o en su upstream). `--keep-branch` la conserva; `-D` la borra aunque no lo esté; `-f` borra el worktree con archivos sin commitear. Corre `pre-remove` antes de borrar y `post-remove` en background después; `--no-hooks` no corre ninguno. |
 | `wt merge [<target>] [--squash] [--no-rebase] [--no-remove]` | Cierra el ciclo: commit pendiente → rebase → `pre-merge` → fast-forward → remove. El commit pendiente y `--squash` llegan con `merge-steps`, en M4; hasta entonces, un worktree sucio frena con exit 5. |
 | `wt step commit\|squash\|rebase\|push [<target>]` | Corre un paso suelto del pipeline de `merge`, con sus mismos hooks. Para cuando querés el rebase sin mergear, o el squash sin borrar. |
 | `wt sync [<name>...] [--all]` | Rebase de uno o varios worktrees sobre su base. Nunca stashea; el conflicto se reporta y se sigue. |
@@ -149,7 +149,7 @@ preset = "code"                     # o command = "nvim {path}"
 preset = "tmux"                     # solo se usa con --detach
 
 [hooks]
-post-create = ["cp .env {path}/.env", "npm ci"]
+post-create = ['cp "{repo_path}/.env" .env', "npm ci"]
 pre-merge   = ["npm test"]
 
 [aliases]
@@ -168,9 +168,14 @@ Un solo motor, usado por rutas, hooks, launchers, aliases y columnas de `list`.
 
 `sanitize` no es un lujo: sin él, una rama como `feature/abc1` no tiene ruta válida.
 
+`{{` y `}}` escriben una llave literal, para lo que la usa en un comando: `awk '{{print $1}}'`, `${{HOME}}`. Se leen de izquierda a derecha, así que `{{{name}}}` es `{`, la expresión y `}`.
+
 ### Hooks
 
-Eventos: `pre`/`post` × `create`, `cd`, `remove`, `merge`, `commit`. Los `pre-*` bloquean (exit ≠ 0 aborta la operación); los `post-*` corren en background con la salida en `.git/wt/logs/`.
+Eventos: `pre`/`post` × `create`, `cd`, `remove`, `merge`, `commit`. Hoy existen los de `create`, `cd` y `remove`; los de `merge` llegan con `merge-worktree` y los de `commit` con `merge-steps`. Cada evento es una lista de comandos que corren en serie, con el intérprete de `-x`, y el primero que falla corta la lista.
+
+- **Bloquean** los `pre-*` y `post-create`: corren en la terminal, con la salida en stderr, y si uno falla la operación termina con exit 7. Un `pre-*` que falla no deja nada hecho. `post-create` bloquea, y no va en background, porque `-x` no puede arrancar antes de que termine `npm ci`.
+- **En background** corren `post-cd` y `post-remove`: desacoplados de la terminal, sobreviven a `wt`, a Ctrl-C y al cierre de la pestaña, y su salida va a `<git-common-dir>/wt/logs/<name|sanitize>/<evento>.log`, que cada corrida pisa.
 
 Los hooks declarados en `.wt.toml` requieren **aprobación explícita** la primera vez, guardada por hash del comando en la config del usuario. Si el comando cambia, se vuelve a pedir. Eso habilita "el equipo comparte `npm ci` al crear" sin darle ejecución arbitraria a un repo clonado.
 
@@ -279,7 +284,7 @@ Cuatro cortes: las tres capabilities de M3 y `project-hooks-approval`, que se ad
 
 | Change | Entrega | Por qué en ese orden |
 |---|---|---|
-| `hooks` | `[hooks]` en la config del usuario, con los eventos `pre`/`post` de `create`, `cd` y `remove`. Los `pre-*` bloquean y fallan con exit 7; los `post-*` corren en background, con la salida en `.git/wt/logs/`. Mismo intérprete que `-x`, y `{path}` y `{base}` en el motor de plantillas. | `post-create` (copiar el `.env`, `npm ci`) es la fricción diaria más grande, y los `post-*` en background son el riesgo multiplataforma de M3: un proceso que sobrevive a `wt` en Windows. Como `shell-integration` en M1, lo querés roto temprano. Y `merge` lo necesita. |
+| `hooks` | `[hooks]` en la config del usuario, con los eventos `pre`/`post` de `create`, `cd` y `remove`. Los `pre-*` y `post-create` bloquean y fallan con exit 7: `post-create` porque `-x` no puede arrancar antes de `npm ci`. `post-cd` y `post-remove` corren en background, con la salida en `.git/wt/logs/`. Mismo intérprete que `-x`, y `{path}`, `{base}` y el escape `{{`/`}}` en el motor de plantillas. | `post-create` (copiar el `.env`, `npm ci`) es la fricción diaria más grande, y `post-cd` y `post-remove` en background son el riesgo multiplataforma de M3: un proceso que sobrevive a `wt` en Windows. Como `shell-integration` en M1, lo querés roto temprano. Y `merge` lo necesita. |
 | `project-hooks-approval` | `hooks` en la lista blanca de `.wt.toml`, con aprobación por hash del comando guardada del lado del usuario, `wt hook list`, `wt hook approve` y exit 8 cuando un hook del repo no está aprobado. | Sin ella los hooks son globales: un `post-create = ["npm ci"]` corre también en un repo de Go, y los tests de `pre-merge` no pueden ser por repo. Va antes de `merge` para que sus tests sean del repo desde el primer día. |
 | `sync-worktrees` | `wt sync [<name>...] [--all]`: rebase sobre la base con un solo fetch. Nunca stashea (el worktree sucio se saltea), el conflicto se reporta y se sigue, y termina con un resumen y un exit code. | El rebase y la política de conflicto se prueban solos, sin hooks, fast-forward ni borrado. `merge` reusa ese rebase. |
 | `merge-worktree` | `wt merge [<target>] [--no-rebase] [--no-remove]` desde adentro del worktree: limpio o exit 5, rebase (exit 6), `pre-merge` (exit 7 u 8), fast-forward del target, `remove` con sus hooks y `post-merge`. | Compone los tres anteriores: es el único que depende de todos. |

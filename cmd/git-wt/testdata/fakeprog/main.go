@@ -11,6 +11,8 @@
 //     command line was split.
 //   - sleeper: creates the file "started" in its working directory and
 //     waits 5 seconds, for a test to interrupt it, as cmd.exe has no sleep.
+//   - recordenv: appends its environment to the file named by its first
+//     argument, followed by a line "--", as a hook that records it.
 //
 // It is a Go program and not a script so that it runs as wt.exe on Windows.
 package main
@@ -40,6 +42,15 @@ func main() {
 			os.Exit(1)
 		}
 		time.Sleep(5 * time.Second)
+	case "recordenv":
+		if len(os.Args) < 2 {
+			fmt.Fprintln(os.Stderr, "fakeprog: recordenv needs a file")
+			os.Exit(1)
+		}
+		if err := record(os.Args[1]); err != nil {
+			fmt.Fprintln(os.Stderr, "fakeprog:", err)
+			os.Exit(1)
+		}
 	case "git":
 		if err := record(os.Getenv("FAKEPROG_LOG")); err != nil {
 			fmt.Fprintln(os.Stderr, "fakeprog:", err)
