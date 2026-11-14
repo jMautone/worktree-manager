@@ -1,7 +1,7 @@
 # worktree-manager
 
 `wt` manages git worktrees across a multi-repo workspace. It is a from-scratch
-Go rewrite; the old PowerShell line is frozen at the tag `powershell-v0.9.0`.
+Go rewrite of an earlier PowerShell tool, which is retired.
 
 ## Read first
 

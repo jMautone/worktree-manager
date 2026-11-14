@@ -38,7 +38,6 @@ func TestParseBranchErrors(t *testing.T) {
 		"release/v0.1.0-alpha.1", // a release branch publishes a final
 		"release/v0.1.1",         // patches come from vX.Y.x
 		"release/0.1.0",
-		"powershell/v0.9.x",
 	} {
 		if _, err := ParseBranch(in); err == nil {
 			t.Errorf("ParseBranch(%q) succeeded, want error", in)
