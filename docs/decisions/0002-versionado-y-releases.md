@@ -139,22 +139,15 @@ Rulesets:
 |---|---|---|
 | `main` | rama por defecto | sin borrar, sin force-push, historia lineal, PR con solo squash, checks requeridos (los 3 `test`, `cross-build`, `pr-conventions`) con la rama al día |
 | `protect-maintenance-branches` | `v*.*.x` | sin borrar, sin force-push |
-| `protect-release-tags` | `v*`, `powershell-v*` | sin borrar, sin mover |
+| `protect-release-tags` | `v*` | sin borrar, sin mover |
 
 "Rama al día" evita que dos PR abiertos tomen la misma alpha: al mergear uno, el otro tiene que actualizarse, el check corre de nuevo y ve la versión ya usada. Cuesta un click en *Update branch*.
 
 ### Línea PowerShell
 
-Se renombra para que no compita con la numeración `0.x`:
+Para que no compitiera con la numeración `0.x`, el tag `v0.9.0` y la rama `v0.9.x` se renombraron con un prefijo `powershell`, y la rama se eliminó al terminar la transición.
 
-| Antes | Después |
-|---|---|
-| tag `v0.9.0` | tag `powershell-v0.9.0` (anotado, mismo commit `e1447e5`) |
-| rama `v0.9.x` | rama `powershell/v0.9.x` |
-
-**Actualización (2026-10-01)**: terminada la transición, la rama `powershell/v0.9.x` se eliminó. La línea PowerShell vive solo en el tag `powershell-v0.9.0`, que apunta al mismo commit, y `protect-maintenance-branches` cubre solo `v*.*.x`.
-
-`powershell-v0.9.0` no tiene forma semver, así que Go y GoReleaser lo ignoran como versión.
+**Actualización (2026-11-14)**: la línea PowerShell está retirada. Su tag se eliminó y `protect-release-tags` cubre solo `v*`. No se pierde nada: el commit al que apuntaba (`e1447e5`) es ancestro de `main`, y su changelog está en [docs/historial/CHANGELOG-v0.9.md](../historial/CHANGELOG-v0.9.md).
 
 **Limitación conocida**: `proxy.golang.org` ya cacheó `v0.9.0`, y el proxy no borra versiones. Mientras la línea Go esté en `0.x`, `go install …/cmd/git-wt@latest` resuelve `v0.9.0`, que no tiene código Go, y falla. `retract` no lo arregla todavía: Go solo lo respeta si está publicado en una versión mayor a la retractada, y la primera es `v1.0.0`. Se declara igual ahora, para que la 1.0 lo traiga. Mientras tanto, se instala desde los binarios del Release o con versión explícita (`@v0.1.0-alpha.1`).
 
@@ -164,7 +157,7 @@ El orden importa: la fase 3 exige un check que tiene que existir antes en `main`
 
 1. **Repo, sin código**, con el bypass de admin de los rulesets:
    1. mergear los PR de Dependabot abiertos (#4, #5), que ya cumplen la convención y tocan `ci.yml`;
-   2. crear `powershell-v0.9.0` y `powershell/v0.9.x`;
+   2. crear el tag y la rama de la línea PowerShell con el prefijo nuevo;
    3. borrar `v0.9.0`, `v0.9.x`, `v1/bootstrap` y `chore/dependabot-config`;
    4. renombrar `v1/walking-skeleton` → `v0.1/walking-skeleton` con la API de rename. GitHub cierra el PR cuya rama head se renombra, así que el #3 quedó cerrado y walking-skeleton sigue en un PR nuevo desde `v0.1/walking-skeleton`;
    5. ajustar rulesets (sin `pr-conventions` todavía) y settings.

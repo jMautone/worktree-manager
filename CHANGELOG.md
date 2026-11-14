@@ -220,16 +220,13 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 ### Changed
 
 - `main` covers the minimum cycle of M1: create, move to and remove
-  worktrees; the stable line is still the PowerShell tag
-  `powershell-v0.9.0`.
+  worktrees.
 - The default `worktree_path` is `{repo_parent}/{repo}.worktrees/{name|sanitize}`
   (it was `{branch|sanitize}`), so that `wt cd <name>` finds what `wt create`
   made whatever `-b` or `branch_prefix` chose. The key is now validated as a
   template.
 - Exit codes: once a command given with `-x` starts, its exit code replaces
   `wt`'s own, unchanged.
-- The PowerShell line was renamed: the tag `v0.9.0` is now `powershell-v0.9.0`,
-  and the `v0.9.x` branch was removed (the tag points at the same commit).
 
 ### Fixed
 
@@ -240,9 +237,7 @@ It ships as `0.x` pre-releases until M5 closes with `1.0.0`.
 
 ## PowerShell 0.9.0 — 2026-09-21
 
-Last PowerShell release. Windows only, PowerShell 5.1+. Frozen: this line
-receives no new features.
-
-Its history is preserved in the `powershell-v0.9.0` tag. The changelog for
-that line is at
+Last PowerShell release. Windows only, PowerShell 5.1+. Retired: the Go
+rewrite replaces it, and its tag no longer exists. Its commits remain in the
+history of `main`. The changelog for that line is at
 [docs/historial/CHANGELOG-v0.9.md](docs/historial/CHANGELOG-v0.9.md).
