@@ -133,9 +133,11 @@ func TestRepoHooksOfTheOtherRepository(t *testing.T) {
 
 	r := h.run("create", "api:feat")
 	mustNotApproved(t, r, "post-create", "echo api> from.txt")
-	hint := "wt -C " + api + " hook approve"
-	if !strings.Contains(r.stderr, hint) {
-		t.Errorf("stderr = %q, want a hint with %q", r.stderr, hint)
+	m := regexp.MustCompile(`(?m)^hint: 'wt -C (.+) hook approve'`).FindStringSubmatch(r.stderr)
+	if m == nil {
+		t.Errorf("stderr = %q, want a hint with 'wt -C <api> hook approve'", r.stderr)
+	} else {
+		mustSamePath(t, m[1], api)
 	}
 
 	h.approve(api)
