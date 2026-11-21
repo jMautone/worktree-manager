@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -718,8 +719,26 @@ func TestConfigHookCommands(t *testing.T) {
 		if r.stdout != "" {
 			t.Errorf("hooks.post-create = %q, want nothing", r.stdout)
 		}
-		if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "hooks.post-create") || !strings.Contains(r.stderr, ".wt.toml") {
-			t.Errorf("stderr = %q, want a warning naming hooks.post-create and .wt.toml", r.stderr)
+		if strings.Contains(r.stderr, "hooks.post-create") {
+			t.Errorf("stderr = %q, want no warning naming hooks.post-create", r.stderr)
+		}
+		r = h.run("config", "list")
+		r.mustCode(t, 0)
+		if !regexp.MustCompile(`(?m)^hooks\.post-create\s+\[\]\s+default$`).MatchString(r.stdout) {
+			t.Errorf("config list:\n%s\nwant hooks.post-create [] from default", r.stdout)
+		}
+	})
+	// Scenario "Invalid repository hook" of config-layers.
+	t.Run("invalid repository hook", func(t *testing.T) {
+		h := newHarness(t)
+		h.cwd = h.repo()
+		h.sb.WriteFile(filepath.Join(h.cwd, ".wt.toml"), "[hooks]\npost-create = \"npm ci\"\n")
+		r := h.run("config", "list")
+		r.mustCode(t, 1)
+		for _, want := range []string{"hooks.post-create", ".wt.toml"} {
+			if !strings.Contains(r.stderr, want) {
+				t.Errorf("stderr %q does not contain %q", r.stderr, want)
+			}
 		}
 	})
 	t.Run("command list as JSON", func(t *testing.T) {

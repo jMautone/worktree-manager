@@ -25,7 +25,7 @@ the repository's .wt.toml (allowlisted keys only) and WT_<KEY> environment
 variables. Edit the files by hand; "wt config path" shows where they are.
 
 Hooks are commands wt runs around "wt create", "wt cd" and "wt remove".
-Only the user file sets them, with no environment variable, in the table
+The user file sets them, with no environment variable, in the table
 [hooks], with a list of commands per event:
 
   [hooks]
@@ -43,7 +43,12 @@ A command is a template, like worktree_path, with {repo}, {repo_parent},
 {repo_path}, {name} (the worktree's NAME, as in "wt list"), {branch},
 {path}, and {base} in the events of create. Values are inserted as they
 are: write the quotes a path with spaces needs. {{ and }} write a literal
-{ and }, as in awk '{{print $1}}'.`,
+{ and }, as in awk '{{print $1}}'.
+
+A repository's .wt.toml may have a [hooks] table too. Its commands run
+after the user's of the same event, and only once approved with
+"wt hook approve"; "wt config get" and "wt config list" show only the
+user's, and "wt hook list" shows both.`,
 		Args: unknownSubcommand,
 		RunE: action(func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
@@ -89,6 +94,11 @@ func (a *app) configPathCommand() *cobra.Command {
 				return err
 			}
 			user := configFileJSON{Path: userPath, Exists: fileExists(userPath)}
+			approvalsPath, err := a.approvalsFile()
+			if err != nil {
+				return err
+			}
+			approvals := configFileJSON{Path: approvalsPath, Exists: fileExists(approvalsPath)}
 			var repo *configFileJSON
 			if root != "" {
 				p := filepath.Join(root, config.RepoFileName)
@@ -96,10 +106,11 @@ func (a *app) configPathCommand() *cobra.Command {
 			}
 			if a.json {
 				return a.writeJSON(struct {
-					Schema string          `json:"schema"`
-					User   configFileJSON  `json:"user"`
-					Repo   *configFileJSON `json:"repo"`
-				}{"wt.config.path.v1", user, repo})
+					Schema    string          `json:"schema"`
+					User      configFileJSON  `json:"user"`
+					Repo      *configFileJSON `json:"repo"`
+					Approvals configFileJSON  `json:"approvals"`
+				}{"wt.config.path.v1", user, repo, approvals})
 			}
 			var buf bytes.Buffer
 			fmt.Fprintf(&buf, "user: %s (%s)\n", user.Path, existence(user.Exists))
@@ -108,6 +119,7 @@ func (a *app) configPathCommand() *cobra.Command {
 			} else {
 				fmt.Fprintln(&buf, "repo: none (not inside a worktree)")
 			}
+			fmt.Fprintf(&buf, "approvals: %s (%s)\n", approvals.Path, existence(approvals.Exists))
 			_, err = a.env.Stdout.Write(buf.Bytes())
 			return err
 		}),

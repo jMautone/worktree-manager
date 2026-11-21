@@ -110,3 +110,50 @@ func PreviewLines(r Run) []string {
 	}
 	return lines
 }
+
+// Unapproved is the first command of a repository's hooks that is not
+// approved among events, in the order given and, within an event, in the
+// order of repoHooks (keyed by Event.Key). approved is asked only for the
+// repository's commands; ok is false when every one is approved.
+func Unapproved(events []Event, repoHooks map[string][]string, approved func(Event, string) bool) (e Event, command string, ok bool) {
+	for _, e := range events {
+		for _, c := range repoHooks[e.Key()] {
+			if !approved(e, c) {
+				return e, c, true
+			}
+		}
+	}
+	return "", "", false
+}
+
+// Source says whose configuration a hook command comes from.
+type Source string
+
+const (
+	SourceUser Source = "user"
+	SourceRepo Source = "repo"
+)
+
+// Entry is one hook command as wt hook list shows it.
+type Entry struct {
+	Event    Event
+	Source   Source
+	Command  string // as written
+	Approved bool   // always true for the user's
+}
+
+// Entries are every hook command that would run, in the order they would:
+// by event, in the order of Events, and within an event the user's before
+// the repository's. approved is asked only for the repository's commands.
+func Entries(userHooks, repoHooks map[string][]string, approved func(Event, string) bool) []Entry {
+	var entries []Entry
+	for _, e := range Events {
+		for _, c := range userHooks[e.Key()] {
+			entries = append(entries, Entry{Event: e, Source: SourceUser, Command: c, Approved: true})
+		}
+		for _, c := range repoHooks[e.Key()] {
+			entries = append(entries, Entry{Event: e, Source: SourceRepo, Command: c, Approved: approved(e, c)})
+		}
+	}
+	return entries
+}

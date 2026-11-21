@@ -14,8 +14,7 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   and `post-remove`, a list of commands that run in order, with `sh -c` on
   macOS and Linux and `cmd.exe` on Windows, as `-x`; the first that fails
   stops the rest. Each event is fired only by its command: `wt create`,
-  `wt cd` or `wt remove`. A repository's `.wt.toml` cannot set hooks yet: its
-  `[hooks]` is ignored with a warning. The keys `hooks.<event>` have no
+  `wt cd` or `wt remove`. The keys `hooks.<event>` have no
   environment variable, and `wt config get` prints one command per line.
 - `pre-create`, `post-create`, `pre-cd` and `pre-remove` block: `wt` waits
   for them, writes `==> <event>  <command>` before each command, and sends
@@ -43,6 +42,23 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   in the order they would run. With `--json`, blocking hooks write to their
   log instead of stderr, and a failed one is a `wt.error.v1` with code 7 or
   130 whose hints name the log.
+- Repository hooks: a repository's `.wt.toml` may have a `[hooks]` table,
+  with the user's events and form. Its commands run after the user's of the
+  same event, never instead of them, and only once approved. An approval is
+  the repository (its main worktree's path), the event and the SHA-256 of
+  the command as written; changing the command asks for it again. Approvals
+  live in `approvals.toml`, next to the user configuration file.
+- `wt create`, `wt cd` and `wt remove` exit with 8, a code that was
+  reserved, before doing anything, when an event they would fire has a
+  repository command that is not approved, also under `--dry-run`. The hints
+  give the command that approves it and `--no-hooks`.
+- `wt hook list [--json]` shows every hook command that would run in the
+  current repository, with its source and, for the repository's, whether it
+  is approved (`wt.hook.list.v1`). `wt hook approve [<event>...]` approves
+  the ones that are not, with `--dry-run` and `--json`
+  (`wt.hook.approve.v1`).
+- `wt config path` shows `approvals.toml`; `wt.config.path.v1` gains the
+  field `approvals`.
 
 ### Changed
 
@@ -51,6 +67,10 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   so no valid template changes meaning.
 - `wt create` prints its `created worktree` line after `post-create`, and
   after writing the directive: when either fails, stdout stays empty.
+- A `[hooks]` table in `.wt.toml` is no longer ignored with a warning: until
+  its commands are approved, `wt create`, `wt cd` and `wt remove` fail with
+  exit 8. `wt config get` and `wt config list` still show only the user's
+  hooks.
 
 ## [0.2.0] — 2026-10-19
 

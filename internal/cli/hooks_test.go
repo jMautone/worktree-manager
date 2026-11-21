@@ -348,21 +348,9 @@ func TestCreatePostCreateFails(t *testing.T) {
 	}
 }
 
-// Scenarios "Hooks of a repository are ignored" and "Create without hooks".
+// Scenario "Create without hooks". "Hooks of a repository are ignored" is in
+// repohooks_test.go.
 func TestCreateHooksNotRun(t *testing.T) {
-	t.Run("hooks of a repository", func(t *testing.T) {
-		h := newHarness(t)
-		repo, _ := cloneRepo(h)
-		h.sb.WriteFile(filepath.Join(repo, ".wt.toml"), "[hooks]\n"+hookLine("post-create", "echo pwned > pwned.txt"))
-		r := h.run("create", "feat")
-		r.mustCode(t, 0)
-		if exists(filepath.Join(createdPath(t, r.stdout), "pwned.txt")) {
-			t.Error("the repository's hook ran")
-		}
-		if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "hooks.post-create") || !strings.Contains(r.stderr, ".wt.toml") {
-			t.Errorf("stderr = %q, want a warning naming hooks.post-create and .wt.toml", r.stderr)
-		}
-	})
 	t.Run("--no-hooks", func(t *testing.T) {
 		h := newHarness(t)
 		cloneRepo(h)

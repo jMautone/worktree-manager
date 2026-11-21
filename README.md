@@ -187,6 +187,11 @@ Hooks run with `sh -c` on macOS and Linux and `cmd.exe` on Windows. `pre-*`
 and `post-create` block; `post-cd` and `post-remove` run in the background and
 write a log. `--no-hooks` skips them for one run.
 
+A repository can share its hooks in a `[hooks]` table of its `.wt.toml`. They
+run after yours, and only once you approve them: `wt hook list` shows what
+would run, and `wt hook approve` approves each command for that repository and
+event. If a command changes, it needs approving again.
+
 ## Principles
 
 - **Terminal-first.** A command leaves you standing in the worktree, in the
@@ -196,7 +201,8 @@ write a log. `--no-hooks` skips them for one run.
 - **Nothing is hardcoded to one tool.** Editor, terminal and agent are yours
   to choose.
 - **A repository does not run code without permission.** A repository's
-  `.wt.toml` only sets allowlisted keys, and cannot set hooks.
+  `.wt.toml` only sets allowlisted keys, and its hooks run only once you
+  approve each command.
 - **The contract is public.** Exit codes, versioned `--json` and `--dry-run`
   are part of the API.
 
