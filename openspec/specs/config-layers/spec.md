@@ -152,7 +152,7 @@ A configuration file that is not valid TOML SHALL fail every command that reads 
 - **AND** stderr contains a warning naming `colour`
 
 ### Requirement: Inspecting configuration
-`wt config path` SHALL print the user file path and the repository file path (or state that there is none) and whether each exists. `wt config list` SHALL print every key with its effective value and the layer it came from (`default`, `user`, `repo` or `env`). `wt config get <key>` SHALL print only the effective value followed by a newline; for a list key, it SHALL print each element followed by a newline instead (see "List values"). An unknown key given to `wt config get` SHALL be a usage error (exit 2). With `--json`, these commands SHALL use the schemas `wt.config.path.v1`, `wt.config.list.v1` and `wt.config.get.v1` respectively, each entry carrying `key`, `value` and `source`.
+`wt config path` SHALL print the user file path, the repository file path (or state that there is none), and the path of the approvals file (see the `project-hooks-approval` capability), and whether each exists. `wt config list` SHALL print every key with its effective value and the layer it came from (`default`, `user`, `repo` or `env`). `wt config get <key>` SHALL print only the effective value followed by a newline; for a list key, it SHALL print each element followed by a newline instead (see "List values"). An unknown key given to `wt config get` SHALL be a usage error (exit 2). With `--json`, these commands SHALL use the schemas `wt.config.path.v1`, `wt.config.list.v1` and `wt.config.get.v1` respectively, each entry carrying `key`, `value` and `source`; `wt.config.path.v1` SHALL also carry `approvals`, an object with `path` and `exists`.
 
 #### Scenario: Listing sources
 - **WHEN** the user file sets `default_base = "origin/main"` and nothing else is configured
@@ -169,6 +169,10 @@ A configuration file that is not valid TOML SHALL fail every command that reads 
 - **THEN** the user file path is printed
 - **AND** the repository file is reported as none
 - **AND** the exit code is 0
+
+#### Scenario: Path of the approvals file
+- **WHEN** `WT_CONFIG` is `/tmp/x/wt.toml`, no approval was ever made, and the user runs `wt config path`
+- **THEN** stdout contains `/tmp/x/approvals.toml` and states that it does not exist
 
 ### Requirement: Boolean values in the environment
 The environment variable of a boolean key SHALL accept `true` and `false`, compared ignoring case, and `1` and `0`. Any other non-empty value SHALL fail every command that reads configuration with exit code 1 and a message naming the variable. `wt config get` SHALL print a boolean as `true` or `false`, and with `--json` its `value` SHALL be a JSON boolean.
@@ -257,6 +261,8 @@ In a configuration file, `hooks` SHALL be a TOML table, and each of its keys SHA
 
 The value of a key `hooks.<event>` SHALL be an array of strings, each one a command. A single string SHALL fail as "Configuration keys" specifies for list keys, showing the value written as an array. An element that is empty or contains only whitespace SHALL fail every command that reads configuration with exit code 1 and a message naming the key and the file. Each element SHALL be a template with the variables of its event (see the `hooks` capability, "Variables of hook commands"); an invalid one is an invalid value, as the `path-templates` capability specifies.
 
+A repository's `.wt.toml` MAY have a `[hooks]` table, read and validated by these same rules, with no warning. Its commands SHALL NOT take part in layer precedence: they are added to the user's when the event runs (see the `hooks` and `project-hooks-approval` capabilities), and `wt config get` and `wt config list` SHALL show for `hooks.<event>` only the value of the user file or the default.
+
 `wt config get` SHALL print each command on its own line, as written, and nothing for an empty list. `wt config list` SHALL show the list as a TOML array, and an empty one as `[]`. With `--json`, the `value` SHALL be a JSON array of strings.
 
 #### Scenario: Two commands
@@ -292,8 +298,14 @@ The value of a key `hooks.<event>` SHALL be an array of strings, each one a comm
 
 #### Scenario: Repository sets hooks
 - **WHEN** the user file sets no hooks and `.wt.toml` at the worktree root contains `[hooks]` with `post-create = ["npm ci"]`
-- **THEN** stderr contains a warning naming `hooks.post-create` and `.wt.toml`
-- **AND** `wt config get hooks.post-create` prints nothing
+- **THEN** `wt config get hooks.post-create` prints nothing
+- **AND** `wt config list` shows `hooks.post-create` with source `default`
+- **AND** stderr contains no warning naming `hooks.post-create`
+
+#### Scenario: Invalid repository hook
+- **WHEN** `.wt.toml` at the worktree root contains `[hooks]` with `post-create = "npm ci"`
+- **THEN** `wt config list` fails with exit code 1
+- **AND** stderr names `hooks.post-create` and `.wt.toml`
 
 #### Scenario: Command list as JSON
 - **WHEN** no configuration sets hooks and the user runs `wt config get hooks.pre-cd --json`
