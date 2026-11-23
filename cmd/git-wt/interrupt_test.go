@@ -160,3 +160,69 @@ func TestInterruptDuringPreCreate(t *testing.T) {
 		t.Errorf("worktrees:\n%s", out)
 	}
 }
+
+// Scenario "Interrupt during a rebase (macOS, Linux)" of sync-worktrees. A
+// pre-rebase hook keeps git busy while feat is rebased; as above, only
+// git-wt gets the SIGINT, so git finishes that rebase. git-wt waits for it,
+// leaves no rebase in progress, does not rebase fix, and exits with 130.
+func TestInterruptSync(t *testing.T) {
+	sb := testutil.New(t)
+	origin := sb.Path("origin.git")
+	sb.InitRemote(origin)
+	repo := sb.Path("repo")
+	sb.Clone(origin, repo)
+	feat, fix := sb.Path("repo.worktrees", "feat"), sb.Path("repo.worktrees", "fix")
+	sb.AddWorktree(repo, feat, "feat")
+	sb.AddWorktree(repo, fix, "fix")
+	sb.Commit(feat, "feat")
+	fixHead := sb.Commit(fix, "fix")
+	sb.PushFromAnotherClone(origin, "main")
+
+	started, finished := sb.Path("started"), sb.Path("finished")
+	hooks := sb.Path("hooks")
+	sb.WriteFile(filepath.Join(hooks, "pre-rebase"), "#!/bin/sh\ntouch '"+started+"'\nsleep 1\ntouch '"+finished+"'\n")
+	if err := os.Chmod(filepath.Join(hooks, "pre-rebase"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sb.Git(repo, "config", "core.hooksPath", hooks)
+
+	cmd := exec.Command(filepath.Join(binDir, exeName()), "sync", "--all")
+	cmd.Dir = repo
+	cmd.Env = sb.Environ()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !fileExists(started) {
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("the rebase did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+
+	err := cmd.Wait()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 130 {
+		t.Fatalf("git-wt: %v, want exit status 130\nstderr:\n%s", err, stderr.String())
+	}
+	if !fileExists(finished) {
+		t.Error("git-wt exited before git did")
+	}
+	for _, p := range []string{"rebase-merge", "rebase-apply"} {
+		if fileExists(filepath.Join(sb.Git(feat, "rev-parse", "--absolute-git-dir"), p)) {
+			t.Errorf("feat has a rebase in progress (%s)", p)
+		}
+	}
+	if got := sb.Git(fix, "rev-parse", "HEAD"); got != fixHead {
+		t.Error("fix was rebased after the interrupt")
+	}
+	if !strings.HasPrefix(stderr.String(), "wt: interrupted: 1 of 2 worktrees not synced") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+}

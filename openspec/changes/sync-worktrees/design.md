@@ -52,7 +52,14 @@ type SyncOutcome int // Rebased, UpToDate, Skipped, Conflict, Failed
 func SyncExit(outcomes []SyncOutcome) int // 0, 5, 6 o 1, en ese orden de prioridad inversa
 ```
 
-- El orden de los chequeos de `DecideSync` es el de la spec: falta el directorio, HEAD detached, operación en curso, sucio y al día. Así, un worktree sin directorio no se consulta nada más.
+- El orden de los chequeos de `DecideSync`:
+  1. falta el directorio;
+  2. operación en curso;
+  3. HEAD detached;
+  4. sucio;
+  5. al día.
+
+  Un worktree sin directorio no se consulta nada más. La operación en curso va antes que el HEAD detached porque git informa como detached a un worktree parado en un rebase, y el motivo es el rebase.
 - `SyncTargets(worktrees, all bool)` elige los de `--all`: saca el principal, el bare y los detached, y respeta el orden de `wt list`. También es pura.
 - Las líneas de salida (`rebased`, `is up to date with`, `skipped`, `conflict in`, `failed`, y sus `would ...`) salen de una función pura `SyncLine(label, base, outcome, reason, dryRun)`, con test de tabla.
 
@@ -73,7 +80,7 @@ func SyncExit(outcomes []SyncOutcome) int // 0, 5, 6 o 1, en ese orden de priori
 ```
 
 - **Un commit por repo**: el rebase usa el commit resuelto en la fase 2, no el nombre. Todos los worktrees de un repo se rebasean sobre el mismo commit, aunque otro proceso fetchee en el medio.
-- **La base sale de una función compartida**: `a.repoBase(ctx, dir, cfg, main) (base string, ok bool, err error)`, extraída de `readMerged`. `wt remove` la sigue usando igual, con su warning cuando `ok` es falso. `wt sync`, en cambio, falla con exit 3 y los mismos hints que `wt create` (`--base`, `default_base`).
+- **La base** es `--base`, o `default_base` de la config de ese repo, o `a.defaultBranch`, la misma función de `wt create`, que falla con exit 3 y los hints `--base` y `default_base`. Es la misma regla que `readMerged` de `wt remove`, que no cambia: allí una base que no se puede usar es un warning, y acá un error, así que no se comparte la función.
 - **El fetch se hace en la fase 2**, antes del primer rebase. Así lo que dice la spec ("before any rebase") vale para todos los repos, y la base que solo existe en el remote ya se puede resolver.
 
 *Alternativa descartada:* fetchear y rebasear repo por repo. Un `--base` que no existe en el segundo repo se descubriría después de haber rebaseado el primero.
