@@ -433,7 +433,9 @@ func TestSyncSkippedAndConflict(t *testing.T) {
 		t.Errorf("stderr has no summary:\n%s", r.stderr)
 	}
 	mustHint(t, r, "feat: has uncommitted changes")
-	mustHint(t, r, "fix", "git rebase", wts["fix"])
+	// The path as wt reports it, which on Windows and macOS may be spelled
+	// differently from the sandbox's (RUNNER~1, /private/var).
+	mustHint(t, r, "fix: conflicts with origin/main", "git rebase origin/main", filepath.Join("repo.worktrees", "fix"))
 	if !h.contains(wts["docs"], pushed) {
 		t.Error("docs was not rebased")
 	}
