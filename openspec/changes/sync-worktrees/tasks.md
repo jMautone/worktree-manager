@@ -36,7 +36,7 @@ Las tareas **[Windows]** se cierran con el CI de `windows-latest` o a mano en Wi
 
 ## 4. Windows
 
-- [ ] 4.1 **[Windows]** Correr en el CI de `windows-latest` los tests de 2.x y 3.3, que usan rutas nativas y `cmd.exe` solo a través de git. Verificar que pasan sin tests salteados en Windows salvo el e2e de SIGINT.
+- [x] 4.1 **[Windows]** _(Cerrada con el job `windows-latest` del PR #29 en `3d9c69a`.)_ Correr en el CI de `windows-latest` los tests de 2.x y 3.3, que usan rutas nativas y `cmd.exe` solo a través de git. Verificar que pasan sin tests salteados en Windows salvo el e2e de SIGINT.
 - [ ] 4.2 **[Windows]** Verificar a mano en Windows Terminal con PowerShell 7.4 el escenario "Ctrl-C in the console (Windows)", con un repo grande o un hook de git `post-rewrite` que tarde, y anotar el resultado en el PR.
 
 ## 5. Docs e integración
