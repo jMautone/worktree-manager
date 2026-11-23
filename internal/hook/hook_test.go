@@ -108,3 +108,52 @@ func TestPreviewLines(t *testing.T) {
 		t.Errorf("PreviewLines of no commands = %q", got)
 	}
 }
+
+func TestUnapproved(t *testing.T) {
+	repo := map[string][]string{
+		"hooks.pre-create":  {"ok", "make check"},
+		"hooks.post-create": {"npm ci"},
+		"hooks.pre-remove":  {"make clean"},
+	}
+	approvedOnly := func(cmds ...string) func(Event, string) bool {
+		return func(_ Event, c string) bool { return slices.Contains(cmds, c) }
+	}
+	for _, tc := range []struct {
+		name     string
+		events   []Event
+		approved func(Event, string) bool
+		wantE    Event
+		wantC    string
+		wantOK   bool
+	}{
+		{"first in order", []Event{PreCreate, PostCreate}, approvedOnly("ok"), PreCreate, "make check", true},
+		{"post event", []Event{PreCreate, PostCreate}, approvedOnly("ok", "make check"), PostCreate, "npm ci", true},
+		{"all approved", []Event{PreCreate, PostCreate}, approvedOnly("ok", "make check", "npm ci"), "", "", false},
+		{"other events are not checked", []Event{PreCD, PostCD}, approvedOnly(), "", "", false},
+	} {
+		e, c, ok := Unapproved(tc.events, repo, tc.approved)
+		if e != tc.wantE || c != tc.wantC || ok != tc.wantOK {
+			t.Errorf("%s: Unapproved = %q, %q, %v; want %q, %q, %v", tc.name, e, c, ok, tc.wantE, tc.wantC, tc.wantOK)
+		}
+	}
+	asked := false
+	Unapproved(Events, nil, func(Event, string) bool { asked = true; return false })
+	if asked {
+		t.Error("Unapproved asked about approvals with no repository commands")
+	}
+}
+
+func TestEntries(t *testing.T) {
+	user := map[string][]string{"hooks.post-create": {"cp ~/.npmrc ."}, "hooks.pre-remove": {"u"}}
+	repo := map[string][]string{"hooks.post-create": {"npm ci"}, "hooks.pre-create": {"make check"}}
+	got := Entries(user, repo, func(_ Event, c string) bool { return c == "npm ci" })
+	want := []Entry{
+		{PreCreate, SourceRepo, "make check", false},
+		{PostCreate, SourceUser, "cp ~/.npmrc .", true},
+		{PostCreate, SourceRepo, "npm ci", true},
+		{PreRemove, SourceUser, "u", true},
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Entries = %+v, want %+v", got, want)
+	}
+}

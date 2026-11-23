@@ -46,3 +46,34 @@ func TestUserFileWithoutBaseDirectory(t *testing.T) {
 		t.Error("windows without APPDATA: no error")
 	}
 }
+
+func TestApprovalsFile(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		goos string
+		env  map[string]string
+		home string
+		want string
+	}{
+		{"macOS default", "darwin", nil, "/Users/me", "/Users/me/.config/wt/approvals.toml"},
+		{"linux default", "linux", nil, "/home/me", "/home/me/.config/wt/approvals.toml"},
+		{"macOS XDG", "darwin", map[string]string{"XDG_CONFIG_HOME": "/cfg"}, "/Users/me", "/cfg/wt/approvals.toml"},
+		{"linux XDG", "linux", map[string]string{"XDG_CONFIG_HOME": "/cfg"}, "/home/me", "/cfg/wt/approvals.toml"},
+		{"windows APPDATA", "windows", map[string]string{"APPDATA": `C:\Users\u\AppData\Roaming`}, `C:\Users\u`, `C:\Users\u\AppData\Roaming\wt\approvals.toml`},
+		{"WT_CONFIG on macOS", "darwin", map[string]string{"WT_CONFIG": "/tmp/x/wt.toml"}, "/Users/me", "/tmp/x/approvals.toml"},
+		{"WT_CONFIG on linux", "linux", map[string]string{"WT_CONFIG": "/tmp/x/wt.toml"}, "/home/me", "/tmp/x/approvals.toml"},
+		{"WT_CONFIG on windows", "windows", map[string]string{"WT_CONFIG": `D:\cfg\wt.toml`}, `C:\Users\me`, `D:\cfg\approvals.toml`},
+		{"WT_CONFIG with slashes on windows", "windows", map[string]string{"WT_CONFIG": `D:/cfg/wt.toml`}, `C:\Users\me`, `D:/cfg/approvals.toml`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			getenv := func(k string) string { return tc.env[k] }
+			got, err := ApprovalsFile(tc.goos, getenv, tc.home)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Errorf("ApprovalsFile = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

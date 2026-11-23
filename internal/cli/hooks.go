@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/jMautone/worktree-manager/internal/approval"
 	"github.com/jMautone/worktree-manager/internal/config"
 	"github.com/jMautone/worktree-manager/internal/git"
 	"github.com/jMautone/worktree-manager/internal/hook"
@@ -96,7 +97,8 @@ func openLog(path string) (*os.File, error) {
 }
 
 // hookPlanner decides the events of one command: their commands from cfg,
-// rendered, and, when something will write one, their log.
+// the user's and then the repository's, rendered, and, when something will
+// write one, their log. The repository's commands must be approved first.
 type hookPlanner struct {
 	a       *app
 	ctx     context.Context
@@ -104,6 +106,18 @@ type hookPlanner struct {
 	noHooks bool
 	gitDir  string // where git reports the common git directory from
 	common  string // the common git directory, read once and only for a log
+
+	// Read once, and only when an event has commands of the repository.
+	ids       *repoHooksID
+	approvals *approval.Set
+}
+
+// repoHooksID is what an approval of the repository's hooks of a
+// configuration is about: the repository whose .wt.toml declares them.
+type repoHooksID struct {
+	file     string // the .wt.toml
+	repoPath string // that repository's main worktree, the approval's repo
+	approve  string // the command that approves them, for a hint
 }
 
 // configured reports whether any of events has commands that would run.
@@ -112,22 +126,77 @@ func (p *hookPlanner) configured(events ...hook.Event) bool {
 		return false
 	}
 	for _, e := range events {
-		if len(configList(p.cfg, e.Key())) > 0 {
+		if len(p.commands(e)) > 0 {
 			return true
 		}
 	}
 	return false
 }
 
+// commands are the command templates of event e: the user's, then the
+// repository's.
+func (p *hookPlanner) commands(e hook.Event) []string {
+	user := configList(p.cfg, e.Key())
+	repo := p.cfg.RepoHooks[e.Key()]
+	if len(repo) == 0 {
+		return user
+	}
+	return append(slices.Clone(user), repo...)
+}
+
+// check fails with exit 8 when a command of the repository's hooks of any
+// of events is not approved. It reads nothing when none of them has one.
+func (p *hookPlanner) check(events ...hook.Event) error {
+	if p.noHooks {
+		return nil
+	}
+	has := false
+	for _, e := range events {
+		has = has || len(p.cfg.RepoHooks[e.Key()]) > 0
+	}
+	if !has {
+		return nil
+	}
+	if p.ids == nil {
+		id, err := p.a.repoHooksID(p.ctx, p.cfg)
+		if err != nil {
+			return err
+		}
+		set, err := p.a.loadApprovals()
+		if err != nil {
+			return err
+		}
+		p.ids, p.approvals = &id, &set
+	}
+	e, c, ok := hook.Unapproved(events, p.cfg.RepoHooks, func(e hook.Event, c string) bool {
+		return p.approvals.Approved(p.ids.repoPath, e, c)
+	})
+	if !ok {
+		return nil
+	}
+	return &Error{
+		Code: ExitHookNotApproved,
+		Msg:  fmt.Sprintf("%s hook of %s is not approved: %s", e, p.ids.file, c),
+		Hints: []string{
+			fmt.Sprintf("'%s' approves the hooks of this repository; 'wt hook list' shows them", p.ids.approve),
+			"--no-hooks runs the command without hooks",
+		},
+	}
+}
+
 // plan is what event e does: its commands rendered with values, run in
 // dir. Its log is set for a background event, and for a blocking one under
 // --json; never under --dry-run, which writes none. With --no-hooks no
-// event does anything.
+// event does anything. A command of the repository not approved fails it
+// with exit 8.
 func (p *hookPlanner) plan(e hook.Event, values map[string]string, dir string) (hook.Run, error) {
 	if p.noHooks {
 		return hook.Run{Event: e, Dir: dir}, nil
 	}
-	r, err := hook.Plan(e, configList(p.cfg, e.Key()), values, dir, "")
+	if err := p.check(e); err != nil {
+		return hook.Run{}, err
+	}
+	r, err := hook.Plan(e, p.commands(e), values, dir, "")
 	if err != nil {
 		return hook.Run{}, err
 	}
@@ -141,6 +210,49 @@ func (p *hookPlanner) plan(e hook.Event, values map[string]string, dir string) (
 	}
 	r.Log = hook.LogPath(p.common, values["name"], e, p.a.env.GOOS)
 	return r, nil
+}
+
+// repoHooksID reads which repository the repository layer of cfg belongs
+// to, from the directory of its .wt.toml, and whether it is the working
+// directory's. It runs git, so only for a configuration with repository
+// hooks.
+func (a *app) repoHooksID(ctx context.Context, cfg *config.Config) (repoHooksID, error) {
+	layerDir := filepath.Dir(cfg.RepoFile)
+	repo, err := a.loadRepository(ctx, layerDir)
+	if err != nil {
+		return repoHooksID{}, gitError(err)
+	}
+	main := repo.main()
+	if main == nil {
+		return repoHooksID{}, &Error{Code: ExitError, Msg: "cannot find the main worktree of " + layerDir}
+	}
+	id := repoHooksID{file: cfg.RepoFile, repoPath: main.Path, approve: "wt -C " + layerDir + " hook approve"}
+	if a.dir == "" {
+		if dir, err := a.workdir(); err == nil {
+			if wd, err := a.loadRepository(ctx, dir); err == nil && wd.main() != nil && wd.main().Path == main.Path {
+				id.approve = "wt hook approve"
+			}
+		}
+	}
+	return id, nil
+}
+
+// approvalsFile is the path of approvals.toml.
+func (a *app) approvalsFile() (string, error) {
+	return config.ApprovalsFile(a.env.GOOS, a.env.Getenv, a.home())
+}
+
+// loadApprovals reads approvals.toml; a missing one is no approvals.
+func (a *app) loadApprovals() (approval.Set, error) {
+	path, err := a.approvalsFile()
+	if err != nil {
+		return approval.Set{}, err
+	}
+	set, err := approval.Load(path)
+	if err != nil {
+		return approval.Set{}, &Error{Code: ExitError, Msg: err.Error()}
+	}
+	return set, nil
 }
 
 // configList is the value of a list key of cfg.

@@ -40,6 +40,11 @@ type Value struct {
 type Config struct {
 	Values   []Value // in registry order
 	Warnings []string
+	// RepoHooks are the values the repository file sets for keys marked
+	// RepoApart, validated, by key; RepoFile is that file. Nil when the
+	// repository file sets none.
+	RepoHooks map[string][]string
+	RepoFile  string
 }
 
 // Get returns the effective value of key.
@@ -121,6 +126,17 @@ func Resolve(reg Registry, layers ...Layer) (*Config, error) {
 			k, ok := reg.Lookup(name)
 			if !ok {
 				cfg.Warnings = append(cfg.Warnings, fmt.Sprintf("unknown key %q in %s", name, origin))
+				continue
+			}
+			if layer.Source == SourceRepo && k.RepoApart {
+				v, err := k.Validate(layer.Values[name])
+				if err != nil {
+					return nil, fmt.Errorf("invalid value for %q in %s: %v", name, origin, err)
+				}
+				if cfg.RepoHooks == nil {
+					cfg.RepoHooks = map[string][]string{}
+				}
+				cfg.RepoHooks[name], cfg.RepoFile = v.([]string), origin
 				continue
 			}
 			if layer.Source == SourceRepo && !k.InRepo {

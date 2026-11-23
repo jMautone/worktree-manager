@@ -29,7 +29,7 @@ Para quién: un dev que trabaja en macOS y Windows, con varios repos y agentes d
 1. **Terminal-first.** El resultado de un comando es dejarte parado en el worktree, en la misma terminal. Ningún comando abre una app externa por defecto.
 2. **Los agentes corren en foreground.** `-x <cmd>` corre dentro del worktree, en tu terminal, y propaga el exit code. El tab nuevo es un launcher opcional.
 3. **Nada hardcodeado a una herramienta.** Editor, terminal, agente y runtime son launchers configurables con presets por OS.
-4. **El repo no ejecuta código sin permiso.** Config del repo con lista blanca; hooks del repo con aprobación por hash.
+4. **El repo no ejecuta código sin permiso.** Config del repo con lista blanca; hooks del repo con aprobación por repo, evento y hash del comando.
 5. **El contrato es público.** Exit codes, `--json` versionado y `--dry-run` con lecturas reales son parte de la API, no cosmética.
 
 ## 3. Identidad y plataformas
@@ -85,7 +85,7 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 | Comando | Qué hace |
 |---|---|
 | `wt mark <name> <text>` / `wt var <name> <k>=<v>` | Estado por rama, guardado en `git config`. Visible en `list` y en plantillas. |
-| `wt hook list` / `wt hook approve` | Aprobación de hooks declarados por el repo. |
+| `wt hook list [--json]` / `wt hook approve [<evento>...]` | Los hooks que correrían en el repo actual, del usuario y del repo, con su estado de aprobación; y la aprobación de los del repo que falten. `--dry-run` muestra qué aprobaría. |
 | `wt config get\|set\|list\|path` | Config. |
 | `wt shell init <zsh\|bash\|fish\|pwsh>` / `wt shell install` | Shell integration y completions. |
 | `wt statusline [--format <plantilla>]` | Una sola línea con el estado del worktree actual (rama, sucio, ahead/behind, marker), rápida y sin red, para el prompt de la shell o la statusline de Claude Code. |
@@ -177,7 +177,7 @@ Eventos: `pre`/`post` × `create`, `cd`, `remove`, `merge`, `commit`. Hoy existe
 - **Bloquean** los `pre-*` y `post-create`: corren en la terminal, con la salida en stderr, y si uno falla la operación termina con exit 7. Un `pre-*` que falla no deja nada hecho. `post-create` bloquea, y no va en background, porque `-x` no puede arrancar antes de que termine `npm ci`.
 - **En background** corren `post-cd` y `post-remove`: desacoplados de la terminal, sobreviven a `wt`, a Ctrl-C y al cierre de la pestaña, y su salida va a `<git-common-dir>/wt/logs/<name|sanitize>/<evento>.log`, que cada corrida pisa.
 
-Los hooks declarados en `.wt.toml` requieren **aprobación explícita** la primera vez, guardada por hash del comando en la config del usuario. Si el comando cambia, se vuelve a pedir. Eso habilita "el equipo comparte `npm ci` al crear" sin darle ejecución arbitraria a un repo clonado.
+Los hooks declarados en `.wt.toml` se **suman** a los del usuario: en cada evento corren primero los del usuario y después los del repo, que nunca los pisan. Requieren **aprobación explícita** la primera vez: una aprobación es el repo (la ruta de su worktree principal), el evento y el hash SHA-256 del comando tal como está escrito, y se guarda en `approvals.toml`, junto a la config del usuario, que el repo no puede escribir. Si el comando cambia, se vuelve a pedir. Hasta entonces, `create`, `cd` y `remove` fallan con exit 8 antes de hacer nada, y `wt hook approve` los aprueba. Eso habilita "el equipo comparte `npm ci` al crear" sin darle ejecución arbitraria a un repo clonado.
 
 ### Shell integration
 
@@ -285,7 +285,7 @@ Cuatro cortes: las tres capabilities de M3 y `project-hooks-approval`, que se ad
 | Change | Entrega | Por qué en ese orden |
 |---|---|---|
 | `hooks` | `[hooks]` en la config del usuario, con los eventos `pre`/`post` de `create`, `cd` y `remove`. Los `pre-*` y `post-create` bloquean y fallan con exit 7: `post-create` porque `-x` no puede arrancar antes de `npm ci`. `post-cd` y `post-remove` corren en background, con la salida en `.git/wt/logs/`. Mismo intérprete que `-x`, y `{path}`, `{base}` y el escape `{{`/`}}` en el motor de plantillas. | `post-create` (copiar el `.env`, `npm ci`) es la fricción diaria más grande, y `post-cd` y `post-remove` en background son el riesgo multiplataforma de M3: un proceso que sobrevive a `wt` en Windows. Como `shell-integration` en M1, lo querés roto temprano. Y `merge` lo necesita. |
-| `project-hooks-approval` | `hooks` en la lista blanca de `.wt.toml`, con aprobación por hash del comando guardada del lado del usuario, `wt hook list`, `wt hook approve` y exit 8 cuando un hook del repo no está aprobado. | Sin ella los hooks son globales: un `post-create = ["npm ci"]` corre también en un repo de Go, y los tests de `pre-merge` no pueden ser por repo. Va antes de `merge` para que sus tests sean del repo desde el primer día. |
+| `project-hooks-approval` | `hooks` en la lista blanca de `.wt.toml`, con aprobación por repo, evento y hash del comando guardada del lado del usuario (`approvals.toml`), `wt hook list`, `wt hook approve` y exit 8 cuando un hook del repo no está aprobado. | Sin ella los hooks son globales: un `post-create = ["npm ci"]` corre también en un repo de Go, y los tests de `pre-merge` no pueden ser por repo. Va antes de `merge` para que sus tests sean del repo desde el primer día. |
 | `sync-worktrees` | `wt sync [<name>...] [--all]`: rebase sobre la base con un solo fetch. Nunca stashea (el worktree sucio se saltea), el conflicto se reporta y se sigue, y termina con un resumen y un exit code. | El rebase y la política de conflicto se prueban solos, sin hooks, fast-forward ni borrado. `merge` reusa ese rebase. |
 | `merge-worktree` | `wt merge [<target>] [--no-rebase] [--no-remove]` desde adentro del worktree: limpio o exit 5, rebase (exit 6), `pre-merge` (exit 7 u 8), fast-forward del target, `remove` con sus hooks y `post-merge`. | Compone los tres anteriores: es el único que depende de todos. |
 

@@ -66,3 +66,26 @@ func isAbs(goos, s string) bool {
 func isLetter(c byte) bool {
 	return 'a' <= c && c <= 'z' || 'A' <= c && c <= 'Z'
 }
+
+// ApprovalsFile returns the path of approvals.toml: the directory of the
+// user configuration file (see UserFile) and the name approvals.toml, on
+// every OS and also when WT_CONFIG names that file.
+func ApprovalsFile(goos string, getenv func(string) string, home string) (string, error) {
+	user, err := UserFile(goos, getenv, home)
+	if err != nil {
+		return "", err
+	}
+	i := strings.LastIndexAny(user, `/\`)
+	if goos != "windows" {
+		i = strings.LastIndex(user, "/")
+	}
+	if i < 0 {
+		// WT_CONFIG=wt.toml: a file in the working directory.
+		return ApprovalsFileName, nil
+	}
+	return user[:i+1] + ApprovalsFileName, nil
+}
+
+// ApprovalsFileName is the name of the file that holds the approvals of
+// repository hooks.
+const ApprovalsFileName = "approvals.toml"

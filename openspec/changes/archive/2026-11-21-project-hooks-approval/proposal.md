@@ -74,7 +74,7 @@ Dejar que el repo declare hooks sin más es darle ejecución arbitraria a cualqu
 
 M3, segundo corte (`hooks` → **`project-hooks-approval`** → `sync-worktrees` → `merge-worktree`). Ver la tabla "M3, desglosado en changes" en `docs/design/product.md` §7.
 
-Rama: `v0.3/project-hooks-approval`. Publica `v0.3.0-alpha.2`.
+Rama: `v0.3/project-hooks-approval`. Publica `v0.3.0-alpha.3` (el `v0.3.0-alpha.2` salió del PR que solo traía estos artefactos).
 
 ## Diferencias por OS
 

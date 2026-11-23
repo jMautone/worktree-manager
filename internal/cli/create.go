@@ -191,6 +191,12 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 	if err != nil {
 		return worktree.CreatePlan{}, "", err
 	}
+	// A hook of the repository not approved fails before anything, the
+	// fetch included.
+	hooks := &hookPlanner{a: a, ctx: ctx, cfg: cfg, noHooks: f.noHooks, gitDir: dir}
+	if err := hooks.check(hook.PreCreate, hook.PostCreate); err != nil {
+		return worktree.CreatePlan{}, "", err
+	}
 	var main worktree.Worktree
 	for _, w := range repo.worktrees {
 		if w.Main {
@@ -312,7 +318,6 @@ func (a *app) planCreate(cmd *cobra.Command, name string, f createFlags) (worktr
 
 	// The hooks, with the new worktree's values: its NAME is the last
 	// component of its path, as wt list will show it.
-	hooks := &hookPlanner{a: a, ctx: ctx, cfg: cfg, noHooks: f.noHooks, gitDir: dir}
 	values := worktree.HookVars(main, worktree.Worktree{Path: path, Branch: branch}, base, goos)
 	if plan.PreHook, err = hooks.plan(hook.PreCreate, values, main.Path); err != nil {
 		return worktree.CreatePlan{}, "", err

@@ -29,6 +29,11 @@ type Key struct {
 	// is not a variable name sh accepts, and the keys of a table are written
 	// in a file.
 	NoEnv bool
+	// RepoApart keeps a value of the repository file out of the layers: it
+	// is validated and kept in Config.RepoHooks, and the effective value
+	// stays the user's. A repository's hooks are added to the user's, and
+	// run only once approved, rather than replacing them.
+	RepoApart bool
 }
 
 // Registry is the ordered set of known keys. It is passed to Resolve rather
@@ -127,11 +132,12 @@ func Keys(goos string) Registry {
 			Name:    e.Key(),
 			Type:    "command list",
 			Default: []string{},
-			// A repository's hooks run code from a clone: they wait for
-			// approval by hash, a later change.
-			InRepo:   false,
-			Validate: validateCommands(e),
-			NoEnv:    true,
+			// A repository's hooks run code from a clone: they are kept
+			// apart, and run only once approved.
+			InRepo:    false,
+			RepoApart: true,
+			Validate:  validateCommands(e),
+			NoEnv:     true,
 		})
 	}
 	return reg

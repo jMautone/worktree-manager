@@ -272,16 +272,50 @@ func TestResolveEventThatDoesNotExist(t *testing.T) {
 	}
 }
 
-func TestResolveRepositoryMayNotSetHooks(t *testing.T) {
-	repo := Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{
-		"hooks": map[string]any{"post-create": []any{"echo pwned > pwned.txt"}},
+func TestResolveRepositoryHooksApart(t *testing.T) {
+	user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{
+		"hooks": map[string]any{"post-create": []any{"cp ~/.npmrc ."}},
 	}}
-	cfg := mustResolve(t, Keys("darwin"), repo)
-	if v, _ := cfg.Get("hooks.post-create"); !reflect.DeepEqual(v.Value, []string{}) || v.Source != SourceDefault {
-		t.Errorf("hooks.post-create = %+v", v)
+	repo := Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{
+		"hooks":        map[string]any{"post-create": []any{"npm ci"}, "pre-remove": []any{"make clean"}},
+		"create_cd":    false,
+		"default_base": "develop",
+	}}
+	cfg := mustResolve(t, Keys("darwin"), user, repo)
+	if v, _ := cfg.Get("hooks.post-create"); !reflect.DeepEqual(v.Value, []string{"cp ~/.npmrc ."}) || v.Source != SourceUser {
+		t.Errorf("hooks.post-create = %+v, want the user's", v)
 	}
-	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"hooks.post-create"`) || !strings.Contains(cfg.Warnings[0], ".wt.toml") {
-		t.Errorf("warnings = %q, want one naming hooks.post-create and .wt.toml", cfg.Warnings)
+	if v, _ := cfg.Get("hooks.pre-remove"); v.Source != SourceDefault {
+		t.Errorf("hooks.pre-remove = %+v, want the default", v)
+	}
+	want := map[string][]string{"hooks.post-create": {"npm ci"}, "hooks.pre-remove": {"make clean"}}
+	if !reflect.DeepEqual(cfg.RepoHooks, want) || cfg.RepoFile != "/r/.wt.toml" {
+		t.Errorf("RepoHooks = %v from %q, want %v from /r/.wt.toml", cfg.RepoHooks, cfg.RepoFile, want)
+	}
+	// Other keys the repository may not set still warn; its hooks do not.
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"create_cd"`) {
+		t.Errorf("warnings = %q, want only the one of create_cd", cfg.Warnings)
+	}
+}
+
+func TestResolveInvalidRepositoryHooks(t *testing.T) {
+	for name, hooks := range map[string]map[string]any{
+		"string":         {"post-create": "npm ci"},
+		"blank":          {"post-create": []any{"  "}},
+		"base in remove": {"pre-remove": []any{"echo {base}"}},
+	} {
+		repo := Layer{Source: SourceRepo, Origin: "/r/.wt.toml", Values: map[string]any{"hooks": hooks}}
+		_, err := Resolve(Keys("darwin"), repo)
+		if err == nil || !strings.Contains(err.Error(), "hooks.") || !strings.Contains(err.Error(), "/r/.wt.toml") {
+			t.Errorf("%s: err = %v, want one naming the key and .wt.toml", name, err)
+		}
+	}
+}
+
+func TestResolveNoRepositoryHooks(t *testing.T) {
+	cfg := mustResolve(t, Keys("darwin"))
+	if cfg.RepoHooks != nil || cfg.RepoFile != "" {
+		t.Errorf("RepoHooks = %v, RepoFile = %q; want none", cfg.RepoHooks, cfg.RepoFile)
 	}
 }
 
