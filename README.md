@@ -119,6 +119,7 @@ several words reach the program as you typed them.
 | `wt list [--all-repos]` | List worktrees, of this repository or of all of them |
 | `wt repos` | List the repositories under your roots |
 | `wt each [--all-repos] <cmd>...` | Run a command in every worktree |
+| `wt sync [<name>...] [--all] [--base <ref>] [--no-fetch]` | Rebase worktrees onto their base, skipping dirty ones |
 | `wt remove <target> [-f] [-D] [--keep-branch]` | Remove a worktree, and its branch when merged |
 | `wt path <target>` | Print a worktree's path, for scripts |
 | `wt lock <target> [<reason>]` / `wt unlock <target>` | Protect a worktree from removal |

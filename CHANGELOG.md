@@ -59,6 +59,18 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   (`wt.hook.approve.v1`).
 - `wt config path` shows `approvals.toml`; `wt.config.path.v1` gains the
   field `approvals`.
+- `wt sync [<name>...] [--all] [--base <ref>] [--no-fetch]` rebases
+  worktrees onto their base: the current one, the ones named (as `wt remove`
+  takes them, other repositories included), or with `--all` every linked
+  worktree of the current repository. The base is `--base`, otherwise the
+  repository's `default_base` or default branch; a base on a remote is
+  fetched once per repository. It never stashes: a worktree with changes to
+  tracked files, a detached HEAD, an operation in progress or no directory
+  is skipped. A rebase that stops on a conflict is aborted, leaving the
+  worktree as it was, and the next one goes on. One line per worktree, a
+  summary on stderr, and exit 1 (a rebase failed), 6 (a conflict) or 5 (a
+  worktree skipped) when not every worktree was synced. With `--json`, the
+  schema `wt.sync.v1`.
 
 ### Changed
 
