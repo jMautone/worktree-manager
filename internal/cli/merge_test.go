@@ -19,9 +19,20 @@ import (
 func mergeRepo(h *harness) (repo, feat string) {
 	h.t.Helper()
 	repo, _, wts := syncRepo(h, "feat")
-	feat = wts["feat"]
+	// The paths as wt prints them: on macOS the temporary directory is
+	// behind a symbolic link.
+	repo, feat = realPath(h.t, repo), realPath(h.t, wts["feat"])
 	h.cwd = feat
 	return repo, feat
+}
+
+func realPath(t *testing.T, p string) string {
+	t.Helper()
+	real, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return real
 }
 
 // inDir runs wt with args from dir, and goes back.
