@@ -50,7 +50,7 @@ func TestResolveDefaults(t *testing.T) {
 	assertValue(t, cfg, "branch_prefix", "", SourceDefault)
 	assertValue(t, cfg, "fetch_before_create", true, SourceDefault)
 	assertValue(t, cfg, "create_cd", true, SourceDefault)
-	if len(cfg.Values) != 14 || cfg.Values[0].Key != "default_base" || cfg.Values[13].Key != "secret_cmd" {
+	if len(cfg.Values) != 16 || cfg.Values[0].Key != "default_base" || cfg.Values[15].Key != "secret_cmd" {
 		t.Errorf("values not in registry order: %+v", cfg.Values)
 	}
 	if len(cfg.Warnings) != 0 {
@@ -264,11 +264,11 @@ func TestResolveHooksThatIsNotATable(t *testing.T) {
 
 func TestResolveEventThatDoesNotExist(t *testing.T) {
 	user := Layer{Source: SourceUser, Origin: "/u/config.toml", Values: map[string]any{
-		"hooks": map[string]any{"post-merge": []any{"npm test"}},
+		"hooks": map[string]any{"post-commit": []any{"npm test"}},
 	}}
 	cfg := mustResolve(t, Keys("darwin"), user)
-	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"hooks.post-merge"`) || !strings.Contains(cfg.Warnings[0], "/u/config.toml") {
-		t.Errorf("warnings = %q, want one naming hooks.post-merge and the file", cfg.Warnings)
+	if len(cfg.Warnings) != 1 || !strings.Contains(cfg.Warnings[0], `"hooks.post-commit"`) || !strings.Contains(cfg.Warnings[0], "/u/config.toml") {
+		t.Errorf("warnings = %q, want one naming hooks.post-commit and the file", cfg.Warnings)
 	}
 }
 

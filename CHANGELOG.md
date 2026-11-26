@@ -71,6 +71,21 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   summary on stderr, and exit 1 (a rebase failed), 6 (a conflict) or 5 (a
   worktree skipped) when not every worktree was synced. With `--json`, the
   schema `wt.sync.v1`.
+- `wt merge [<target>] [--no-rebase] [--no-remove] [--no-hooks]` closes the
+  current worktree: it checks that the worktree has no modified or untracked
+  files and that the hooks that would run are approved, rebases the branch
+  onto the target (a local branch; by default the repository's base without
+  its remote, so `origin/main` gives `main`), runs `pre-merge`,
+  fast-forwards the target, updating the worktree that has it checked out,
+  removes the worktree and its branch as `wt remove` does, and runs
+  `post-merge`. It stops at the first step that fails: a conflict aborts the
+  rebase (exit 6), a failed `pre-merge` leaves the target where it was
+  (exit 7). It never fetches, pushes or creates a merge commit. With
+  `--json`, the schema `wt.merge.v1`.
+- The hook events `pre-merge`, which blocks and runs in the worktree, and
+  `post-merge`, which runs in the background in the main worktree, with the
+  keys `hooks.pre-merge` and `hooks.post-merge` and the variable `{target}`,
+  only in those two events.
 
 ### Changed
 

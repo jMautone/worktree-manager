@@ -14,6 +14,10 @@ func TestVars(t *testing.T) {
 		if want := e == PreCreate || e == PostCreate; got != want {
 			t.Errorf("Vars(%s) has base: %v, want %v", e, got, want)
 		}
+		got = slices.Contains(Vars(e), "target")
+		if want := e == PreMerge || e == PostMerge; got != want {
+			t.Errorf("Vars(%s) has target: %v, want %v", e, got, want)
+		}
 		for _, v := range []string{"repo", "repo_parent", "repo_path", "name", "branch", "path"} {
 			if !slices.Contains(Vars(e), v) {
 				t.Errorf("Vars(%s) = %v, missing %s", e, Vars(e), v)
@@ -24,7 +28,7 @@ func TestVars(t *testing.T) {
 
 func TestBackground(t *testing.T) {
 	for _, e := range Events {
-		if want := e == PostCD || e == PostRemove; e.Background() != want {
+		if want := e == PostCD || e == PostRemove || e == PostMerge; e.Background() != want {
 			t.Errorf("%s.Background() = %v, want %v", e, e.Background(), want)
 		}
 	}
@@ -32,6 +36,9 @@ func TestBackground(t *testing.T) {
 
 func TestKey(t *testing.T) {
 	if got := PostCreate.Key(); got != "hooks.post-create" {
+		t.Errorf("Key() = %q", got)
+	}
+	if got := PreMerge.Key(); got != "hooks.pre-merge" {
 		t.Errorf("Key() = %q", got)
 	}
 }

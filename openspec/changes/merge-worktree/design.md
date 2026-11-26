@@ -127,7 +127,7 @@ func (a *app) planRemoveOf(ctx, res, cfg, w, flags) (RemovePlan, main, error)
 - **`wt merge`** llama a `planRemoveOf` con el worktree que ya resolvió y `forceDelete: true`. La rama se borra sin `readMerged`, porque después del fast-forward está en el target, sea cual sea la base. `git.DeleteBranch` ya usa `-D`.
 - **El chequeo de cambios** de `planRemoveOf` repite el de `CheckMerge`. Es una lectura más, a cambio de no tocar el contrato de `wt remove`.
 - **`CheckRemovable`** da, sin `--no-remove`, el principal (2), el lock (5) y un worktree anidado (5), con los mismos mensajes y hints de `wt remove`. Con `--no-remove` solo se chequea el principal: un worktree con lock se puede mergear sin borrarlo.
-- **La salida**: `a.remove` deja de escribir al final. Pasa a devolver el error y `wt remove` llama a `a.removed(plan)` después. Así `wt merge` escribe sus propias líneas en orden (`merged ...`, `removed ...`, `deleted ...`), y con `--json` un solo documento, `wt.merge.v1`.
+- **La salida**: `a.remove` recibe la función que escribe la salida, en el mismo punto donde hoy llama a `a.removed(plan)`: `wt remove` le pasa `a.removed`, y `wt merge` una que escribe las mismas líneas (`removedLines`) o nada con `--json`. Así las líneas salen en orden (`merged ...`, `removed ...`, `deleted ...`), antes de `post-remove` como en `wt remove`, y con `--json` hay un solo documento, `wt.merge.v1`. Las líneas de `--dry-run` salen igual de `previewRemoveLines`.
 - **Un fallo de `a.remove`** (exit 7 de `pre-remove`, exit 1 del borrado) se devuelve tal cual, con un hint más: `<branch> was merged into <target>`.
 
 ### D5. El fast-forward
@@ -194,7 +194,7 @@ El comportamiento por OS:
   - las líneas de `post-merge`.
 
   No escribe la directiva.
-- **`--json`** imprime `wt.merge.v1`: `{schema, name, path, branch, target, rebased, head, removed}`, con `head` como el commit del target después. Un fallo sale como `wt.error.v1` por el camino de siempre.
+- **`--json`** imprime `wt.merge.v1`: `{schema, name, path, branch, target, rebased, head, removed}`, con `head` como el commit del target después. Bajo `--dry-run`, si haría falta un rebase, `head` es `null`, porque los commits rebaseados todavía no existen. Un fallo sale como `wt.error.v1` por el camino de siempre.
 - **Las líneas de texto** salen a medida que pasa cada paso (`rebased`, `merged`), no al final como en `wt remove`. Si falla el remove, lo ya hecho está en stdout y el error en stderr.
 
 ### D9. Comando y completions
