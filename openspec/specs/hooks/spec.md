@@ -7,7 +7,7 @@ Defines the hooks `wt` runs on its own around its commands: which events exist a
 ## Requirements
 
 ### Requirement: Events
-`wt` SHALL run hooks on exactly these six events, each fired only by the command named:
+`wt` SHALL run hooks on exactly these eight events, each fired only by the command named:
 
 | Event | Fired by | When | Runs in | Kind |
 |---|---|---|---|---|
@@ -15,12 +15,14 @@ Defines the hooks `wt` runs on its own around its commands: which events exist a
 | `post-create` | `wt create` | once the worktree is created, before the directive is written and before the `-x` command | the new worktree | blocking |
 | `pre-cd` | `wt cd` | once the destination is resolved and found to exist, before the directive is written | the destination's worktree | blocking |
 | `post-cd` | `wt cd` | once the directive is written | the destination's worktree | background |
-| `pre-remove` | `wt remove` | once every check passes, before anything is removed | the worktree to remove, or the main worktree when that worktree's directory does not exist | blocking |
-| `post-remove` | `wt remove` | once the worktree is removed, its branch deleted or kept, and the directive written | the main worktree | background |
+| `pre-remove` | `wt remove`, `wt merge` | once every check passes, before anything is removed | the worktree to remove, or the main worktree when that worktree's directory does not exist | blocking |
+| `post-remove` | `wt remove`, `wt merge` | once the worktree is removed, its branch deleted or kept, and the directive written | the main worktree | background |
+| `pre-merge` | `wt merge` | once the branch is rebased, before the target is moved | the worktree being merged | blocking |
+| `post-merge` | `wt merge` | once the target is moved and, unless `--no-remove`, the worktree removed | the main worktree | background |
 
 The main worktree SHALL be the one the `git-worktrees` capability defines: for a bare repository, the bare repository itself. The destination's worktree SHALL be the worktree that contains the destination of `wt cd`, and the hook SHALL run at its root. When that destination is inside no worktree, as the previous directory of `wt cd -` can be, `wt cd` SHALL fire neither `pre-cd` nor `post-cd`. When a command operates on a worktree of another repository (see the `cross-repo-resolution` capability), its events SHALL concern that worktree and run in that repository. An event with no commands SHALL do nothing.
 
-`wt create` and `wt remove` SHALL NOT fire `pre-cd` or `post-cd`, even when they move the shell. No other command SHALL run hooks.
+`wt create`, `wt remove` and `wt merge` SHALL NOT fire `pre-cd` or `post-cd`, even when they move the shell. `wt merge` SHALL fire `pre-remove` and `post-remove` as `wt remove` does, for the worktree it removes (see the `merge-worktree` capability). No other command SHALL run hooks.
 
 #### Scenario: Order of the create events
 - **WHEN** `hooks.pre-create` is `["git branch --list feat > pre.txt"]`, `hooks.post-create` is `["git branch --show-current > post.txt"]`, and the user runs `wt create feat` in a repository whose main worktree is `/src/repo`
@@ -46,6 +48,10 @@ The main worktree SHALL be the one the `git-worktrees` capability defines: for a
 - **WHEN** `hooks.pre-cd` is `["exit 1"]` and the user runs `wt path feat` inside a repository with the linked worktree `feat`
 - **THEN** stdout is the path of `feat`
 - **AND** the exit code is 0
+
+#### Scenario: Order of the merge events
+- **WHEN** every event of `wt merge` and `wt remove` has a command that appends its event's name to the file `<sandbox>/events.txt`, and from inside the clean worktree `feat` the user runs `wt merge`
+- **THEN** once the background commands finish, `events.txt` contains `pre-merge`, `pre-remove`, then `post-remove` and `post-merge` in either order
 
 ### Requirement: Hook configuration
 The commands of an event SHALL be, in this order, the elements of the configuration key `hooks.<event>` of the user's configuration (see the `config-layers` capability), and then the elements of `hooks.<event>` in the `[hooks]` table of the repository's `.wt.toml` (see the `project-hooks-approval` capability). They SHALL run as one list: a failure of a command of either SHALL stop the event. A repository's commands SHALL replace none of the user's, and SHALL run only once approved; an event with a repository command not approved SHALL fail the command with exit code 8 before anything is done, as the `project-hooks-approval` capability specifies.
@@ -77,8 +83,9 @@ Each command SHALL be a template, with the syntax and filters of the `path-templ
 | `{branch}` | the worktree's branch; empty when its HEAD is detached or it is a bare repository | every event |
 | `{path}` | the worktree's root | every event |
 | `{base}` | the base the new branch starts at, as written in the `created worktree` line | `pre-create`, `post-create` |
+| `{target}` | the branch the worktree's branch is merged into | `pre-merge`, `post-merge` |
 
-The worktree SHALL be the one the event concerns: for `pre-create` and `post-create`, the new worktree, whose path and `NAME` are known before it is created; for `pre-cd` and `post-cd`, the destination's worktree; for `pre-remove` and `post-remove`, the worktree removed. Paths SHALL be absolute and in the operating system's native form. Values SHALL be inserted as they are, without quoting: a command that needs quotes around a value SHALL write them.
+The worktree SHALL be the one the event concerns: for `pre-create` and `post-create`, the new worktree, whose path and `NAME` are known before it is created; for `pre-cd` and `post-cd`, the destination's worktree; for `pre-remove` and `post-remove`, the worktree removed; for `pre-merge` and `post-merge`, the worktree merged. Paths SHALL be absolute and in the operating system's native form. Values SHALL be inserted as they are, without quoting: a command that needs quotes around a value SHALL write them.
 
 `{name}` in a hook is the `NAME` of the worktree, the last component of its path, while `{name}` in `worktree_path` is the `<name>` given to `wt create`, as typed. A command that uses a variable not available for its event SHALL be an invalid template (see the `path-templates` capability).
 
@@ -98,6 +105,14 @@ The worktree SHALL be the one the event concerns: for `pre-create` and `post-cre
 #### Scenario: Literal braces
 - **WHEN** `hooks.post-create` is `["awk '{{print $1}}' in.txt"]` and the user runs `wt create feat --dry-run`
 - **THEN** stdout contains `would run post-create hook: awk '{print $1}' in.txt`
+
+#### Scenario: Values of a merge event
+- **WHEN** `hooks.pre-merge` is `["echo {branch} {target} > vars.txt"]` and from inside the clean worktree `feat`, on the branch `feat`, the user runs `wt merge main --no-remove`
+- **THEN** `vars.txt` in `feat` contains `feat main`
+
+#### Scenario: Target outside a merge event
+- **WHEN** the user file sets `hooks.pre-remove` to `["echo {target}"]` and the user runs `wt list`
+- **THEN** stderr names `hooks.pre-remove`, the user file and `target`
 
 ### Requirement: Running hook commands
 The commands of an event SHALL run one at a time, in the order of their key, each with the event's directory (see "Events") as its working directory: as `sh -c <command>` on macOS and Linux, and as a command line of `cmd.exe` on Windows, the interpreter of `-x` (see the `create-worktree` capability). Each command SHALL start only after the previous one exits. A command that exits with a code other than 0, that on macOS or Linux is terminated by a signal, or that cannot be started SHALL fail its event, and the event's remaining commands SHALL NOT run. Hook commands SHALL NOT receive `WT_DIRECTIVE_CD_FILE` or `WT_PREVIOUS_DIR` (see the `shell-integration` capability).
@@ -124,7 +139,7 @@ The commands of an event SHALL run one at a time, in the order of their key, eac
 - **THEN** no recorded environment contains `WT_DIRECTIVE_CD_FILE` or `WT_PREVIOUS_DIR`
 
 ### Requirement: Blocking hooks
-`pre-create`, `post-create`, `pre-cd` and `pre-remove` SHALL be blocking: `wt` SHALL wait until the event's commands are done before it goes on. Without `--json`, before each command `wt` SHALL write to stderr the line `==> <event>  <command>`, with the command as rendered, and the command SHALL use `wt`'s standard input and write both its output and its errors to `wt`'s standard error, so that `wt`'s standard output carries only what `wt` itself prints. These lines SHALL never contain color sequences. With `--json`, see "JSON output with hooks".
+`pre-create`, `post-create`, `pre-cd`, `pre-remove` and `pre-merge` SHALL be blocking: `wt` SHALL wait until the event's commands are done before it goes on. Without `--json`, before each command `wt` SHALL write to stderr the line `==> <event>  <command>`, with the command as rendered, and the command SHALL use `wt`'s standard input and write both its output and its errors to `wt`'s standard error, so that `wt`'s standard output carries only what `wt` itself prints. These lines SHALL never contain color sequences. With `--json`, see "JSON output with hooks".
 
 #### Scenario: Output on stderr
 - **WHEN** `hooks.post-create` is `["echo hello"]` and the user runs `wt create feat` in a repository whose default branch is `origin/main`
@@ -145,7 +160,8 @@ When a command of a blocking event fails, `wt` SHALL stop the operation and exit
 - `pre-create`: no branch, directory or worktree SHALL be created, the shell SHALL NOT move, and the `-x` command SHALL NOT run. A hint SHALL name `--no-hooks`.
 - `post-create`: the branch and the worktree SHALL remain created, the shell SHALL move as it would have (see the `create-worktree` capability, "Moving the shell"), the `-x` command SHALL NOT run, and nothing SHALL be written to stdout. A hint SHALL name the new worktree's path, stating that it was created.
 - `pre-cd`: the directive SHALL NOT be written, so the shell SHALL NOT move, and `post-cd` SHALL NOT run. A hint SHALL name `--no-hooks`.
-- `pre-remove`: no worktree, directory or branch SHALL be removed, the shell SHALL NOT move, and `post-remove` SHALL NOT run. A hint SHALL name `--no-hooks`.
+- `pre-remove`: no worktree, directory or branch SHALL be removed, the shell SHALL NOT move, and `post-remove` SHALL NOT run. A hint SHALL name `--no-hooks`. Under `wt merge`, the target SHALL stay moved and `post-merge` SHALL NOT run.
+- `pre-merge`: the target SHALL NOT be moved, the worktree SHALL NOT be removed, the shell SHALL NOT move, and no later event SHALL run; the branch SHALL stay rebased. A hint SHALL name `--no-hooks`.
 
 #### Scenario: pre-create fails
 - **WHEN** `hooks.pre-create` is `["exit 1"]` and the user runs `wt create feat`
@@ -172,8 +188,14 @@ When a command of a blocking event fails, `wt` SHALL stop the operation and exit
 - **THEN** the worktree `feat` and the branch `feat` still exist
 - **AND** the exit code is 7
 
+#### Scenario: pre-merge fails
+- **WHEN** `hooks.pre-merge` is `["exit 1"]` and from inside the clean worktree `feat` the user runs `wt merge`
+- **THEN** the target branch points to the commit it pointed to before
+- **AND** the worktree `feat` and the branch `feat` still exist
+- **AND** the exit code is 7
+
 ### Requirement: Background hooks
-`post-cd` and `post-remove` SHALL run in the background: `wt` SHALL start a process, detached from the terminal, that runs the event's commands as "Running hook commands" specifies, and SHALL NOT wait for it. The commands SHALL get an empty standard input and SHALL write their output and errors to the event's log (see "Logs"). What they do and how they exit SHALL NOT change `wt`'s standard output or its exit code.
+`post-cd`, `post-remove` and `post-merge` SHALL run in the background: `wt` SHALL start a process, detached from the terminal, that runs the event's commands as "Running hook commands" specifies, and SHALL NOT wait for it. The commands SHALL get an empty standard input and SHALL write their output and errors to the event's log (see "Logs"). What they do and how they exit SHALL NOT change `wt`'s standard output or its exit code.
 
 The commands SHALL keep running after `wt` exits, and SHALL NOT be ended by an interrupt from the terminal (Ctrl-C) or by closing the terminal: on macOS and Linux they SHALL NOT receive a SIGINT or SIGHUP sent to the process group `wt` ran in; on Windows they SHALL NOT receive the Ctrl-C, Ctrl-Break or close events of `wt`'s console.
 

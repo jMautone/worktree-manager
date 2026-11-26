@@ -43,7 +43,7 @@ Las tareas **[Windows]** se cierran con el CI de `windows-latest` o a mano en Wi
 
 ## 5. Windows
 
-- [ ] 5.1 **[Windows]** Correr en el CI de `windows-latest` los tests de 2.1 y 4.x, que borran el worktree desde adentro y actualizan los archivos del principal. Verificar que pasan sin tests salteados en Windows salvo el e2e de SIGINT.
+- [x] 5.1 **[Windows]** _(Cerrada con el job `windows-latest` del PR #30 en `f5047e3`.)_ Correr en el CI de `windows-latest` los tests de 2.1 y 4.x, que borran el worktree desde adentro y actualizan los archivos del principal. Verificar que pasan sin tests salteados en Windows salvo el e2e de SIGINT.
 - [ ] 5.2 **[Windows]** Verificar a mano en Windows Terminal con PowerShell 7.4, a través de la función de shell, que `wt merge` desde adentro de un worktree lo borra y deja el shell en el principal, con `main` actualizado. Anotar el resultado en el PR.
 
 ## 6. Docs e integración
