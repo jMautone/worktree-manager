@@ -85,7 +85,7 @@ func (a *app) removeCommand() *cobra.Command {
 			if a.dryRun {
 				return a.previewRemove(plan)
 			}
-			return a.remove(cmd.Context(), plan, main)
+			return a.remove(cmd.Context(), plan, main, a.removed)
 		}),
 	}
 	fs := cmd.Flags()
@@ -110,6 +110,14 @@ func (a *app) planRemove(ctx context.Context, target string, f removeFlags) (wor
 	if err != nil {
 		return plan, worktree.Worktree{}, err
 	}
+	return a.planRemoveOf(ctx, res, cfg, f)
+}
+
+// planRemoveOf is planRemove for a target already resolved, with cfg the
+// configuration of its repository: wt merge plans the removal of the
+// worktree it merges with it.
+func (a *app) planRemoveOf(ctx context.Context, res resolved, cfg *config.Config, f removeFlags) (worktree.RemovePlan, worktree.Worktree, error) {
+	var plan worktree.RemovePlan
 	w := *res.Worktree
 	if err := removeBlocked(worktree.CheckRemovable(w, res.Repo.worktrees, a.env.GOOS)); err != nil {
 		return plan, worktree.Worktree{}, err
@@ -133,6 +141,7 @@ func (a *app) planRemove(ctx context.Context, target string, f removeFlags) (wor
 	main := mainWorktree(res.Repo)
 
 	var m worktree.Merged
+	var err error
 	if w.Branch != "" && !f.keepBranch && !f.forceDelete {
 		if m, err = a.readMerged(ctx, res.GitDir, cfg, main, w); err != nil {
 			return plan, worktree.Worktree{}, err
@@ -278,6 +287,13 @@ func (a *app) previewRemove(plan worktree.RemovePlan) error {
 	if a.json {
 		return a.writeJSON(removeDocument(plan))
 	}
+	_, err := a.env.Stdout.Write([]byte(previewRemoveLines(plan, active)))
+	return err
+}
+
+// previewRemoveLines are the lines of wt remove --dry-run for plan; active
+// is whether the shell function is active.
+func previewRemoveLines(plan worktree.RemovePlan, active bool) string {
 	var b strings.Builder
 	previewHook(&b, plan.PreHook)
 	fmt.Fprintf(&b, "would remove worktree %s\n", plan.Worktree.Path)
@@ -288,8 +304,7 @@ func (a *app) previewRemove(plan worktree.RemovePlan) error {
 		fmt.Fprintf(&b, "would change directory to %s\n", plan.CD)
 	}
 	previewHook(&b, plan.PostHook)
-	_, err := a.env.Stdout.Write([]byte(b.String()))
-	return err
+	return b.String()
 }
 
 // branchLine says what happens to the branch: what would happen under
@@ -312,8 +327,9 @@ func branchLine(plan worktree.RemovePlan, dryRun bool) string {
 // the worktree, the branch, the shell, and the output, so that stdout
 // stays empty on any error; post-remove last, once the worktree is gone,
 // even when its branch could not be deleted. An error after the worktree
-// is gone says so.
-func (a *app) remove(ctx context.Context, plan worktree.RemovePlan, main worktree.Worktree) error {
+// is gone says so. report writes the output: wt remove's own, or wt
+// merge's.
+func (a *app) remove(ctx context.Context, plan worktree.RemovePlan, main worktree.Worktree, report func(worktree.RemovePlan) error) error {
 	// Before leaving the worktree: the hook runs in it.
 	if err := a.runBlocking(plan.PreHook); err != nil {
 		return err
@@ -353,7 +369,7 @@ func (a *app) remove(ctx context.Context, plan worktree.RemovePlan, main worktre
 		}
 	}
 	if failed == nil {
-		failed = a.removed(plan)
+		failed = report(plan)
 	}
 	a.background(plan.PostHook)
 	return failed
@@ -364,12 +380,18 @@ func (a *app) removed(plan worktree.RemovePlan) error {
 	if a.json {
 		return a.writeJSON(removeDocument(plan))
 	}
+	_, err := a.env.Stdout.Write([]byte(removedLines(plan)))
+	return err
+}
+
+// removedLines are the lines wt remove prints once it removed plan's
+// worktree.
+func removedLines(plan worktree.RemovePlan) string {
 	out := fmt.Sprintf("removed worktree %s\n", plan.Worktree.Path)
 	if plan.Branch != "" {
 		out += branchLine(plan, false) + "\n"
 	}
-	_, err := a.env.Stdout.Write([]byte(out))
-	return err
+	return out
 }
 
 // gitMessage is git's own message in err, or err itself.

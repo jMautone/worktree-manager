@@ -24,6 +24,8 @@ Defines where `wt` reads its configuration from on each operating system, how va
 | `hooks.post-cd` | list of commands | `[]` | no |
 | `hooks.pre-remove` | list of commands | `[]` | no |
 | `hooks.post-remove` | list of commands | `[]` | no |
+| `hooks.pre-merge` | list of commands | `[]` | no |
+| `hooks.post-merge` | list of commands | `[]` | no |
 
 Keys added by later changes SHALL declare the same four properties. A key whose name contains a `.` SHALL be written in a configuration file as a key of the TOML table named by the part before the `.`: `hooks.post-create` is the key `post-create` of the table `[hooks]`. In a configuration file, a value SHALL have the TOML type of its key: a boolean key takes `true` or `false`, not a string; a list key takes an array of strings, not a single string; an integer key takes an integer, not a string or a float.
 

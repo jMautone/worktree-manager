@@ -17,15 +17,18 @@ const (
 	PostCD     Event = "post-cd"
 	PreRemove  Event = "pre-remove"
 	PostRemove Event = "post-remove"
+	PreMerge   Event = "pre-merge"
+	PostMerge  Event = "post-merge"
 )
 
 // Events are every event, in the order the configuration lists them.
-var Events = []Event{PreCreate, PostCreate, PreCD, PostCD, PreRemove, PostRemove}
+var Events = []Event{PreCreate, PostCreate, PreCD, PostCD, PreRemove, PostRemove, PreMerge, PostMerge}
 
 // Background reports whether wt starts the event's commands detached and
-// does not wait for them: post-cd and post-remove. Every other event blocks.
+// does not wait for them: post-cd, post-remove and post-merge. Every other
+// event blocks.
 func (e Event) Background() bool {
-	return e == PostCD || e == PostRemove
+	return e == PostCD || e == PostRemove || e == PostMerge
 }
 
 // Key is the configuration key holding the event's commands.
@@ -34,11 +37,14 @@ func (e Event) Key() string {
 }
 
 // Vars are the variables the event's commands may use: {base} only in the
-// events of wt create.
+// events of wt create, {target} only in those of wt merge.
 func Vars(e Event) []string {
 	vars := []string{"repo", "repo_parent", "repo_path", "name", "branch", "path"}
 	if e == PreCreate || e == PostCreate {
 		vars = append(vars, "base")
+	}
+	if e == PreMerge || e == PostMerge {
+		vars = append(vars, "target")
 	}
 	return vars
 }

@@ -136,7 +136,7 @@ func TestConfigListSources(t *testing.T) {
 	r.mustCode(t, 0)
 	doc := decodeOne(t, r.stdout)
 	keys, _ := doc["keys"].([]any)
-	if doc["schema"] != "wt.config.list.v1" || len(keys) != 13 {
+	if doc["schema"] != "wt.config.list.v1" || len(keys) != 15 {
 		t.Fatalf("document = %v", doc)
 	}
 	first, _ := keys[0].(map[string]any)
@@ -667,11 +667,11 @@ func TestConfigHookCommands(t *testing.T) {
 	})
 	t.Run("event that does not exist", func(t *testing.T) {
 		h := newHarness(t)
-		h.userConfig("[hooks]\npost-merge = [\"npm test\"]\n")
+		h.userConfig("[hooks]\npost-commit = [\"npm test\"]\n")
 		r := h.run("config", "list")
 		r.mustCode(t, 0)
-		if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "hooks.post-merge") {
-			t.Errorf("stderr = %q, want a warning naming hooks.post-merge", r.stderr)
+		if !strings.Contains(r.stderr, "wt: warning: ") || !strings.Contains(r.stderr, "hooks.post-commit") {
+			t.Errorf("stderr = %q, want a warning naming hooks.post-commit", r.stderr)
 		}
 	})
 	t.Run("empty command", func(t *testing.T) {

@@ -226,3 +226,69 @@ func TestInterruptSync(t *testing.T) {
 		t.Errorf("stderr = %q", stderr.String())
 	}
 }
+
+// Scenario "Interrupt during the rebase (macOS, Linux)" of merge-worktree:
+// the SIGINT reaches only git-wt, which waits for git, moves nothing and
+// exits with 130.
+func TestInterruptMerge(t *testing.T) {
+	sb := testutil.New(t)
+	origin := sb.Path("origin.git")
+	sb.InitRemote(origin)
+	repo := sb.Path("repo")
+	sb.Clone(origin, repo)
+	feat := sb.Path("repo.worktrees", "feat")
+	sb.AddWorktree(repo, feat, "feat")
+	sb.Commit(feat, "feat")
+	mainHead := sb.Commit(repo, "main")
+
+	started, finished := sb.Path("started"), sb.Path("finished")
+	hooks := sb.Path("hooks")
+	sb.WriteFile(filepath.Join(hooks, "pre-rebase"), "#!/bin/sh\ntouch '"+started+"'\nsleep 1\ntouch '"+finished+"'\n")
+	if err := os.Chmod(filepath.Join(hooks, "pre-rebase"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sb.Git(repo, "config", "core.hooksPath", hooks)
+
+	cmd := exec.Command(filepath.Join(binDir, exeName()), "merge")
+	cmd.Dir = feat
+	cmd.Env = sb.Environ()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !fileExists(started) {
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("the rebase did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+
+	err := cmd.Wait()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 130 {
+		t.Fatalf("git-wt: %v, want exit status 130\nstderr:\n%s", err, stderr.String())
+	}
+	if !fileExists(finished) {
+		t.Error("git-wt exited before git did")
+	}
+	for _, p := range []string{"rebase-merge", "rebase-apply"} {
+		if fileExists(filepath.Join(sb.Git(feat, "rev-parse", "--absolute-git-dir"), p)) {
+			t.Errorf("feat has a rebase in progress (%s)", p)
+		}
+	}
+	if got := sb.Git(repo, "rev-parse", "main"); got != mainHead {
+		t.Errorf("main moved to %s", got)
+	}
+	if !fileExists(feat) {
+		t.Error("feat was removed")
+	}
+	if !strings.HasPrefix(stderr.String(), "wt: interrupted: feat was not merged into main") {
+		t.Errorf("stderr = %q", stderr.String())
+	}
+}

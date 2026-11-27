@@ -333,25 +333,35 @@ func (a *app) syncOne(ctx context.Context, t syncTarget) syncResult {
 		return res
 	}
 
-	rebaseErr := git.Rebase(ctx, a.git, w.Path, t.repo.commit)
-	if rebaseErr == nil {
-		res.outcome = worktree.Rebased
+	res.outcome, res.detail = a.rebaseOnto(ctx, w.Path, t.repo.commit)
+	if res.outcome == worktree.Rebased {
 		if head, err := git.ResolveCommit(ctx, a.git, w.Path, "HEAD"); err == nil {
 			res.head = head
 		}
-		return res
-	}
-	res.outcome, res.detail = worktree.Failed, firstGitLine(rebaseErr)
-	if unmerged, err := git.Unmerged(ctx, a.git, w.Path); err == nil && unmerged {
-		res.outcome, res.detail = worktree.Conflict, ""
-	}
-	if op, err := git.InProgress(ctx, a.git, w.Path); err == nil && op == "rebase" {
-		if err := git.RebaseAbort(ctx, a.git, w.Path); err != nil {
-			res.outcome = worktree.Failed
-			res.detail = fmt.Sprintf("cannot abort the rebase (%s); run \"git rebase --abort\" in %s", firstGitLine(err), w.Path)
-		}
 	}
 	return res
+}
+
+// rebaseOnto rebases the branch checked out in dir onto commit and, when
+// git stops, aborts the rebase left in progress, so that the worktree is as
+// it was. It returns Rebased, Conflict, or Failed with git's message; a
+// rebase that cannot be aborted is a failure that says how to finish it.
+func (a *app) rebaseOnto(ctx context.Context, dir, commit string) (worktree.SyncOutcome, string) {
+	rebaseErr := git.Rebase(ctx, a.git, dir, commit)
+	if rebaseErr == nil {
+		return worktree.Rebased, ""
+	}
+	outcome, detail := worktree.Failed, firstGitLine(rebaseErr)
+	if unmerged, err := git.Unmerged(ctx, a.git, dir); err == nil && unmerged {
+		outcome, detail = worktree.Conflict, ""
+	}
+	if op, err := git.InProgress(ctx, a.git, dir); err == nil && op == "rebase" {
+		if err := git.RebaseAbort(ctx, a.git, dir); err != nil {
+			outcome = worktree.Failed
+			detail = fmt.Sprintf("cannot abort the rebase (%s); run \"git rebase --abort\" in %s", firstGitLine(err), dir)
+		}
+	}
+	return outcome, detail
 }
 
 // syncReport is the outcome of wt sync once the loop is over: nil when every

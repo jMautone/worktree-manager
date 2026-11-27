@@ -154,7 +154,7 @@ func (a *app) rootCommand() *cobra.Command {
 	root.Flags().BoolVar(&a.version, "version", false, "print the version")
 
 	root.SetHelpCommand(a.helpCommand())
-	root.AddCommand(a.listCommand(), a.cdCommand(), a.pathCommand(), a.reposCommand(), a.createCommand(), a.removeCommand(), a.lockCommand(), a.unlockCommand(), a.pruneCommand(), a.eachCommand(), a.syncCommand(), a.configCommand(), a.hookCommand(), a.shellCommand(), a.versionCommand(), a.runHooksCommand())
+	root.AddCommand(a.listCommand(), a.cdCommand(), a.pathCommand(), a.reposCommand(), a.createCommand(), a.removeCommand(), a.lockCommand(), a.unlockCommand(), a.pruneCommand(), a.eachCommand(), a.syncCommand(), a.mergeCommand(), a.configCommand(), a.hookCommand(), a.shellCommand(), a.versionCommand(), a.runHooksCommand())
 	return root
 }
 
