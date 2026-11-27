@@ -22,7 +22,8 @@ minor version:
 | M3 | `0.3.0` |
 | M4 | `0.4.0` |
 | M5 | `1.0.0` |
-| M6 (optional) | `1.1.0` |
+| M6 | `1.1.0` |
+| M7 (optional) | `1.2.0` |
 
 - Every change or fix merged to `main` publishes a pre-release of the **open
   minor**: `v0.1.0-alpha.1`, `v0.1.0-alpha.2`, and so on.

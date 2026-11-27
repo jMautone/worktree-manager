@@ -4,6 +4,8 @@
 - **Estado**: aceptada
 - **Antecedente**: [0001-de-cero-en-go.md](0001-de-cero-en-go.md)
 
+> **Nota (2026-11-27)**: [0003-orquestacion-de-sesiones.md](0003-orquestacion-de-sesiones.md) reordena el roadmap desde M5. M5 (`1.0.0`) pasa a incluir sesiones, M6 (`1.1.0`) es Orquestación y deja de ser opcional, y lo que era M6 pasa a un M7 opcional (`1.2.0`). La tabla de abajo se actualizó; `Milestones` en `tools/relcheck` se extiende antes de publicar `v1.1.0`.
+
 ## Contexto
 
 Hasta `walking-skeleton` el repo no tenía una convención explícita, y se notaba:
@@ -20,7 +22,7 @@ La línea PowerShell estaba en el tag `v0.9.0` y la rama `v0.9.x` (ver 0001).
 
 ### Versiones
 
-SemVer. **Cada milestone es un minor**; `v1.0.0` sale cuando están hechos M1 a M5. M6 es opcional (`product.md` §10, riesgos), así que no condiciona la 1.0.
+SemVer. **Cada milestone es un minor**; `v1.0.0` sale cuando están hechos M1 a M5. M6 y M7 son posteriores a la 1.0, así que no la condicionan; M7 es opcional (`product.md` §10, riesgos).
 
 | Milestone | Versión |
 |---|---|
@@ -29,7 +31,8 @@ SemVer. **Cada milestone es un minor**; `v1.0.0` sale cuando están hechos M1 a 
 | M3 | `0.3.0` |
 | M4 | `0.4.0` |
 | M5 | `1.0.0` |
-| M6 (opcional) | `1.1.0` |
+| M6 | `1.1.0` |
+| M7 (opcional) | `1.2.0` |
 
 - Cada change o fix mergeado a `main` publica una pre-release `vX.Y.0-alpha.N` del **minor abierto**, con `N` consecutivo desde 1.
 - Cerrar un milestone publica `vX.Y.0`, que pasa a ser *latest*.
@@ -101,7 +104,7 @@ Cada versión publicada es un GitHub Release con:
 - en una alpha: pre-release, con notas generadas agrupando los títulos desde la versión anterior en *Features*, *Fixes* y *Other*;
 - en un final: *latest*, con la sección `[X.Y.0]` de `CHANGELOG.md` como notas.
 
-La distribución por brew, scoop y winget sigue siendo M6.
+La distribución por brew, scoop y winget sigue siendo del último milestone, M7 desde [0003](0003-orquestacion-de-sesiones.md).
 
 ### CHANGELOG
 
