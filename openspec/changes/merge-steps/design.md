@@ -88,7 +88,7 @@ Alternativa descartada: que `wt` corra `git var GIT_EDITOR` y lance el editor é
 
 ### D4. La terminal
 
-`Env` suma `StdinTTY bool`, que `cmd/git-wt` llena con `term.IsTerminal(os.Stdin)`. `Terminal` de D1 es `StdinTTY && !json`. Los tests in-process lo ponen en `true` y usan un `GIT_EDITOR` de prueba: un script que escribe, vacía o copia el archivo que recibe (un `.cmd` en Windows, ver tareas).
+`Env` suma `StdinTTY bool`, que `cmd/git-wt` llena con `term.IsTerminal(os.Stdin)`. `Terminal` de D1 es `StdinTTY && !json`. Los tests in-process lo ponen en `true` y usan un `GIT_EDITOR` de prueba: una función de shell que escribe, vacía o copia el archivo que recibe. git corre su editor con su propio `sh` en los tres OS (Git for Windows trae uno), así que el mismo `GIT_EDITOR` sirve también en Windows, sin un `.cmd`.
 
 ### D5. El mensaje en un solo lugar
 

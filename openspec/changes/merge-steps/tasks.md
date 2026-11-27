@@ -1,6 +1,6 @@
 # Tasks
 
-Las tareas **[Windows]** se cierran con el CI de `windows-latest` o a mano en Windows, nunca solo desde macOS. Los tests puros corren en cualquier OS. Los tests in-process corren contra repos git reales en directorios temporales, con los helpers de `sync_test.go` y `merge_test.go` (`syncRepo`, `commitIn`, `h.head`, `h.contains`, `h.rebasing`), más un `GIT_EDITOR` de prueba (D4): un script `sh` en macOS y Linux, un `.cmd` en Windows, que escribe, vacía o copia el archivo que recibe.
+Las tareas **[Windows]** se cierran con el CI de `windows-latest` o a mano en Windows, nunca solo desde macOS. Los tests puros corren en cualquier OS. Los tests in-process corren contra repos git reales en directorios temporales, con los helpers de `sync_test.go` y `merge_test.go` (`syncRepo`, `commitIn`, `h.head`, `h.contains`, `h.rebasing`), más un `GIT_EDITOR` de prueba (D4): una función de shell, que git corre con su propio `sh` en los tres OS, que escribe, vacía o copia el archivo que recibe.
 
 ## 1. Decisión pura (`internal/worktree`, `internal/hook`)
 
@@ -45,15 +45,15 @@ Las tareas **[Windows]** se cierran con el CI de `windows-latest` o a mano en Wi
 
 ## 6. Windows
 
-- [ ] 6.1 **[Windows]** Correr en el CI de `windows-latest` los tests de 2.x, 4.x y 5.x con el `GIT_EDITOR` `.cmd`. Verificar que pasan sin tests salteados en Windows salvo el e2e de SIGINT.
+- [ ] 6.1 **[Windows]** Correr en el CI de `windows-latest` los tests de 2.x, 4.x y 5.x con el mismo `GIT_EDITOR`. Verificar que pasan sin tests salteados en Windows salvo el e2e de SIGINT.
 - [ ] 6.2 **[Windows]** Verificar a mano en Windows Terminal con PowerShell 7.4, a través de la función de shell, que `wt step commit` sin `-m` abre el editor que tiene configurado Git for Windows, que guardar vacío no commitea nada, y que `wt merge` desde un worktree sucio commitea, mergea y deja el shell en el principal. Anotar el resultado en el PR.
 
 ## 7. Docs e integración
 
-- [ ] 7.1 Actualizar `docs/design/product.md` §4 (las filas de `wt merge`, con `--squash`, `-m` y `--no-commit`, y de `wt step`, con `-m`, `--no-hooks` y que `push` no es `git push`) y §5 (los eventos de `commit`, que dejan de ser futuros), y la lista de comandos de `README.md`. Verificar con `grep -n "wt step\|wt merge\|pre-commit" docs/design/product.md README.md`.
+- [x] 7.1 _(También el help de `wt config` y `wt hook`, que no listaban los eventos de merge.)_ Actualizar `docs/design/product.md` §4 (las filas de `wt merge`, con `--squash`, `-m` y `--no-commit`, y de `wt step`, con `-m`, `--no-hooks` y que `push` no es `git push`) y §5 (los eventos de `commit`, que dejan de ser futuros), y la lista de comandos de `README.md`. Verificar con `grep -n "wt step\|wt merge\|pre-commit" docs/design/product.md README.md`.
 - [ ] 7.2 Verificar a mano en macOS, con el binario de la rama (`go install ./cmd/git-wt`) y la función de shell, en un worktree con tres commits y un archivo modificado: `wt merge --squash` abre el editor con los tres mensajes, y al guardar mergea un solo commit, borra el worktree y deja el shell en el principal. Anotar el resultado en el PR.
-- [ ] 7.3 Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` (CLI 1.13.0) y la cross-compilación de los 5 targets de `.goreleaser.yaml`. Verificar que gofmt no imprime nada y que no hay fallos nuevos.
-- [ ] 7.4 Integrar el change:
+- [x] 7.3 _(Corrido en Linux: gofmt, vet (también con `GOOS=windows`), `go test -race`, validate 1.13.0 sin fallos y los 5 targets. macOS lo cubre el CI.)_ Correr en macOS `gofmt -l .`, `go vet ./...`, `go test -race ./...`, `openspec validate --all --strict` (CLI 1.13.0) y la cross-compilación de los 5 targets de `.goreleaser.yaml`. Verificar que gofmt no imprime nada y que no hay fallos nuevos.
+- [x] 7.4 _(El PR #32 ya tiene el título; `relcheck` lo rechaza hasta que salga `v0.3.0`.)_ Integrar el change:
   - Sumar en `## [Unreleased]` de `CHANGELOG.md`: en *Added*, `wt step commit|squash|rebase|push`, el esquema `wt.step.v1`, `wt merge --squash`, `-m` y `--no-commit`, y los eventos `pre-commit` y `post-commit`; en *Changed*, que `wt merge` commitea lo pendiente en vez de frenar con exit 5.
   - Abrir el PR titulado `feat(merge-steps): add wt step and commit in wt merge [v0.4.0-alpha.1]`.
 

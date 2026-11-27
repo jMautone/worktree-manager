@@ -86,8 +86,34 @@ pre-release of it; see [CONTRIBUTING.md](CONTRIBUTING.md).
   `post-merge`, which runs in the background in the main worktree, with the
   keys `hooks.pre-merge` and `hooks.post-merge` and the variable `{target}`,
   only in those two events.
+- `wt step commit|squash|rebase|push [<target>]` runs one step of
+  `wt merge` on the current worktree, and nothing else: `commit` commits
+  every pending change (modified and untracked files, not the ignored
+  ones); `squash` replaces the branch's commits that the target does not
+  contain, and the pending changes, by one commit on their merge base;
+  `rebase` rebases onto the target as `wt merge` does; `push` fast-forwards
+  the local target between `pre-merge` and `post-merge`, and never runs
+  `git push`. A step with nothing to do says so and exits 0. With `--json`,
+  the schema `wt.step.v1`.
+- The commit message of `wt step commit`, `wt step squash` and `wt merge`
+  is `-m <msg>`, or what the user writes in git's own editor, which opens
+  with the squashed messages for a squash. An empty message commits
+  nothing (exit 1); without a terminal, or with `--json`, `-m` is needed
+  (exit 2). When a commit fails or is interrupted, the branch and the index
+  are left as they were. The repository's own git hooks run.
+- `wt merge --squash`, which squashes the branch before rebasing, `-m`, and
+  `--no-commit`, which keeps the M3 behavior: pending changes block the
+  merge with exit 5. `wt.merge.v1` gains `committed` and `squashed`.
+- The hook events `pre-commit`, which blocks and runs before the message is
+  asked for, and `post-commit`, which runs in the background, in the main
+  worktree when `wt merge` removes the worktree, with the keys
+  `hooks.pre-commit` and `hooks.post-commit`.
 
 ### Changed
+
+- `wt merge` commits the pending changes of the worktree, between
+  `pre-commit` and `post-commit`, instead of stopping with exit 5.
+  `--no-commit` stops as before.
 
 - In every template, `worktree_path` included, `{{` is a literal `{` and
   `}}` a literal `}`, as in `awk '{{print $1}}'`. Both were errors before,
