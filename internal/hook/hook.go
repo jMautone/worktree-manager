@@ -19,16 +19,18 @@ const (
 	PostRemove Event = "post-remove"
 	PreMerge   Event = "pre-merge"
 	PostMerge  Event = "post-merge"
+	PreCommit  Event = "pre-commit"
+	PostCommit Event = "post-commit"
 )
 
 // Events are every event, in the order the configuration lists them.
-var Events = []Event{PreCreate, PostCreate, PreCD, PostCD, PreRemove, PostRemove, PreMerge, PostMerge}
+var Events = []Event{PreCreate, PostCreate, PreCD, PostCD, PreRemove, PostRemove, PreMerge, PostMerge, PreCommit, PostCommit}
 
 // Background reports whether wt starts the event's commands detached and
-// does not wait for them: post-cd, post-remove and post-merge. Every other
-// event blocks.
+// does not wait for them: post-cd, post-remove, post-merge and
+// post-commit. Every other event blocks.
 func (e Event) Background() bool {
-	return e == PostCD || e == PostRemove || e == PostMerge
+	return e == PostCD || e == PostRemove || e == PostMerge || e == PostCommit
 }
 
 // Key is the configuration key holding the event's commands.

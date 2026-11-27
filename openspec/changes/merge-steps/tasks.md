@@ -4,37 +4,37 @@ Las tareas **[Windows]** se cierran con el CI de `windows-latest` o a mano en Wi
 
 ## 1. Decisión pura (`internal/worktree`, `internal/hook`)
 
-- [ ] 1.1 Implementar `StepKind`, `StepState`, `CheckStep`, `StepNoop`, `NeedsMessage`, `SquashMessage` y `StepLine` en `internal/worktree/step.go` según D1. Verificar con tests de tabla:
+- [x] 1.1 Implementar `StepKind`, `StepState`, `CheckStep`, `StepNoop`, `NeedsMessage`, `SquashMessage` y `StepLine` en `internal/worktree/step.go` según D1. Verificar con tests de tabla:
   - `CheckStep` respeta el orden de la spec: en curso, detached, target (3 y 2), cambios versionados para `rebase` y `push` (5, con el hint `wt step commit`), `push` sin `Contains` (5, `feat does not contain main`, hint `wt step rebase`);
   - `StepNoop`: `commit` sin `Pending`; `squash` con `Own` 0 o 1 y sin `Pending`; `rebase` con `Contains`; y que `squash` con `Own` 0 y `Pending` no es noop;
   - `NeedsMessage` es falso con `-m`, en `rebase` y `push`, y en un noop;
   - `SquashMessage` pone el comentario con la cuenta y los mensajes del más viejo al más nuevo, separados por una línea en blanco;
   - `StepLine` da las líneas exactas de la spec, con y sin `dryRun`.
-- [ ] 1.2 Cambiar `CheckMerge` según D1: `Changes` bloquea solo con `NoCommit`. Verificar con los tests de tabla de `merge_test.go` ampliados: con cambios y sin `NoCommit` da nil; con `NoCommit`, el exit 5 de siempre.
-- [ ] 1.3 Sumar `PreCommit` y `PostCommit` a `internal/hook` según D8. Verificar con `TestVars`, `TestBackground` y `TestKey` ampliados, y con los tests de `config-layers`: `wt config get hooks.pre-commit` no imprime nada, y el escenario "Event that does not exist" con `post-push`.
+- [x] 1.2 Cambiar `CheckMerge` según D1: `Changes` bloquea solo con `NoCommit`. Verificar con los tests de tabla de `merge_test.go` ampliados: con cambios y sin `NoCommit` da nil; con `NoCommit`, el exit 5 de siempre.
+- [x] 1.3 Sumar `PreCommit` y `PostCommit` a `internal/hook` según D8. Verificar con `TestVars`, `TestBackground` y `TestKey` ampliados, y con los tests de `config-layers`: `wt config get hooks.pre-commit` no imprime nada, y el escenario "Event that does not exist" con `post-push`.
 
 ## 2. Commit con vuelta atrás (`internal/git`)
 
-- [ ] 2.1 Implementar en `internal/git/commit.go` la foto (`write-tree` y HEAD), el stage (`add -A`), el commit con `-m` y la vuelta atrás según D2. Verificar con tests sobre repos reales:
+- [x] 2.1 Implementar en `internal/git/commit.go` la foto (`write-tree` y HEAD), el stage (`add -A`), el commit con `-m` y la vuelta atrás según D2. Verificar con tests sobre repos reales:
   - un archivo modificado y uno sin versionar quedan en el commit, y un ignorado no;
   - con un hook nativo `commit-msg` que sale con 1: HEAD no se mueve y el index vuelve a la foto, con un cambio stageado que sigue stageado y otro sin stagear que sigue sin stagear;
   - squash: con tres commits propios, el commit nuevo tiene como padre al merge-base y los archivos del HEAD viejo; con el `commit-msg` que falla, la rama vuelve al HEAD viejo.
-- [ ] 2.2 Implementar el commit con editor según D3 (`git commit` y `git commit --edit -F`, en foreground), y la distinción entre mensaje vacío y fallo de git leyendo `COMMIT_EDITMSG` con `git stripspace`. Verificar con tests sobre repos reales con el `GIT_EDITOR` de prueba: un editor que escribe da ese mensaje; uno que vacía da el error de mensaje vacío y la vuelta atrás; uno que copia el archivo muestra el mensaje inicial del squash; y un `COMMIT_EDITMSG` viejo no se confunde con un mensaje nuevo.
+- [x] 2.2 Implementar el commit con editor según D3 (`git commit` y `git commit --edit -F`, en foreground), y la distinción entre mensaje vacío y fallo de git leyendo `COMMIT_EDITMSG` con `git stripspace`. Verificar con tests sobre repos reales con el `GIT_EDITOR` de prueba: un editor que escribe da ese mensaje; uno que vacía da el error de mensaje vacío y la vuelta atrás; uno que copia el archivo muestra el mensaje inicial del squash; y un `COMMIT_EDITMSG` viejo no se confunde con un mensaje nuevo.
 
 ## 3. Extracciones sin cambio de comportamiento (`internal/cli`)
 
-- [ ] 3.1 Sumar `StdinTTY` a `Env` y llenarlo en `cmd/git-wt/main.go` según D4. Verificar con los tests existentes en verde y un test de `main_test.go` que, con stdin redirigido, lo deja en falso.
-- [ ] 3.2 Extraer `a.mergeTarget` (el fast-forward con sus líneas) de `a.merge` según D6. Verificar con los tests existentes de `wt merge` en verde, sin tocarlos.
+- [x] 3.1 Sumar `StdinTTY` a `Env` y llenarlo en `cmd/git-wt/main.go` según D4. Verificar con los tests existentes en verde y un test de `main_test.go` que, con stdin redirigido, lo deja en falso.
+- [x] 3.2 Extraer `a.mergeTarget` (el fast-forward con sus líneas) de `a.merge` según D6. Verificar con los tests existentes de `wt merge` en verde, sin tocarlos.
 
 ## 4. `wt step` (`merge-steps`)
 
-- [ ] 4.1 Crear `internal/cli/step.go` con `wt step` y sus cuatro subcomandos, sus flags y su help (D6), y registrarlo en `run.go`. El help de `push` dice que no hace `git push`, y el de `squash` cómo volver con `ORIG_HEAD`. Verificar con tests in-process "No subcommand", "Unknown subcommand", "Commit takes no target", "Rebase runs no hook" y el test de help existente.
-- [ ] 4.2 Implementar el plan de `a.planStep` y los chequeos. Verificar con tests in-process "Main worktree", "Rebase in progress", HEAD detached (exit 5), fuera de un repo (exit 3), "Default target", "Target not found", "Modified file", "Untracked file", "Behind the target" y "Script without a message".
-- [ ] 4.3 Implementar `commit` y `squash` con sus hooks. Verificar con tests in-process "Untracked and ignored files", "Commit with a message", "Nothing to commit", "Three commits", "Commits and pending changes", "One commit", "Message from the editor", "Messages of the branch", "Editor saves nothing", "No message needed", "Native hook rejects the commit", "Squash rejected" y "pre-commit fails"; y de `hooks`, "Order of the commit events" y "Commit without hooks".
-- [ ] 4.4 Implementar `rebase` y `push`. Verificar con tests in-process "Rebased", "Conflict" (con `h.rebasing` falso) y "Target moved, worktree kept", y que `push` corre `pre-merge` y `post-merge`.
-- [ ] 4.5 Implementar `--dry-run` y `--json` (`wt.step.v1`). Verificar con tests in-process "Preview of a squash", "Dry run needs no message", "Commit as JSON", y que `--dry-run` no mueve ninguna rama ni toca el index.
-- [ ] 4.6 Implementar las completions. Verificar con `__complete` "Subcommands" y "Targets of a squash", y que fuera de un repo no ofrece nada y no escribe en stderr.
-- [ ] 4.7 Sumar el Ctrl-C de D9. Verificar con un test e2e en `cmd/git-wt/interrupt_test.go` (`//go:build !windows`) que manda SIGINT a `git-wt` mientras un `GIT_EDITOR` de prueba espera: escenario "Interrupt in the editor (macOS, Linux)".
+- [x] 4.1 Crear `internal/cli/step.go` con `wt step` y sus cuatro subcomandos, sus flags y su help (D6), y registrarlo en `run.go`. El help de `push` dice que no hace `git push`, y el de `squash` cómo volver con `ORIG_HEAD`. Verificar con tests in-process "No subcommand", "Unknown subcommand", "Commit takes no target", "Rebase runs no hook" y el test de help existente.
+- [x] 4.2 Implementar el plan de `a.planStep` y los chequeos. Verificar con tests in-process "Main worktree", "Rebase in progress", HEAD detached (exit 5), fuera de un repo (exit 3), "Default target", "Target not found", "Modified file", "Untracked file", "Behind the target" y "Script without a message".
+- [x] 4.3 Implementar `commit` y `squash` con sus hooks. Verificar con tests in-process "Untracked and ignored files", "Commit with a message", "Nothing to commit", "Three commits", "Commits and pending changes", "One commit", "Message from the editor", "Messages of the branch", "Editor saves nothing", "No message needed", "Native hook rejects the commit", "Squash rejected" y "pre-commit fails"; y de `hooks`, "Order of the commit events" y "Commit without hooks".
+- [x] 4.4 Implementar `rebase` y `push`. Verificar con tests in-process "Rebased", "Conflict" (con `h.rebasing` falso) y "Target moved, worktree kept", y que `push` corre `pre-merge` y `post-merge`.
+- [x] 4.5 Implementar `--dry-run` y `--json` (`wt.step.v1`). Verificar con tests in-process "Preview of a squash", "Dry run needs no message", "Commit as JSON", y que `--dry-run` no mueve ninguna rama ni toca el index.
+- [x] 4.6 Implementar las completions. Verificar con `__complete` "Subcommands" y "Targets of a squash", y que fuera de un repo no ofrece nada y no escribe en stderr.
+- [x] 4.7 _(El stdin del test no es una terminal, así que el mensaje va con `-m` y un hook `commit-msg` de git que tarda hace de editor: la señal llega igual mientras git commitea. `TestInterruptSquash`.)_ Sumar el Ctrl-C de D9. Verificar con un test e2e en `cmd/git-wt/interrupt_test.go` (`//go:build !windows`) que manda SIGINT a `git-wt` mientras un `GIT_EDITOR` de prueba espera: escenario "Interrupt in the editor (macOS, Linux)".
 
 ## 5. `wt merge` compone los pasos (`merge-worktree`)
 

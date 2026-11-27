@@ -292,3 +292,61 @@ func TestInterruptMerge(t *testing.T) {
 		t.Errorf("stderr = %q", stderr.String())
 	}
 }
+
+// Scenario "Interrupt in the editor (macOS, Linux)" of merge-steps. The
+// standard input of the test is not a terminal, so the message comes from
+// -m, and a commit-msg hook of git that takes a second stands for the
+// editor: either way the interrupt arrives while git commits.
+func TestInterruptSquash(t *testing.T) {
+	sb := testutil.New(t)
+	repo := sb.Path("repo")
+	sb.InitRepo(repo)
+	feat := sb.Path("repo.worktrees", "feat")
+	sb.AddWorktree(repo, feat, "feat")
+	sb.Commit(feat, "one")
+	sb.Commit(feat, "two")
+	featHead := sb.Commit(feat, "three")
+
+	started, finished := sb.Path("started"), sb.Path("finished")
+	hooks := sb.Path("hooks")
+	sb.WriteFile(filepath.Join(hooks, "commit-msg"), "#!/bin/sh\ntouch '"+started+"'\nsleep 1\ntouch '"+finished+"'\n")
+	if err := os.Chmod(filepath.Join(hooks, "commit-msg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sb.Git(repo, "config", "core.hooksPath", hooks)
+
+	cmd := exec.Command(filepath.Join(binDir, exeName()), "step", "squash", "main", "-m", "all")
+	cmd.Dir = feat
+	cmd.Env = sb.Environ()
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for !fileExists(started) {
+		if time.Now().After(deadline) {
+			_ = cmd.Process.Kill()
+			t.Fatal("the commit did not start")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatal(err)
+	}
+
+	err := cmd.Wait()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) || ee.ExitCode() != 130 {
+		t.Fatalf("git-wt: %v, want exit status 130\nstderr:\n%s", err, stderr.String())
+	}
+	if !fileExists(finished) {
+		t.Error("git-wt exited before git did")
+	}
+	if got := sb.Git(feat, "rev-parse", "HEAD"); got != featHead {
+		t.Errorf("feat = %s, want %s", got, featHead)
+	}
+	if got := sb.Git(feat, "status", "--porcelain"); got != "" {
+		t.Errorf("status = %q, want clean", got)
+	}
+}

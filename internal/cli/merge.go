@@ -97,12 +97,7 @@ func (a *app) mergeCommand() *cobra.Command {
 // mergePlan is everything wt merge read and decided before its first
 // effect.
 type mergePlan struct {
-	w         worktree.Worktree
-	main      worktree.Worktree
-	gitDir    string
-	target    string
-	old       string // the target's commit
-	targetDir string // the worktree that has the target checked out, or ""
+	closing
 	rebase    bool
 	pre, post hook.Run
 	remove    *worktree.RemovePlan // nil with --no-remove
@@ -112,82 +107,21 @@ type mergePlan struct {
 // order of the spec: nothing changes until it returns without error.
 func (a *app) planMerge(ctx context.Context, target string, f mergeFlags) (mergePlan, error) {
 	var p mergePlan
-	dir, err := a.workdir()
+	early := func(res resolved) error {
+		if f.noRemove {
+			return nil
+		}
+		return removeBlocked(worktree.CheckRemovable(*res.Worktree, res.Repo.worktrees, a.env.GOOS))
+	}
+	c, err := a.readClosing(ctx, target, true, "cannot merge the main worktree", early)
 	if err != nil {
 		return p, err
 	}
-	res, cfg, err := a.resolve(ctx, dir, "@", modeWorktree)
-	if err != nil {
-		return p, err
-	}
-	w := *res.Worktree
-	if w.Main || w.Bare {
-		return p, &Error{Code: ExitUsage, Msg: "cannot merge the main worktree"}
-	}
-	if !f.noRemove {
-		if err := removeBlocked(worktree.CheckRemovable(w, res.Repo.worktrees, a.env.GOOS)); err != nil {
-			return p, err
-		}
-	}
-	main := mainWorktree(res.Repo)
-	p.w, p.main, p.gitDir = w, main, res.GitDir
-
-	if target == "" {
-		base := configString(cfg, "default_base")
-		if base == "" {
-			if base, err = a.defaultBranch(ctx, res.GitDir, main); err != nil {
-				return p, err
-			}
-		}
-		remotes, err := git.Remotes(ctx, a.git, res.GitDir)
-		if err != nil {
-			return p, gitError(err)
-		}
-		target = worktree.MergeTarget(base, remotes)
-	}
-	p.target = target
-
-	s := worktree.MergeState{Detached: w.Detached || w.Branch == "", NoRebase: f.noRebase}
-	if s.InProgress, err = git.InProgress(ctx, a.git, w.Path); err != nil {
-		return p, gitError(err)
-	}
-	if !strings.HasPrefix(target, "-") {
-		p.old, err = git.ResolveCommit(ctx, a.git, res.GitDir, "refs/heads/"+target)
-		switch {
-		case errors.Is(err, git.ErrNoRevision):
-		case err != nil:
-			return p, gitError(err)
-		default:
-			s.TargetFound = true
-		}
-	}
-	s.TargetIsOwn = s.TargetFound && target == w.Branch
-	if s.InProgress == "" && !s.Detached && s.TargetFound && !s.TargetIsOwn {
-		entries, err := git.Status(ctx, a.git, w.Path)
-		if err != nil {
-			return p, gitError(err)
-		}
-		s.Changes = len(entries) > 0
-		for _, o := range res.Repo.worktrees {
-			if o.Bare || o.Detached || o.Branch != target {
-				continue
-			}
-			p.targetDir = o.Path
-			if info, err := os.Stat(o.Path); err != nil || !info.IsDir() {
-				break
-			}
-			dirty, err := git.TrackedChanges(ctx, a.git, o.Path)
-			if err != nil {
-				return p, gitError(err)
-			}
-			if dirty {
-				s.TargetDirty = o.Path
-			}
-		}
-		if s.Contains, err = git.IsAncestor(ctx, a.git, w.Path, p.old, w.Head); err != nil {
-			return p, gitError(err)
-		}
-	}
+	p.closing = c
+	res, cfg, w, main, target := c.res, c.cfg, c.w, c.main, c.target
+	s := c.state
+	s.NoRebase = f.noRebase
+	s.NoCommit = true
 	if b := worktree.CheckMerge(w.Branch, target, s); b != nil {
 		return p, &Error{Code: b.Code, Msg: b.Msg, Hints: b.Hints}
 	}
@@ -272,27 +206,15 @@ func (a *app) merge(ctx context.Context, p mergePlan, interrupts <-chan os.Signa
 		return interrupted(p.rebase)
 	}
 
-	already, err := git.IsAncestor(ctx, a.git, w.Path, head, p.old)
+	moved, err := a.moveTarget(ctx, p.closing, head)
 	if err != nil {
-		return gitError(err)
+		var e *Error
+		if p.rebase && errors.As(err, &e) {
+			e.Hints = append(e.Hints, rebasedHint)
+		}
+		return err
 	}
-	if already {
-		head = p.old
-		if err := a.mergeLine(worktree.MergeAlready, p); err != nil {
-			return err
-		}
-	} else {
-		if err := git.FastForward(ctx, a.git, p.gitDir, p.target, p.old, head, p.targetDir); err != nil {
-			e := &Error{Code: ExitError, Msg: fmt.Sprintf("cannot move %s to %s: %s", p.target, branch, firstGitLine(err))}
-			if p.rebase {
-				e.Hints = append(e.Hints, rebasedHint)
-			}
-			return e
-		}
-		if err := a.mergeLine(worktree.MergeMerged, p); err != nil {
-			return err
-		}
-	}
+	head = moved
 
 	if p.remove != nil {
 		report := func(plan worktree.RemovePlan) error {

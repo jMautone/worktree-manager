@@ -212,3 +212,23 @@ func fileExists(p string) bool {
 	_, err := os.Stat(p)
 	return err == nil
 }
+
+// A standard input that is not a terminal leaves git no editor to open: a
+// commit without -m is a usage error, before anything changes. Scenario
+// "Script without a message" of merge-steps, with the real stdin.
+func TestCommitWithoutATerminal(t *testing.T) {
+	sb := testutil.New(t)
+	repo := sb.Path("repo")
+	sb.InitRepo(repo)
+	feat := sb.Path("feat")
+	sb.AddWorktree(repo, feat, "feat")
+	sb.WriteFile(filepath.Join(feat, "new.txt"), "new\n")
+	head := sb.Git(feat, "rev-parse", "HEAD")
+	r := wt(t, sb, feat, "step", "commit")
+	if r.code != 2 || !strings.HasPrefix(r.stderr, "wt: a commit message is needed") {
+		t.Errorf("exit %d, stderr %q; want 2 and the message", r.code, r.stderr)
+	}
+	if got := sb.Git(feat, "rev-parse", "HEAD"); got != head {
+		t.Error("feat moved")
+	}
+}

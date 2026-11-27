@@ -19,6 +19,7 @@ type MergeState struct {
 	Detached    bool
 	InProgress  string // "rebase", "merge", "cherry-pick", "revert" or ""
 	Changes     bool   // changes to tracked files or untracked files
+	NoCommit    bool   // --no-commit: pending changes block instead of being committed
 	TargetFound bool   // the target is a local branch
 	TargetIsOwn bool   // the target is the worktree's own branch
 	TargetDirty string // the path of the worktree that has the target checked out with changes, or ""
@@ -47,8 +48,8 @@ func CheckMerge(branch, target string, s MergeState) *MergeBlock {
 		return &MergeBlock{Code: 3, Msg: fmt.Sprintf("target %q is not a local branch", target)}
 	case s.TargetIsOwn:
 		return &MergeBlock{Code: 2, Msg: fmt.Sprintf("cannot merge %s into itself", branch)}
-	case s.Changes:
-		return &MergeBlock{Code: 5, Msg: "the worktree has modified or untracked files", Hints: []string{"commit or stash them first"}}
+	case s.Changes && s.NoCommit:
+		return &MergeBlock{Code: 5, Msg: "the worktree has modified or untracked files", Hints: []string{"commit them first, or run it without --no-commit"}}
 	case s.TargetDirty != "":
 		return &MergeBlock{Code: 5, Msg: fmt.Sprintf("%s is checked out in %s, which has uncommitted changes", target, s.TargetDirty)}
 	case s.NoRebase && !s.Contains:

@@ -34,8 +34,11 @@ type Env struct {
 	GOOS  string // runtime.GOOS in production
 	// IsTTY reports whether stdout is a terminal that renders ANSI sequences
 	// (on Windows, one where virtual terminal processing could be enabled).
-	IsTTY   bool
-	Version string
+	IsTTY bool
+	// StdinTTY reports whether stdin is a terminal, where git can open its
+	// editor to ask for a commit message.
+	StdinTTY bool
+	Version  string
 }
 
 // app holds the state of one run: the environment and the global flags.
@@ -154,7 +157,7 @@ func (a *app) rootCommand() *cobra.Command {
 	root.Flags().BoolVar(&a.version, "version", false, "print the version")
 
 	root.SetHelpCommand(a.helpCommand())
-	root.AddCommand(a.listCommand(), a.cdCommand(), a.pathCommand(), a.reposCommand(), a.createCommand(), a.removeCommand(), a.lockCommand(), a.unlockCommand(), a.pruneCommand(), a.eachCommand(), a.syncCommand(), a.mergeCommand(), a.configCommand(), a.hookCommand(), a.shellCommand(), a.versionCommand(), a.runHooksCommand())
+	root.AddCommand(a.listCommand(), a.cdCommand(), a.pathCommand(), a.reposCommand(), a.createCommand(), a.removeCommand(), a.lockCommand(), a.unlockCommand(), a.pruneCommand(), a.eachCommand(), a.syncCommand(), a.mergeCommand(), a.stepCommand(), a.configCommand(), a.hookCommand(), a.shellCommand(), a.versionCommand(), a.runHooksCommand())
 	return root
 }
 

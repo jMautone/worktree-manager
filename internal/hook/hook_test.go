@@ -28,7 +28,7 @@ func TestVars(t *testing.T) {
 
 func TestBackground(t *testing.T) {
 	for _, e := range Events {
-		if want := e == PostCD || e == PostRemove || e == PostMerge; e.Background() != want {
+		if want := e == PostCD || e == PostRemove || e == PostMerge || e == PostCommit; e.Background() != want {
 			t.Errorf("%s.Background() = %v, want %v", e, e.Background(), want)
 		}
 	}
@@ -40,6 +40,12 @@ func TestKey(t *testing.T) {
 	}
 	if got := PreMerge.Key(); got != "hooks.pre-merge" {
 		t.Errorf("Key() = %q", got)
+	}
+	if got := PostCommit.Key(); got != "hooks.post-commit" {
+		t.Errorf("Key() = %q", got)
+	}
+	if !slices.Contains(Events, PreCommit) || !slices.Contains(Events, PostCommit) {
+		t.Errorf("Events = %v, missing the commit events", Events)
 	}
 }
 
