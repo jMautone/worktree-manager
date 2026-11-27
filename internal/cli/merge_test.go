@@ -138,7 +138,7 @@ func TestMergeWithChanges(t *testing.T) {
 			repo, feat := mergeRepo(h)
 			main, own := h.head(repo), h.head(feat)
 			h.sb.WriteFile(filepath.Join(feat, tc.file), "changed\n")
-			r := h.run("merge")
+			r := h.run("merge", "--no-commit")
 			r.mustCode(t, 5)
 			if h.head(repo) != main || h.head(feat) != own {
 				t.Error("a branch moved")
@@ -447,6 +447,9 @@ func TestMergeJSON(t *testing.T) {
 	}
 	if doc["head"] != h.head(repo) || doc["name"] != "feat" || doc["path"] != feat {
 		t.Errorf("document = %v, want head %s", doc, h.head(repo))
+	}
+	if doc["committed"] != false || doc["squashed"] != false {
+		t.Errorf("document = %v, want committed and squashed false", doc)
 	}
 }
 

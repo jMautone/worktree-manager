@@ -38,10 +38,10 @@ Las tareas **[Windows]** se cierran con el CI de `windows-latest` o a mano en Wi
 
 ## 5. `wt merge` compone los pasos (`merge-worktree`)
 
-- [ ] 5.1 Sumar `--squash`, `-m` y `--no-commit` a `wt merge`, y `NeedsMessage` y las aprobaciones de commit a `a.planMerge`, según D7. Verificar con tests in-process "Squash without committing", "Uncommitted change" (con `--no-commit`), "Target checked out with changes", "Message needed in a script", y de `project-hooks-approval` "Merge checks the commit events" y "Clean merge does not check the commit events".
-- [ ] 5.2 Implementar el commit y el squash dentro de `a.merge`, con `post-commit` según D7. Verificar con tests in-process "Pending change committed and merged", "Empty message stops the merge", "Merged as one commit", "Order of the events of a merge that commits", y de `hooks` "pre-commit fails in a merge".
-- [ ] 5.3 Actualizar el dry run y `wt.merge.v1` (`committed`, `squashed`). Verificar con tests in-process "Preview of a commit" y "Merged as JSON" ampliado con los dos campos.
-- [ ] 5.4 Actualizar el help de `wt merge` (el pipeline con el paso del commit, y `--no-commit`). Verificar con el test de help existente.
+- [x] 5.1 Sumar `--squash`, `-m` y `--no-commit` a `wt merge`, y `NeedsMessage` y las aprobaciones de commit a `a.planMerge`, según D7. Verificar con tests in-process "Squash without committing", "Uncommitted change" (con `--no-commit`), "Target checked out with changes", "Message needed in a script", y de `project-hooks-approval` "Merge checks the commit events" y "Clean merge does not check the commit events".
+- [x] 5.2 Implementar el commit y el squash dentro de `a.merge`, con `post-commit` según D7. Verificar con tests in-process "Pending change committed and merged", "Empty message stops the merge", "Merged as one commit", "Order of the events of a merge that commits", y de `hooks` "pre-commit fails in a merge".
+- [x] 5.3 Actualizar el dry run y `wt.merge.v1` (`committed`, `squashed`). Verificar con tests in-process "Preview of a commit" y "Merged as JSON" ampliado con los dos campos.
+- [x] 5.4 Actualizar el help de `wt merge` (el pipeline con el paso del commit, y `--no-commit`). Verificar con el test de help existente.
 
 ## 6. Windows
 
