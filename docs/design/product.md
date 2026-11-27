@@ -294,6 +294,20 @@ Dos reglas del corte:
 - **Cada evento de hook llega con el comando que lo dispara**: `create`, `cd` y `remove` con `hooks`; `merge` con `merge-worktree`; `commit` con `merge-steps`, en M4.
 - **`merge` no escribe commits en M3**: solo mueve los que hay (rebase y fast-forward). El commit pendiente y `--squash` comparten el problema del mensaje (editor, `-m`, los mensajes de la rama, `llm-commits` en M6), y se diseñan una sola vez, con `merge-steps`. Tampoco detecta ramas squash-mergeadas: después del fast-forward la rama ya cuenta como mergeada. Esa detección la necesitan `remove` y la vista completa de `list`, y llega con `list-worktrees` en M4.
 
+### M4, desglosado en changes
+
+Cinco cortes, uno por capability de M4. `merge-steps` va primero porque cierra lo que M3 dejó afuera, y los otros cuatro van en orden de dependencia: cada uno lee lo que calcula el anterior.
+
+| Change | Entrega | Por qué en ese orden |
+|---|---|---|
+| `merge-steps` | `wt step commit\|squash\|rebase\|push [<target>]`, `wt merge` que commitea lo pendiente en vez de frenar con exit 5, `wt merge --squash`, `-m` para el mensaje (si no, el editor de git), y los eventos `pre-commit` y `post-commit`. | Es la fricción diaria que dejó M3: un worktree sucio no se puede mergear. No depende de nada de M4, y el mensaje de commit se diseña una sola vez para `commit`, `squash` y `merge`. |
+| `list-worktrees` | La vista completa de `wt list`: ahead/behind de la base y del upstream, sucio, último commit, `--full`, y la detección de ramas squash-mergeadas, que también usa `wt remove` para borrar la rama. | Es el objetivo del milestone, y la fuente del estado que leen los tres que siguen. |
+| `branch-state` | `wt mark` y `wt var`, guardados en `git config` por rama, visibles en `list` y en las plantillas. | Agrega una columna y variables sobre la tabla ya completa. `agent-integrations`, en M6, escribe ahí. |
+| `picker` | `wt cd` sin argumento abre un picker (TUI con `bubbletea`) sobre las filas de `list`, con filtro por nombre. | Es la primera TUI del proyecto: muestra lo que `list` ya calcula, con el marker. |
+| `statusline` | `wt statusline [--format <plantilla>]`: una línea con el estado del worktree actual, rápida y sin red. | Es un subconjunto de una fila de `list` con su marker, con un presupuesto de tiempo propio. Va último porque reusa los dos anteriores. |
+
+Una regla del corte: **`merge-steps` no detecta squash-merges** hechos fuera de `wt` (en GitHub, por ejemplo). Su `--squash` deja la rama con un solo commit que el fast-forward mete en el target, así que la rama queda mergeada sin necesidad de detectarla. La detección llega con `list-worktrees`.
+
 ### Definición de "listo" por milestone
 
 Un milestone no está cerrado hasta que: los tests pasan en la matrix de 3 OSes, `wt doctor` no reporta nada roto, las specs están sincronizadas a `openspec/specs/`, y **lo usaste una semana en macOS sin volver a v0.9**.
