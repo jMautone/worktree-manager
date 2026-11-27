@@ -94,7 +94,7 @@ Toda diferencia de comportamiento entre OS es **explícita**, nunca emergente: s
 | `wt config get\|set\|list\|path` | Config. |
 | `wt shell init <zsh\|bash\|fish\|pwsh>` / `wt shell install` | Shell integration y completions. |
 | `wt statusline [--format <plantilla>]` | Una sola línea con el estado del worktree actual (rama, sucio, ahead/behind, marker), rápida y sin red, para el prompt de la shell o la statusline de Claude Code. |
-| `wt agent install <claude\|codex\|copilot\|gemini\|opencode>` | Instala la integración con el agente: sus hooks llaman a `wt mark` para poner 🤖 mientras trabaja y 💬 cuando espera input, y así `list` y `dash` muestran qué agente está en qué sesión. Si el agente tiene un id de conversación propio, lo guarda en el registro para que `wt resume` lo retome. |
+| `wt agent install <claude\|codex\|copilot\|gemini\|opencode>` | Instala la integración con el agente: sus hooks llaman a `wt mark` para poner 🤖 mientras trabaja y 💬 cuando espera input, y así `list` y `dash` muestran qué agente está en qué sesión. Si el agente tiene un id de conversación propio, lo guarda en el registro para que `wt resume` lo retome. Cuando la sesión termina dejando algo colgado, el marcador lo dice: ⏸ una promesa o un TODO, ✂ un corte, 💬 una pregunta sin responder (ver `agent-loose-ends` en §7). |
 | `wt doctor` | Diagnóstico derivado de la config. No chequea nada que no esté configurado. |
 | `wt dash` | Tablero de sesiones (TUI), con acciones: retomar, lanzar, anotar, cerrar. |
 | `wt <alias>` / `wt-<x>` en el PATH | Aliases de config y subcomandos externos, patrón git. |
@@ -257,7 +257,7 @@ Veintiocho capabilities. Cada una responde una pregunta, y ese es el criterio pa
 | `aliases-plugins` | ¿Cómo extiendo `wt` sin tocar su código? |
 | `statusline` | ¿Cómo veo el estado del worktree actual en una línea, sin salir del prompt? |
 | `session-context` | ¿Cómo no pierdo el objetivo, las decisiones y el siguiente paso de una sesión, y cómo los ve el agente? |
-| `agent-integrations` | ¿Cómo sabe `wt`, sin que yo haga nada, si un agente está trabajando o esperándome? |
+| `agent-integrations` | ¿Cómo sabe `wt`, sin que yo haga nada, si un agente está trabajando, esperándome o dejó algo colgado? |
 | `mcp-server` | ¿Cómo opera un agente a `wt`, y orquesta las sesiones de otros agentes, sin parsear texto? |
 | `dashboard` | ¿Cómo veo N sesiones con agentes, en vivo, y actúo sobre ellas? |
 
@@ -355,6 +355,40 @@ Dos reglas del corte:
 - **`merge-steps` no detecta squash-merges** hechos fuera de `wt` (en GitHub, por ejemplo). Su `--squash` deja la rama con un solo commit que el fast-forward mete en el target, así que la rama queda mergeada sin necesidad de detectarla. La detección llega con `list-worktrees`.
 - **M4 no trae sesiones** ([`0003`](../decisions/0003-orquestacion-de-sesiones.md)), pero no les cierra la puerta: `branch-state` guarda en el registro por worktree en vez de `git config`, y `wt.list.v1` admite los campos de sesión que suma `sessions`, sin cambiar de versión.
 
+### Ideas registradas para milestones sin desglosar
+
+Ideas aceptadas para el roadmap cuyo milestone todavía no tiene tabla. Cada una entra a la tabla de su milestone cuando abre, con su lugar en el orden; hasta entonces, esto fija qué es, de qué depende y qué queda por decidir (§9).
+
+| Change | Milestone | Entrega | Depende de |
+|---|---|---|---|
+| `agent-loose-ends` | M6, justo después de `agent-integrations` | Los cabos sueltos de una sesión de agente. Cuando la sesión termina dejando algo colgado, el worktree queda marcado con ⏸ (el agente cerró con una promesa o un TODO), ✂ (el turno se cortó por un error de API, un límite de uso o un cierre a mitad de turno) o 💬 (cerró con una pregunta sin responder: el 💬 de `agent-integrations`, que ahora sobrevive al cierre). `list --full`, `dash`, `statusline` y las plantillas muestran la frase detectada, por ejemplo `⏸ auth-fix: "queda pendiente el test de expiración"`. Detección determinística, sin LLM ni red. La v1 es solo para Claude Code. | `list-worktrees` y `branch-state` (M4), el `[agent_state]` del registro (`sessions`, M5) y los hooks que instala `agent-integrations` (M6) |
+
+Cómo se apoya en lo que ya existe:
+
+- **Señales de Claude Code**, verificadas contra la [referencia de hooks](https://code.claude.com/docs/en/hooks) el 2026-11-27. Todos los eventos reciben `session_id`, `transcript_path` y `cwd`.
+  - `Stop` trae `last_assistant_message`, el texto final del turno. Alcanza para ⏸ y 💬, así que la v1 no lee el transcript: la doc avisa que se escribe de forma asíncrona y puede ir atrasado.
+  - `StopFailure` se dispara cuando el turno termina por un error de API, con el tipo de error como matcher (`rate_limit`, `overloaded`, `billing_error`, `server_error`, `max_output_tokens`, `unknown`, entre otros). Es la fuente de ✂, en vez de buscar "usage limit" en el texto.
+  - `SessionEnd` trae el motivo del cierre (`clear`, `resume`, `logout`, `prompt_input_exit`, `other`), no puede bloquear y comparte un presupuesto de 1,5 segundos.
+  - `UserPromptSubmit` y `SessionStart` (`source`: `startup`, `resume`, `clear`, `compact`, `fork`) son los que `agent-integrations` usa para el 🤖.
+- **Se clasifica en cada `Stop`, se promueve en `SessionEnd`.** `Stop` corre al final de cada turno, no solo al cerrar. Mientras la sesión vive, el marcador sigue siendo el 💬 de `agent-integrations` (el agente te espera), y el hook guarda en el registro cómo terminó el turno. En `SessionEnd`, ese resultado pasa al marcador: ⏸, 💬 si fue una pregunta, ✂ si el marcador seguía en 🤖 (se cerró a mitad de turno), o nada. Si la terminal muere sin `SessionEnd`, el último `Stop` ya dejó el detalle guardado.
+- **Dónde se guarda**, según [`0003`](../decisions/0003-orquestacion-de-sesiones.md): el marcador con `wt mark`, en el `session.toml` del worktree, no en `git config`. El detalle va en `[agent_state]`, que es de la integración, y no en `wt var`, que es del usuario: el tipo (`pending`, `question`, `interrupted`), la frase detectada (truncada) y la hora. El id de sesión ya lo guarda `agent-integrations` como `[agent_state].resume_ref`, así que el "`claude --resume <id>`" de la idea es `wt resume <name>`, sin nada nuevo.
+- **El marcador del usuario se respeta.** El hook solo pisa o limpia un marcador que puso un agente. Para eso `branch-state` tiene que poder distinguir quién puso el marcador (o el agente usar un campo propio); se decide en su propose.
+- **Reglas**: una tabla fija de frases en español e inglés en el código, con tests ("queda pendiente", "lo dejo para después", "en un próximo paso", "TODO", "FIXME", "follow-up", "I'll leave", "left for later", "next step would be", …). Miran solo el final del último mensaje. Una pregunta es un final en `?` o un `¿…?` en ese tramo; que nadie la contestó lo garantiza el `Stop`.
+- **El hook nunca rompe la sesión del agente**: ante cualquier error (stdin vacío o corrupto, registro ilegible) no escribe nada y sale con 0. Tiene que entrar holgado en el presupuesto de `SessionEnd`.
+- **`--json`**: `wt.list.v1` y `wt.session.v1` suman los campos sin cambiar de versión, con palabras y no emojis.
+- **Otros agentes** (Codex, Copilot, Gemini, OpenCode): lo que permita el mecanismo de cada uno en `agent-integrations`. El que no exponga el último mensaje marca solo ✂ y 💬 con lo que tenga, o nada.
+- **Fuera de alcance**: resumir sesiones con un LLM, escanear historial viejo que no pasó por el hook, y un comando propio tipo `wt loose-ends` (alcanzan `list`, `dash` y `statusline`).
+
+Escenarios de partida para la spec, con transcripts inventados de "Mate & Co." como fixtures:
+
+- El último mensaje dice "Queda pendiente el test de expiración del token" y la sesión se cierra: queda ⏸, con esa frase en el registro.
+- El turno termina con `StopFailure` por `rate_limit`: queda ✂.
+- El último mensaje es "¿Borro las notas viejas o las archivo?" y la sesión se cierra sin respuesta: queda 💬.
+- El último mensaje es un resumen sin promesas ni preguntas y la sesión se cierra: no queda marcador del agente.
+- El agente vuelve a trabajar en el worktree marcado: el marcador pasa a 🤖.
+- El hook recibe un JSON corrupto: no marca nada y sale con 0.
+- El usuario había puesto su propio `wt mark`: el hook no lo toca.
+
 ### Definición de "listo" por milestone
 
 Un milestone no está cerrado hasta que: los tests pasan en la matrix de 3 OSes, `wt doctor` no reporta nada roto, las specs están sincronizadas a `openspec/specs/`, y **lo usaste una semana en macOS sin volver a v0.9**.
@@ -395,6 +429,10 @@ Cada milestone sale como un minor, y cada change mergeado como una pre-release d
 | D2 | ¿`wt list` muestra todos los repos por defecto, o solo el actual? | Solo el actual, con `--all-repos` para el workspace. Menos sorpresa y más rápido. | `list-worktrees` (M1) |
 | D3 | Nombre del directorio de worktrees por defecto | `{repo_parent}/{repo}.worktrees/{name\|sanitize}`: el layout de v0.9 (que usaba `{name}`), más `sanitize`. Con `{name}` y no `{branch}`, `wt cd <name>` encuentra lo que creaste aunque uses `-b` o `branch_prefix`. Decidido en `create-worktree`. | `path-templates` (M1) |
 | D4 | ¿`wt` gana sobre `wt.exe` en Windows, o se instala como `wtm`? | La función de shell gana; es lo que ya pasa en v0.9 sin fricción. Costo residual: tipear `wt.exe` para Windows Terminal. | `shell-integration` (M1) |
+| D5 | ¿Los cabos sueltos van dentro de `agent-integrations` o en un change propio? | **Change propio, `agent-loose-ends`, justo después de `agent-integrations`**, como delta de la misma capability (siguen siendo veintiocho). `agent-integrations` ya instala hooks para cinco agentes; las reglas de detección y sus fixtures merecen su propia spec y su propia revisión, y la v1 es solo para Claude Code. | `agent-loose-ends` (M6) |
+| D6 | ¿⏸ y ✂ son los definitivos? ¿Qué muestran `--no-color` y `--json`? | **Sí**, junto a 🤖 y 💬, en la salida para humanos (`list`, `dash`, `statusline`). `--json` usa palabras (`working`, `waiting`, `pending`, `question`, `interrupted`), nunca emojis. `--no-color` no los cambia, porque solo apaga el color ANSI (`cli-contract`). | `agent-loose-ends` (M6) |
+| D7 | ¿Cuánto del final del último mensaje se mira? | **Los últimos 500 caracteres**, como constante en el código, con tests en el borde. Cubren el párrafo de cierre, que es donde aparecen las promesas, y dejan afuera un "TODO" citado en medio de un resumen largo. | `agent-loose-ends` (M6) |
+| D8 | ¿El marcador se limpia solo con una sesión nueva, o también con un commit nuevo en la rama? | **Solo cuando el agente vuelve a trabajar en el worktree** (el primer prompt, no el solo hecho de abrir la sesión), o a mano con `wt mark`. Un commit no prueba que la promesa se cumplió, y verlo pediría un hook de git que `wt` no instala. | `agent-loose-ends` (M6) |
 
 ## 10. Riesgos
 
@@ -405,4 +443,5 @@ Cada milestone sale como un minor, y cada change mergeado como una pre-release d
 | Windows se verifica poco porque el desarrollo es en macOS | Matrix de CI en los 3 OSes desde el primer change; las tareas que requieren verificación manual en Windows se marcan como tales. |
 | El alcance crece hacia worktrunk y nunca termina | 1.0 cierra en M5; M6 y M7 son posteriores, y M7 es opcional. El diferencial está en M2, no en M4-M7. |
 | Abrir terminales de forma portable se vuelve el nuevo pozo de bugs | Contrato mínimo (directorio + argv), presets como datos, plugins para lo raro, y verificación manual **[macOS]** y **[Windows]** en `launchers`. |
+| Las frases de `agent-loose-ends` marcan de más (un resumen que menciona un "TODO" del código) y el marcador deja de creerse | Solo el final del último mensaje, una tabla fija de frases con tests de falsos positivos, y un marcador que es una pista, no bloquea nada y se pisa en el turno siguiente. |
 | Un agente conectado por MCP, inducido por el contenido de un repo, borra o lanza lo que no debe | Destructivas en `dry_run` por defecto con `confirm`, launchers y agentes solo por nombre de la config del usuario, grupos de herramientas configurables y ninguna herramienta que apruebe hooks. |
