@@ -22,9 +22,9 @@ func (a *app) hookCommand() *cobra.Command {
 A repository may declare hooks in the [hooks] table of its .wt.toml, with
 the events and the form of the user's (see "wt config --help"). They run
 after the user's commands of the same event, and only once approved: until
-then "wt create", "wt cd" and "wt remove" fail with exit code 8, before
-doing anything, whenever an event they would fire has a command of the
-repository that is not approved.
+then "wt create", "wt cd", "wt remove", "wt merge" and "wt step" fail
+with exit code 8, before doing anything, whenever an event they would fire
+has a command of the repository that is not approved.
 
 An approval is the repository (its main worktree's path), the event and
 the SHA-256 of the command as written in .wt.toml. One approval covers

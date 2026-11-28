@@ -22,6 +22,8 @@ type harness struct {
 	sb  *testutil.Sandbox
 	cwd string
 	tty bool
+	// stdinTTY is Env.StdinTTY: whether wt may ask git to open its editor.
+	stdinTTY bool
 	// goos is the GOOS wt runs with; "" is the test's own.
 	goos string
 	// chdir is Env.Chdir; nil, as in most tests, does nothing.
@@ -58,17 +60,18 @@ func (h *harness) run(args ...string) result {
 		errOut = &stdout
 	}
 	code := cli.Run(context.Background(), cli.Env{
-		Args:    args,
-		Stdin:   strings.NewReader(""),
-		Stdout:  &stdout,
-		Stderr:  errOut,
-		Getenv:  h.sb.Getenv,
-		Environ: h.sb.Environ(),
-		Getwd:   func() (string, error) { return h.cwd, nil },
-		Chdir:   h.chdir,
-		GOOS:    goos,
-		IsTTY:   h.tty,
-		Version: "1.2.3-test",
+		Args:     args,
+		Stdin:    strings.NewReader(""),
+		Stdout:   &stdout,
+		Stderr:   errOut,
+		Getenv:   h.sb.Getenv,
+		Environ:  h.sb.Environ(),
+		Getwd:    func() (string, error) { return h.cwd, nil },
+		Chdir:    h.chdir,
+		GOOS:     goos,
+		IsTTY:    h.tty,
+		StdinTTY: h.stdinTTY,
+		Version:  "1.2.3-test",
 	})
 	return result{code: code, stdout: stdout.String(), stderr: stderr.String()}
 }

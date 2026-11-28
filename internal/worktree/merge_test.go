@@ -37,7 +37,7 @@ func TestCheckMerge(t *testing.T) {
 		{"detached", MergeState{Detached: true, TargetFound: true}, 5, "HEAD is detached", ""},
 		{"target not found", MergeState{Changes: true}, 3, `"main"`, ""},
 		{"own branch", MergeState{TargetFound: true, TargetIsOwn: true, Changes: true}, 2, "into itself", ""},
-		{"changes", MergeState{TargetFound: true, Changes: true}, 5, "modified or untracked files", ""},
+		{"changes without committing", MergeState{TargetFound: true, Changes: true, NoCommit: true}, 5, "modified or untracked files", "--no-commit"},
 		{"target dirty", MergeState{TargetFound: true, TargetDirty: "/src/repo"}, 5, "main is checked out in /src/repo", ""},
 		{"no rebase, behind", MergeState{TargetFound: true, NoRebase: true}, 5, "feat does not contain main", "--no-rebase"},
 	}

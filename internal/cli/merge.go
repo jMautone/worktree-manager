@@ -26,22 +26,30 @@ a local branch. wt merge neither fetches nor pushes.
 
 In order, stopping at the first step that fails:
 
-  1. check that the worktree has no modified or untracked files and no
-     operation in progress, that the target, if checked out in another
-     worktree, has no uncommitted changes there, and that the repository's
-     hooks that would run are approved;
-  2. rebase the branch onto the target, unless it already contains it. A
+  1. check that the worktree has no operation in progress, that the
+     target, if checked out in another worktree, has no uncommitted
+     changes there, and that the repository's hooks that would run are
+     approved;
+  2. commit the pending changes, modified and untracked files, between
+     the pre-commit and post-commit hooks; with --squash, replace the
+     branch's own commits and the pending changes by one commit instead
+     (see "wt step commit --help" for the message);
+  3. rebase the branch onto the target, unless it already contains it. A
      conflict aborts the rebase, leaving the worktree as it was;
-  3. run the pre-merge hook in the worktree;
-  4. fast-forward the target to the branch; where the target is checked
+  4. run the pre-merge hook in the worktree;
+  5. fast-forward the target to the branch; where the target is checked
      out, its files are updated;
-  5. remove the worktree and delete its branch, as "wt remove" does, with
+  6. remove the worktree and delete its branch, as "wt remove" does, with
      its hooks, and move the shell to the main worktree;
-  6. run the post-merge hook, in the background, in the main worktree.
+  7. run the post-merge hook, in the background, in the main worktree.
 
-When pre-merge fails, the branch stays rebased and the target does not
-move. When a step after the target moved fails, the target stays moved.
+The message of the commit is -m <msg>, or what you write in git's
+editor; without a terminal, -m is needed. When the commit fails, nothing
+changes. When pre-merge fails, the branch stays committed and rebased,
+and the target does not move. When a step after the target moved fails,
+the target stays moved.
 
+--no-commit does not commit: pending changes block the merge.
 --no-rebase does not rebase: the branch must already contain the target.
 --no-remove keeps the worktree and its branch.`
 
@@ -49,6 +57,9 @@ type mergeFlags struct {
 	noRebase bool
 	noRemove bool
 	noHooks  bool
+	noCommit bool
+	squash   bool
+	stepFlags
 }
 
 func (a *app) mergeCommand() *cobra.Command {
@@ -77,6 +88,7 @@ func (a *app) mergeCommand() *cobra.Command {
 				signal.Notify(interrupts, os.Interrupt)
 				defer signal.Stop(interrupts)
 			}
+			f.hasMessage = cmd.Flags().Changed("message")
 			p, err := a.planMerge(cmd.Context(), target, f)
 			if err != nil {
 				return err
@@ -91,18 +103,18 @@ func (a *app) mergeCommand() *cobra.Command {
 	fs.BoolVar(&f.noRebase, "no-rebase", false, "do not rebase; the branch must already contain the target")
 	fs.BoolVar(&f.noRemove, "no-remove", false, "keep the worktree and its branch once merged")
 	fs.BoolVar(&f.noHooks, "no-hooks", false, "run no hook")
+	fs.BoolVar(&f.squash, "squash", false, "squash the branch into one commit before rebasing")
+	fs.StringVarP(&f.message, "message", "m", "", "the message of the commit or the squash; without it, git's editor opens")
+	fs.BoolVar(&f.noCommit, "no-commit", false, "do not commit pending changes; they block the merge")
 	return cmd
 }
 
 // mergePlan is everything wt merge read and decided before its first
 // effect.
 type mergePlan struct {
-	w         worktree.Worktree
-	main      worktree.Worktree
-	gitDir    string
-	target    string
-	old       string // the target's commit
-	targetDir string // the worktree that has the target checked out, or ""
+	closing
+	commit    *commitPlan // nil when nothing is committed or squashed
+	noSquash  bool        // --squash with nothing to squash
 	rebase    bool
 	pre, post hook.Run
 	remove    *worktree.RemovePlan // nil with --no-remove
@@ -112,86 +124,51 @@ type mergePlan struct {
 // order of the spec: nothing changes until it returns without error.
 func (a *app) planMerge(ctx context.Context, target string, f mergeFlags) (mergePlan, error) {
 	var p mergePlan
-	dir, err := a.workdir()
+	early := func(res resolved) error {
+		if f.noRemove {
+			return nil
+		}
+		return removeBlocked(worktree.CheckRemovable(*res.Worktree, res.Repo.worktrees, a.env.GOOS))
+	}
+	c, err := a.readClosing(ctx, target, true, "cannot merge the main worktree", early)
 	if err != nil {
 		return p, err
 	}
-	res, cfg, err := a.resolve(ctx, dir, "@", modeWorktree)
-	if err != nil {
-		return p, err
-	}
-	w := *res.Worktree
-	if w.Main || w.Bare {
-		return p, &Error{Code: ExitUsage, Msg: "cannot merge the main worktree"}
-	}
-	if !f.noRemove {
-		if err := removeBlocked(worktree.CheckRemovable(w, res.Repo.worktrees, a.env.GOOS)); err != nil {
-			return p, err
-		}
-	}
-	main := mainWorktree(res.Repo)
-	p.w, p.main, p.gitDir = w, main, res.GitDir
-
-	if target == "" {
-		base := configString(cfg, "default_base")
-		if base == "" {
-			if base, err = a.defaultBranch(ctx, res.GitDir, main); err != nil {
-				return p, err
-			}
-		}
-		remotes, err := git.Remotes(ctx, a.git, res.GitDir)
-		if err != nil {
-			return p, gitError(err)
-		}
-		target = worktree.MergeTarget(base, remotes)
-	}
-	p.target = target
-
-	s := worktree.MergeState{Detached: w.Detached || w.Branch == "", NoRebase: f.noRebase}
-	if s.InProgress, err = git.InProgress(ctx, a.git, w.Path); err != nil {
-		return p, gitError(err)
-	}
-	if !strings.HasPrefix(target, "-") {
-		p.old, err = git.ResolveCommit(ctx, a.git, res.GitDir, "refs/heads/"+target)
-		switch {
-		case errors.Is(err, git.ErrNoRevision):
-		case err != nil:
-			return p, gitError(err)
-		default:
-			s.TargetFound = true
-		}
-	}
-	s.TargetIsOwn = s.TargetFound && target == w.Branch
-	if s.InProgress == "" && !s.Detached && s.TargetFound && !s.TargetIsOwn {
-		entries, err := git.Status(ctx, a.git, w.Path)
-		if err != nil {
-			return p, gitError(err)
-		}
-		s.Changes = len(entries) > 0
-		for _, o := range res.Repo.worktrees {
-			if o.Bare || o.Detached || o.Branch != target {
-				continue
-			}
-			p.targetDir = o.Path
-			if info, err := os.Stat(o.Path); err != nil || !info.IsDir() {
-				break
-			}
-			dirty, err := git.TrackedChanges(ctx, a.git, o.Path)
-			if err != nil {
-				return p, gitError(err)
-			}
-			if dirty {
-				s.TargetDirty = o.Path
-			}
-		}
-		if s.Contains, err = git.IsAncestor(ctx, a.git, w.Path, p.old, w.Head); err != nil {
-			return p, gitError(err)
-		}
-	}
+	p.closing = c
+	res, cfg, w, main, target := c.res, c.cfg, c.w, c.main, c.target
+	s := c.state
+	s.NoRebase = f.noRebase
+	s.NoCommit = f.noCommit
 	if b := worktree.CheckMerge(w.Branch, target, s); b != nil {
 		return p, &Error{Code: b.Code, Msg: b.Msg, Hints: b.Hints}
 	}
 	p.rebase = !s.Contains
+
+	// What is committed before the rebase: the pending changes, or the
+	// squash of the branch, which includes them.
+	kind := worktree.StepCommit
+	if f.squash {
+		kind = worktree.StepSquash
+	}
+	ss, err := a.stepState(ctx, kind, c, f.hasMessage)
+	if err != nil {
+		return p, err
+	}
+	commits := false
+	if _, noop := worktree.StepNoop(kind, w.Branch, target, ss); !noop {
+		commits = true
+	} else if f.squash {
+		p.noSquash = true
+	}
+	if commits {
+		if worktree.NeedsMessage(kind, ss) && !ss.Terminal {
+			b := worktree.MessageBlock()
+			return p, &Error{Code: b.Code, Msg: b.Msg, Hints: b.Hints}
+		}
+		if f.hasMessage && git.Blank(f.message) {
+			return p, emptyMessageError()
+		}
+	}
 
 	// Every hook that would run is approved before anything is done, so
 	// that a hook of the removal does not stop wt with the target moved.
@@ -200,8 +177,25 @@ func (a *app) planMerge(ctx context.Context, target string, f mergeFlags) (merge
 	if !f.noRemove {
 		events = append(events, hook.PreRemove, hook.PostRemove)
 	}
+	if commits {
+		events = append(events, hook.PreCommit, hook.PostCommit)
+	}
 	if err := hooks.check(events...); err != nil {
 		return p, err
+	}
+	if commits {
+		// post-commit runs in the main worktree when the worktree is
+		// removed: by then it is gone.
+		postDir := w.Path
+		if !f.noRemove {
+			postDir = main.Path
+		}
+		f.stepFlags.noHooks = f.noHooks
+		cp, err := a.planCommit(ctx, hooks, c, ss, f.squash, f.stepFlags, postDir)
+		if err != nil {
+			return p, err
+		}
+		p.commit = &cp
 	}
 	values := worktree.HookVars(main, w, "", a.env.GOOS)
 	values["target"] = target
@@ -213,7 +207,7 @@ func (a *app) planMerge(ctx context.Context, target string, f mergeFlags) (merge
 		return p, err
 	}
 	if !f.noRemove {
-		plan, _, err := a.planRemoveOf(ctx, res, cfg, removeFlags{forceDelete: true, noHooks: f.noHooks})
+		plan, _, err := a.planRemoveOf(ctx, res, cfg, removeFlags{forceDelete: true, noHooks: f.noHooks, committing: commits})
 		if err != nil {
 			return p, err
 		}
@@ -222,8 +216,8 @@ func (a *app) planMerge(ctx context.Context, target string, f mergeFlags) (merge
 	return p, nil
 }
 
-// merge carries out the plan: rebase, pre-merge, fast-forward, remove and
-// post-merge, printing each step as it is done.
+// merge carries out the plan: commit or squash, rebase, pre-merge,
+// fast-forward, remove and post-merge, printing each step as it is done.
 func (a *app) merge(ctx context.Context, p mergePlan, interrupts <-chan os.Signal) error {
 	branch, w := p.w.Branch, p.w
 	head := w.Head
@@ -234,6 +228,20 @@ func (a *app) merge(ctx context.Context, p mergePlan, interrupts <-chan os.Signa
 			e.Hints = append(e.Hints, rebasedHint)
 		}
 		return e
+	}
+
+	if p.commit != nil {
+		var err error
+		if head, err = a.makeCommit(ctx, *p.commit, interrupts); err != nil {
+			return err
+		}
+		if p.remove == nil {
+			a.background(p.commit.post)
+		}
+	} else if p.noSquash {
+		if err := a.printLine("nothing to squash"); err != nil {
+			return err
+		}
 	}
 
 	if p.rebase {
@@ -272,27 +280,15 @@ func (a *app) merge(ctx context.Context, p mergePlan, interrupts <-chan os.Signa
 		return interrupted(p.rebase)
 	}
 
-	already, err := git.IsAncestor(ctx, a.git, w.Path, head, p.old)
+	moved, err := a.moveTarget(ctx, p.closing, head)
 	if err != nil {
-		return gitError(err)
+		var e *Error
+		if p.rebase && errors.As(err, &e) {
+			e.Hints = append(e.Hints, rebasedHint)
+		}
+		return err
 	}
-	if already {
-		head = p.old
-		if err := a.mergeLine(worktree.MergeAlready, p); err != nil {
-			return err
-		}
-	} else {
-		if err := git.FastForward(ctx, a.git, p.gitDir, p.target, p.old, head, p.targetDir); err != nil {
-			e := &Error{Code: ExitError, Msg: fmt.Sprintf("cannot move %s to %s: %s", p.target, branch, firstGitLine(err))}
-			if p.rebase {
-				e.Hints = append(e.Hints, rebasedHint)
-			}
-			return e
-		}
-		if err := a.mergeLine(worktree.MergeMerged, p); err != nil {
-			return err
-		}
-	}
+	head = moved
 
 	if p.remove != nil {
 		report := func(plan worktree.RemovePlan) error {
@@ -309,6 +305,9 @@ func (a *app) merge(ctx context.Context, p mergePlan, interrupts <-chan os.Signa
 			}
 			return err
 		}
+	}
+	if p.commit != nil && p.remove != nil {
+		a.background(p.commit.post)
 	}
 	a.background(p.post)
 	if a.json {
@@ -350,6 +349,15 @@ func (a *app) previewMerge(ctx context.Context, p mergePlan) error {
 		return a.writeJSON(mergeDocument(p, head))
 	}
 	var b strings.Builder
+	if p.commit != nil {
+		previewHook(&b, p.commit.pre)
+		b.WriteString(worktree.StepLine(p.commit.kind, p.w.Branch, "", "", p.commit.n, true) + "\n")
+		if p.remove == nil {
+			previewHook(&b, p.commit.post)
+		}
+	} else if p.noSquash {
+		b.WriteString("nothing to squash\n")
+	}
 	if p.rebase {
 		b.WriteString(worktree.MergeLine(worktree.MergeRebased, p.w.Branch, p.target, true) + "\n")
 	}
@@ -361,6 +369,9 @@ func (a *app) previewMerge(ctx context.Context, p mergePlan) error {
 	b.WriteString(worktree.MergeLine(step, p.w.Branch, p.target, true) + "\n")
 	if p.remove != nil {
 		b.WriteString(previewRemoveLines(*p.remove, active))
+		if p.commit != nil {
+			previewHook(&b, p.commit.post)
+		}
 	}
 	previewHook(&b, p.post)
 	_, err := a.env.Stdout.Write([]byte(b.String()))
@@ -368,14 +379,16 @@ func (a *app) previewMerge(ctx context.Context, p mergePlan) error {
 }
 
 type mergeJSON struct {
-	Schema  string  `json:"schema"`
-	Name    string  `json:"name"`
-	Path    string  `json:"path"`
-	Branch  string  `json:"branch"`
-	Target  string  `json:"target"`
-	Rebased bool    `json:"rebased"`
-	Head    *string `json:"head"`
-	Removed bool    `json:"removed"`
+	Schema    string  `json:"schema"`
+	Name      string  `json:"name"`
+	Path      string  `json:"path"`
+	Branch    string  `json:"branch"`
+	Target    string  `json:"target"`
+	Committed bool    `json:"committed"`
+	Squashed  bool    `json:"squashed"`
+	Rebased   bool    `json:"rebased"`
+	Head      *string `json:"head"`
+	Removed   bool    `json:"removed"`
 }
 
 // mergeDocument is wt.merge.v1 for p, with head the target's commit
@@ -384,6 +397,10 @@ func mergeDocument(p mergePlan, head string) mergeJSON {
 	doc := mergeJSON{
 		Schema: "wt.merge.v1", Name: p.w.Name, Path: p.w.Path, Branch: p.w.Branch,
 		Target: p.target, Rebased: p.rebase, Removed: p.remove != nil,
+	}
+	if p.commit != nil {
+		doc.Committed = true
+		doc.Squashed = p.commit.kind == worktree.StepSquash
 	}
 	if head != "" {
 		doc.Head = &head

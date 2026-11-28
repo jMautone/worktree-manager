@@ -30,6 +30,8 @@ func TestRegistryDeclaresTheKeysOfThisChange(t *testing.T) {
 		{"hooks.post-remove", []string{}, false},
 		{"hooks.pre-merge", []string{}, false},
 		{"hooks.post-merge", []string{}, false},
+		{"hooks.pre-commit", []string{}, false},
+		{"hooks.post-commit", []string{}, false},
 	} {
 		k, ok := reg.Lookup(tc.name)
 		if !ok {
@@ -43,8 +45,8 @@ func TestRegistryDeclaresTheKeysOfThisChange(t *testing.T) {
 			t.Errorf("%s: its own default validates to %#v, %v", tc.name, v, err)
 		}
 	}
-	if len(reg) != 15 {
-		t.Errorf("registry has %d keys, want exactly 15", len(reg))
+	if len(reg) != 17 {
+		t.Errorf("registry has %d keys, want exactly 17", len(reg))
 	}
 	for _, k := range reg {
 		if got, want := k.NoEnv, strings.HasPrefix(k.Name, "hooks."); got != want {

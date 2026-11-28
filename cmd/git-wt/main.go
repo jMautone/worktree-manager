@@ -24,17 +24,18 @@ var version string
 
 func main() {
 	os.Exit(cli.Run(context.Background(), cli.Env{
-		Args:    os.Args[1:],
-		Stdin:   os.Stdin,
-		Stdout:  os.Stdout,
-		Stderr:  os.Stderr,
-		Getenv:  os.Getenv,
-		Environ: os.Environ(),
-		Getwd:   os.Getwd,
-		Chdir:   os.Chdir,
-		GOOS:    runtime.GOOS,
-		IsTTY:   term.IsTerminal(os.Stdout) && term.EnableANSI(os.Stdout),
-		Version: cli.ResolveVersion(version, moduleVersion()),
+		Args:     os.Args[1:],
+		Stdin:    os.Stdin,
+		Stdout:   os.Stdout,
+		Stderr:   os.Stderr,
+		Getenv:   os.Getenv,
+		Environ:  os.Environ(),
+		Getwd:    os.Getwd,
+		Chdir:    os.Chdir,
+		GOOS:     runtime.GOOS,
+		IsTTY:    term.IsTerminal(os.Stdout) && term.EnableANSI(os.Stdout),
+		StdinTTY: term.IsTerminal(os.Stdin),
+		Version:  cli.ResolveVersion(version, moduleVersion()),
 	}))
 }
 

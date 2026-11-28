@@ -62,6 +62,9 @@ type removeFlags struct {
 	forceDelete bool
 	force       bool
 	noHooks     bool
+	// committing skips the check of pending changes when planning: wt
+	// merge commits them before it removes the worktree.
+	committing bool
 }
 
 func (a *app) removeCommand() *cobra.Command {
@@ -122,7 +125,7 @@ func (a *app) planRemoveOf(ctx context.Context, res resolved, cfg *config.Config
 	if err := removeBlocked(worktree.CheckRemovable(w, res.Repo.worktrees, a.env.GOOS)); err != nil {
 		return plan, worktree.Worktree{}, err
 	}
-	if info, err := os.Stat(w.Path); err == nil && info.IsDir() && !f.force {
+	if info, err := os.Stat(w.Path); err == nil && info.IsDir() && !f.force && !f.committing {
 		entries, err := git.Status(ctx, a.git, w.Path)
 		if err != nil {
 			return plan, worktree.Worktree{}, gitError(err)

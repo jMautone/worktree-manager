@@ -453,10 +453,10 @@ func TestHookApprove(t *testing.T) {
 		t.Error("approvals.toml changed")
 	}
 
-	r = h.run("hook", "approve", "post-commit")
+	r = h.run("hook", "approve", "post-push")
 	r.mustCode(t, 2)
-	if !strings.Contains(r.stderr, "post-commit") {
-		t.Errorf("stderr = %q, want it to name post-commit", r.stderr)
+	if !strings.Contains(r.stderr, "post-push") {
+		t.Errorf("stderr = %q, want it to name post-push", r.stderr)
 	}
 }
 
