@@ -12,21 +12,30 @@ context: |
   v1 es una reescritura en Go desde cero. La linea anterior (PowerShell 5.1,
   solo Windows) esta retirada; no se porta codigo. Ver `docs/decisions/0001-de-cero-en-go.md` y el diseno completo
   del producto en `docs/design/product.md`, que es la fuente de verdad del
-  alcance y del orden de ejecucion (M1..M6).
+  alcance y del orden de ejecucion (M1..M7). El modelo de sesiones y la
+  reescritura de los principios 1 a 3 estan en
+  `docs/decisions/0003-orquestacion-de-sesiones.md`.
 
   # Principios de producto (no negociables)
 
   - **Terminal-first.** El resultado de un comando es dejarte parado en el
-    worktree, en la misma terminal. Ningun comando abre una aplicacion externa
-    (editor, tab nuevo, IDE) por defecto: eso es siempre opt-in explicito.
-  - **Los agentes corren en foreground.** `-x <cmd>` ejecuta el comando dentro
-    del worktree, en la terminal actual, y propaga su exit code. Un tab nuevo es
-    un launcher opcional, nunca el default.
-  - **Nada hardcodeado a una herramienta.** Ni editor, ni terminal, ni agente,
-    ni runtime. Todo eso son launchers configurables con presets por OS.
+    worktree, en la misma terminal. Abrir una aplicacion externa (otra
+    terminal, un editor) es siempre opt-in: un flag explicito
+    (`--in <launcher>`, `--editor`) o un perfil del usuario que lo declara.
+    Sin flag ni perfil, ningun comando abre nada. El verbo nunca es `open`.
+  - **Los agentes corren en foreground.** `-x <cmd>` y `--agent` corren dentro
+    del worktree, en la terminal actual, y propagan su exit code. Cuando un
+    launcher abre otra terminal, el agente corre en foreground ahi, lanzado
+    por `wt` con `git-wt session run`; el launcher nunca ve su comando.
+  - **Nada hardcodeado a una herramienta.** Agentes, terminales, editores y
+    perfiles son datos de config, con presets por OS que se pueden pisar.
+    Agregar uno nuevo no toca el codigo.
   - **El repo no ejecuta codigo sin permiso.** La config del repo esta limitada
     por lista blanca; los hooks del repo requieren aprobacion explicita por hash
-    del comando.
+    del comando. `.wt.toml` no declara agentes, launchers ni perfiles.
+  - **Una sesion es un worktree mas su registro**, en
+    `<git-common-dir>/wt/sessions/<id>/`. Git es la fuente de verdad: sin
+    daemon y sin indice global que compita con el.
 
   # Plataformas
 
@@ -78,7 +87,7 @@ rules:
   proposal:
     - 'Planteá el problema en términos del flujo de trabajo del usuario, no de la implementación.'
     - 'Enumerá explícitamente los comandos, flags y claves de config que el cambio AGREGA, MODIFICA y QUITA. Si no cambia ninguno, decilo.'
-    - 'Incluí una sección "Non-goals" y una sección "Milestone" que ubique el cambio en el mapa M1..M6 de docs/design/product.md.'
+    - 'Incluí una sección "Non-goals" y una sección "Milestone" que ubique el cambio en el mapa M1..M7 de docs/design/product.md.'
     - 'Declará si el cambio afecta el comportamiento en un OS y no en otro.'
     - 'En la sección "Milestone", nombrá la rama del change: vX.Y/<nombre-del-change>, donde X.Y es el minor del milestone (tabla en docs/decisions/0002-versionado-y-releases.md).'
   design:

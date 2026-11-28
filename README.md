@@ -197,11 +197,13 @@ event. If a command changes, it needs approving again.
 ## Principles
 
 - **Terminal-first.** A command leaves you standing in the worktree, in the
-  same terminal. Nothing opens an external application by default.
+  same terminal. Opening another terminal or an editor is always opt-in: a
+  flag you pass or a profile you configure.
 - **Agents run in the foreground.** `-x <cmd>` runs inside the worktree, in
-  your terminal, and passes its exit code through.
-- **Nothing is hardcoded to one tool.** Editor, terminal and agent are yours
-  to choose.
+  your terminal, and passes its exit code through. When a launcher opens
+  another terminal, the agent runs in the foreground there.
+- **Nothing is hardcoded to one tool.** Agents, terminals, editors and
+  profiles are configuration, with presets you can override.
 - **A repository does not run code without permission.** A repository's
   `.wt.toml` only sets allowlisted keys, and its hooks run only once you
   approve each command.
@@ -219,8 +221,9 @@ milestone are on [Releases](https://github.com/jMautone/worktree-manager/release
 | ✅ | **The differentiator**: multi-repo workspace, cross-repo names, batch | `0.2.0` | released |
 | 🚧 | **Closing the loop**: hooks, project hooks, sync, merge | `0.3.0` | in progress |
 | ⏳ | **Richness**: one rich list view, branch state, picker, statusline | `0.4.0` | |
-| ⏳ | **Extension**: launchers, aliases, doctor | `1.0.0` | |
-| ⏳ | **Product**: dashboard, agent integrations, distribution | `1.1.0` | |
+| ⏳ | **Extension and sessions**: agents, sessions, resume, launchers, profiles, doctor | `1.0.0` | |
+| ⏳ | **Orchestration**: session context, agent integrations, MCP server, dashboard | `1.1.0` | |
+| ⏳ | **Product**: distribution, docs generation, forge, LLM commits | `1.2.0` | |
 
 The full design is in [docs/design/product.md](docs/design/product.md)
 (Spanish).

@@ -7,7 +7,7 @@ Go rewrite of an earlier PowerShell tool, which is retired.
 
 - `openspec/config.yaml`: product context, non-negotiable principles, stack,
   and the rules each OpenSpec artifact follows.
-- `docs/design/product.md`: scope and milestone order (M1..M6). It is the
+- `docs/design/product.md`: scope and milestone order (M1..M7). It is the
   source of truth for what comes next (§7).
 - `CONTRIBUTING.md`: branches, pull request titles, versions, releases, and
   [Working on an OpenSpec change](CONTRIBUTING.md#working-on-an-openspec-change).
